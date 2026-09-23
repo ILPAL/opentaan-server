@@ -1,0 +1,10 @@
+# Vulnerabilities accepted in the security workflow's image scan.
+#
+# Add one only when no fixed version can be used yet. Put the advisory id on
+# its own line, with a comment above it saying why the risk is acceptable here
+# and when to look again, for example:
+#
+#   # Only reachable through feature X, which is disabled. Recheck 2026-12-01.
+#   CVE-2026-00000
+#
+# Nothing is accepted today.

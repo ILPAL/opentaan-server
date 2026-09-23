@@ -3,6 +3,7 @@
 [![game-server](https://github.com/thedoctor2001/opentaan-server/actions/workflows/game-server.yml/badge.svg)](https://github.com/thedoctor2001/opentaan-server/actions/workflows/game-server.yml)
 [![admin-server](https://github.com/thedoctor2001/opentaan-server/actions/workflows/admin-server.yml/badge.svg)](https://github.com/thedoctor2001/opentaan-server/actions/workflows/admin-server.yml)
 [![stack](https://github.com/thedoctor2001/opentaan-server/actions/workflows/stack.yml/badge.svg)](https://github.com/thedoctor2001/opentaan-server/actions/workflows/stack.yml)
+[![security](https://github.com/thedoctor2001/opentaan-server/actions/workflows/security.yml/badge.svg)](https://github.com/thedoctor2001/opentaan-server/actions/workflows/security.yml)
 
 An open server for the TAAN online game client: a .NET game server that speaks
 the client's binary TCP protocol, and a Spring Boot back office that lets
@@ -88,6 +89,7 @@ local development only; the browser client uses authorization code with PKCE.
 | Database constraints | `database/migrations` | A code path that lets an operator approve their own adjustment, a zero amount, a rejection with no reason |
 | Audit trail | `AuditTrailIT`, `AuditChainTest` | An audit entry changed or removed, even with the database trigger switched off; concurrent writers forking the chain; the Java verifier and the database disagreeing on a hash |
 | Whole stack | `.github/workflows/stack.yml` | Wiring, on every pull request: operators sign in through Keycloak, read an account, take a large adjustment through four-eyes approval into the outbox, and an auditor checks the trail those actions left |
+| Security scanning | `.github/workflows/security.yml`, `.github/dependabot.yml` | A fixable HIGH or CRITICAL vulnerability in either image, on every change and weekly; a HIGH or CRITICAL Dockerfile misconfiguration; outdated dependencies, base images and actions. Each image's SBOM is kept with the build |
 
 ## Develop
 

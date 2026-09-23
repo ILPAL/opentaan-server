@@ -132,6 +132,11 @@ with real tokens:
   no service ever holds a password in its environment. Checking what Flyway
   and Keycloak actually do showed that they do, after reading their files.
   The claim was narrowed to what is true for every service.
+- **A vulnerable web server.** The first run of the image scan found three
+  CRITICAL advisories in the Tomcat that Spring Boot 4.1.1 embeds, all fixed in a
+  newer patch release that Spring Boot did not ship yet. The admin server now
+  overrides the Tomcat version, with a comment saying when to remove the
+  override.
 - **A test runner that fails on nothing.** The .NET 10 test runner counts a
   test project with no tests as a failure, so the transport's test project
   waits for the transport instead of existing empty.
@@ -156,8 +161,9 @@ against them before it is used, on the machine that has them.
 
 ## What is not checked yet
 
-- **Dependency and image vulnerabilities:** CodeQL, Dependabot, Trivy and an
-  SBOM are the next CI item.
+- **Our own code, statically:** CodeQL is not set up yet. Dependencies and
+  images are scanned by the `security` workflow and kept current by
+  Dependabot.
 - **Load:** beyond the concurrency tests above, nothing measures throughput or
   latency.
 - **The game protocol:** not in CI. The reference sessions it is checked

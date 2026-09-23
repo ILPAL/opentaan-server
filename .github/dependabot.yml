@@ -1,0 +1,51 @@
+# Weekly update pull requests for everything the build depends on. Minor and
+# patch updates of each ecosystem arrive together as one pull request, so they
+# are reviewed as a batch; a major update gets a pull request of its own.
+# Security updates, when enabled in the repository settings, are separate: they
+# open as soon as an advisory is published.
+
+version: 2
+
+updates:
+  - package-ecosystem: maven
+    directory: /admin-server
+    schedule:
+      interval: weekly
+    groups:
+      maven-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: nuget
+    directory: /game-server
+    schedule:
+      interval: weekly
+    groups:
+      nuget-minor-and-patch:
+        update-types: [minor, patch]
+
+  # Base images in both Dockerfiles.
+  - package-ecosystem: docker
+    directories: [/admin-server, /game-server]
+    schedule:
+      interval: weekly
+    groups:
+      base-images-minor-and-patch:
+        update-types: [minor, patch]
+
+  # PostgreSQL, Flyway and Keycloak in docker-compose.yml.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      compose-minor-and-patch:
+        update-types: [minor, patch]
+
+  # Actions are pinned to commit hashes; this keeps the pins current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-and-patch:
+        update-types: [minor, patch]

@@ -25,7 +25,7 @@ built, and what comes next. Last updated 2026-09-23.
 | Admin UI | Operator portal served by the admin server | Not started; Swagger UI shows the API meanwhile |
 | Game client files | Never committed; supplied locally and mounted at runtime | Done: none in the repository. Mounting comes with the first code that reads them |
 | Finance controls | Four-eyes approval, idempotency keys, append-only audit trail; double-entry ledger optional | Partly: four-eyes, idempotency and the audit trail done; ledger not planned yet |
-| Quality in CI | Testcontainers, architecture rules as tests, security scanning, metrics dashboards | Partly: Testcontainers and architecture rules done; scanning and dashboards not started |
+| Quality in CI | Testcontainers, architecture rules as tests, security scanning, metrics dashboards | Partly: Testcontainers, architecture rules, image scanning and Dependabot done; CodeQL and dashboards not started |
 
 ### First showable version (v1)
 
@@ -40,7 +40,7 @@ What a reviewer should be able to see and run, end to end.
 - [x] README: what it is, how to run it, how correctness is checked
 - [x] Append-only audit trail for every operator action
 - [ ] Game server transport (framing and encryption), checked byte for byte against the reference sessions
-- [ ] Security scanning in CI: CodeQL, Dependabot, Trivy, SBOM
+- [ ] Security scanning in CI: CodeQL (Dependabot, Trivy and an SBOM per image are done)
 - [x] Decision records, a threat model and a written case study in `docs/`
 
 ## Done
@@ -57,6 +57,7 @@ What a reviewer should be able to see and run, end to end.
 | Audit trail | An entry for every change and every account read, in the same transaction as the action; the database refuses `UPDATE`, `DELETE` and `TRUNCATE`, and numbers and hash-chains entries itself; a Java verifier recomputes the chain; list and verification endpoints behind `audit:read` |
 | Documentation | Project README; a README per service and per shared folder |
 | Decisions and security | Ten decision records in `docs/adr`; a threat model with each threat's control, test and status; a case study of how correctness is checked; a test that two concurrent decisions leave exactly one |
+| Security scanning | `security` workflow: both images built, scanned with Trivy on every change and weekly, failing on fixable HIGH or CRITICAL findings, with a CycloneDX SBOM kept per image; Dockerfile checks; Dependabot for Maven, NuGet, base images, compose images and actions; every action pinned to a commit hash |
 
 Tests today: game server 1; admin server 61 unit tests and 25 integration tests.
 
@@ -64,8 +65,8 @@ Tests today: game server 1; admin server 61 unit tests and 25 integration tests.
 
 In order. Each item is one pull request unless noted.
 
-1. **Security scanning in CI.** CodeQL for Java and C#, Dependabot for Maven, NuGet,
-   Docker and Actions, a Trivy scan of both images, and an SBOM per build.
+1. **CodeQL.** Static analysis of the Java and C# code, reported through GitHub
+   code scanning.
 2. **Game server transport.** Framing, seed-based encryption and size limits, with
    the transport tests written first; then replaying the reference sessions through
    it and comparing every byte.
@@ -100,3 +101,4 @@ In order. Each item is one pull request unless noted.
 | The transport test project waits for the transport | The .NET 10 test runner counts a project with no tests as a failure |
 | Reading an account is audited, not only changes | An account holds a player's email; who looked at personal data matters as much as who changed it |
 | The database builds the hash chain; the admin server only checks it | The game server will write to the same trail; with the rules in the schema, neither service can get them wrong |
+| CodeQL comes after the other scanners | It reports through GitHub code scanning, which this repository does not have yet; Trivy and Dependabot work without it |

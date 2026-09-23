@@ -129,8 +129,8 @@ does not exist yet; the control comes with it).
 
 | Id | Threat | Control | Status |
 |---|---|---|---|
-| T-S1 | A vulnerable dependency or base image ships | Versions are pinned in `pom.xml`, `Directory.Packages.props` and Dockerfiles | Partly: scanning (Dependabot, CodeQL, Trivy, SBOM) is the next CI item on the roadmap |
-| T-S2 | A compromised CI action reads the repository or its secrets | Workflows grant `contents: read` only | Partly: actions are pinned to major versions, not commit hashes |
+| T-S1 | A vulnerable dependency or base image ships | Versions are pinned; Dependabot proposes updates weekly for Maven, NuGet, base images, compose images and actions; the `security` workflow scans both images on every change and weekly, fails on fixable HIGH or CRITICAL findings, and keeps an SBOM of each | Partly: no static analysis of our own code yet (CodeQL) |
+| T-S2 | A compromised CI action reads the repository or its secrets | Workflows grant `contents: read` only; every action is pinned to a full commit hash, so a moved tag cannot change what runs; Dependabot updates the pins | Mitigated |
 | T-S3 | Containers run with more privilege than they need | Both server images run as non-root users | Mitigated |
 | T-S4 | The local Keycloak setup is copied to a shared environment | It runs `start-dev`: HTTP, an embedded database, a bootstrap admin | Open: production configuration not written |
 
@@ -140,8 +140,7 @@ does not exist yet; the control comes with it).
    T-R5 reachable through a single service flaw.
 2. **T-R5 and T-R6:** no automatic copy of the chain head outside the
    database.
-3. **T-S1 and T-S2:** no dependency or image scanning, and actions not pinned
-   by hash.
+3. **T-S1:** no static analysis of our own code yet.
 4. **T-A4:** no MFA for operators.
 5. **T-R2:** refused attempts are not recorded.
 6. **T-A3, T-A5 and T-S4:** local-only settings that need changing before any

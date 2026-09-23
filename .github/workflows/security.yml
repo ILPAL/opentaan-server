@@ -1,0 +1,100 @@
+name: security
+
+# Scans what ships. Builds both images, keeps a CycloneDX SBOM of each as a
+# build artifact, and fails on any HIGH or CRITICAL vulnerability that has a
+# fix available. Runs weekly as well, because new advisories appear without any
+# change here.
+#
+# A finding that cannot be fixed yet is accepted in .trivyignore, with the
+# reason and a date to look at it again.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**/*.md"]
+  pull_request:
+    paths-ignore: ["**/*.md"]
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TRIVY_VERSION: v0.74.0
+
+jobs:
+  image:
+    name: ${{ matrix.service }} image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The admin server's image is built from the repository root, because
+          # its code is generated from contracts/openapi.
+          - service: admin-server
+            context: .
+          - service: game-server
+            context: game-server
+    env:
+      IMAGE: opentaan/${{ matrix.service }}:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Build image
+        run: docker build --file ${{ matrix.service }}/Dockerfile --tag "$IMAGE" ${{ matrix.context }}
+
+      - name: Record the SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: image
+          image-ref: ${{ env.IMAGE }}
+          format: cyclonedx
+          output: ${{ matrix.service }}.cdx.json
+
+      - name: Keep the SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-${{ matrix.service }}
+          path: ${{ matrix.service }}.cdx.json
+
+      - name: Fail on fixable HIGH or CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          skip-setup-trivy: true
+          scan-type: image
+          image-ref: ${{ env.IMAGE }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+          format: table
+          exit-code: "1"
+
+  dockerfiles:
+    name: Dockerfile checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Fail on HIGH or CRITICAL misconfigurations
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: config
+          scan-ref: .
+          # Named like a Dockerfile, but it is the build context's ignore list.
+          skip-files: admin-server/Dockerfile.dockerignore
+          severity: HIGH,CRITICAL
+          format: table
+          exit-code: "1"

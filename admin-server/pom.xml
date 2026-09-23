@@ -30,6 +30,10 @@
     <springdoc.version>3.1.0</springdoc.version>
     <!-- The API contract lives outside this module, shared with every other consumer. -->
     <contracts.dir>${project.basedir}/../contracts</contracts.dir>
+    <!-- Spring Boot 4.1.1 manages Tomcat 11.0.24, which has CRITICAL advisories
+         (CVE-2026-65182, CVE-2026-65905, CVE-2026-68525) fixed in 11.0.25. Remove
+         this once the Spring Boot version above manages 11.0.25 or later. -->
+    <tomcat.version>11.0.26</tomcat.version>
   </properties>
 
   <dependencies>
