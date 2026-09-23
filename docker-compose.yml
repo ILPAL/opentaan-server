@@ -1,0 +1,124 @@
+# The whole stack on one machine: PostgreSQL, the schema migrations, the
+# operator identity provider and both servers.
+#
+# First run:
+#   1. create the secrets (see secrets/README.md)
+#   2. docker compose up --build
+#   3. deploy/keycloak/add-operator.sh <username> <role>...
+#
+# Ports on the host: 2180 game server, 8080 admin server, 8081 Keycloak.
+
+name: opentaan
+
+services:
+  postgres:
+    image: postgres:18.6
+    environment:
+      POSTGRES_DB: opentaan
+      POSTGRES_USER: opentaan
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      # Applied on first start only. Character names are Unicode, and C collation
+      # keeps sorting identical on every machine.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    secrets: [db_password]
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opentaan -d opentaan"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  # Applies database/migrations, then exits. The servers never create or alter
+  # tables; they start only after this has finished successfully.
+  flyway:
+    image: flyway/flyway:13.7.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/opentaan
+      FLYWAY_USER: opentaan
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+    secrets: [db_password]
+    volumes:
+      - ./database/migrations:/flyway/sql:ro
+    # The password comes from the secret file, so it is never in this file or in
+    # `docker inspect`. `$$` stops Compose expanding the variable itself.
+    entrypoint: ["sh", "-c", 'FLYWAY_PASSWORD="$$(cat /run/secrets/db_password)" exec flyway migrate']
+    restart: "no"
+
+  # Local development identity provider for operators. Realm, roles and clients
+  # are imported from deploy/keycloak; operators are added with add-operator.sh.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.4
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      # Tokens must carry the issuer that browsers and the CLI see (localhost),
+      # even when the admin server reaches Keycloak inside the Docker network.
+      KC_HOSTNAME: http://localhost:${KEYCLOAK_PORT:-8081}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HEALTH_ENABLED: "true"
+    secrets: [keycloak_admin_password]
+    volumes:
+      - ./deploy/keycloak/realm-opentaan.json:/opt/keycloak/data/import/realm-opentaan.json:ro
+    # Pure bash: the image has no shell utilities to spare. `$$` as above.
+    entrypoint:
+      - /bin/bash
+      - -c
+      - 'export KC_BOOTSTRAP_ADMIN_PASSWORD="$$(< /run/secrets/keycloak_admin_password)"; exec /opt/keycloak/bin/kc.sh start-dev --import-realm'
+    ports:
+      - "${KEYCLOAK_PORT:-8081}:8080"
+    healthcheck:
+      test:
+        - CMD
+        - /bin/bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /health/ready HTTP/1.0\r\n\r\n" >&3 && read -r status <&3 && [[ $$status == *" 200 "* ]]'
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 20s
+    restart: unless-stopped
+
+  admin-server:
+    build:
+      context: .
+      dockerfile: admin-server/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      flyway:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+    environment:
+      OPENTAAN_DB_URL: jdbc:postgresql://postgres:5432/opentaan
+      OPENTAAN_DB_USER: opentaan
+      # Every file in /run/secrets becomes a property named after the file,
+      # so db_password is read from the secret, not from the environment.
+      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+      # Tokens are issued for localhost; signing keys are fetched inside the network.
+      OPENTAAN_OIDC_ISSUER: http://localhost:${KEYCLOAK_PORT:-8081}/realms/opentaan
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/opentaan/protocol/openid-connect/certs
+    secrets: [db_password]
+    ports:
+      - "${ADMIN_PORT:-8080}:8080"
+    restart: unless-stopped
+
+  game-server:
+    build:
+      context: ./game-server
+    ports:
+      - "${GAME_PORT:-2180}:2180"
+    restart: unless-stopped
+
+secrets:
+  db_password:
+    file: ./secrets/db_password
+  keycloak_admin_password:
+    file: ./secrets/keycloak_admin_password
+
+volumes:
+  postgres-data:

@@ -1,0 +1,57 @@
+{
+  "realm": "opentaan",
+  "displayName": "OpenTaan operators",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "loginWithEmailAllowed": false,
+  "bruteForceProtected": true,
+  "failureFactor": 5,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "roles": {
+    "realm": [
+      { "name": "viewer", "description": "Reads sessions, rooms, nodes, accounts, characters, matches and inventories." },
+      { "name": "support", "description": "Viewer, plus disconnecting a session." },
+      { "name": "moderator", "description": "Reads players and applies moderation actions." },
+      { "name": "economy", "description": "Reads the ledger and submits economy adjustments." },
+      { "name": "operations", "description": "Reads and drains nodes; disconnects sessions." },
+      { "name": "auditor", "description": "Reads the audit trail and the ledger." },
+      { "name": "admin", "description": "Every permission." }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "opentaan-cli",
+      "name": "Command line (local development only)",
+      "description": "Password grant for curl and scripts against a local stack. Not for any shared environment.",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "admin-portal",
+      "name": "Admin portal",
+      "description": "Browser sign-in for the operator portal and Swagger UI: authorization code with PKCE.",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": ["http://localhost:8080/*"],
+      "webOrigins": ["http://localhost:8080"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "users": []
+}
