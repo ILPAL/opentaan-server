@@ -1,10 +1,10 @@
 openapi: 3.0.3
 info:
   title: OpenTaan Admin API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Back-office API for operators: account lookup, economy adjustments and
-    moderation. This file is the contract. The admin server's controllers
+    the audit trail. This file is the contract. The admin server's controllers
     implement interfaces generated from it, so the code cannot drift from it.
 
     Every route needs a bearer token from the operator identity provider.
@@ -34,6 +34,17 @@ tags:
 
       Approval records the adjustment for delivery to the game server; the
       delivery itself is asynchronous.
+  - name: Audit
+    description: |
+      The audit trail: an entry for every change an operator makes and every
+      time an operator reads a player's personal data, written in the same
+      transaction as the action. A retry that changes nothing adds no entry;
+      an action that fails leaves none.
+
+      Entries cannot be changed or removed, and each one carries the hash of the
+      one before it. The verification operation recomputes the whole chain. To
+      notice the chain being rebuilt from some point on, keep the `entryHash` of
+      an entry you have seen and check later that it has not changed.
 
 paths:
   /api/accounts/{accountId}:
@@ -245,6 +256,94 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/audit/entries:
+    get:
+      tags: [Audit]
+      operationId: listAuditEntries
+      summary: List audit trail entries, newest first
+      description: |
+        Filters combine with AND. To page back through the trail, pass the lowest
+        `sequence` of one page as `before` for the next.
+      x-permission: audit:read
+      parameters:
+        - name: subjectType
+          in: query
+          required: false
+          description: What the action was done to, such as `economy-adjustment` or `account`.
+          schema:
+            type: string
+            maxLength: 50
+            pattern: "^[a-z]+(-[a-z]+)*$"
+        - name: subjectId
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+        - name: actorId
+          in: query
+          required: false
+          description: The operator who acted, by their identity provider id.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+        - name: before
+          in: query
+          required: false
+          description: Only entries with a lower sequence number.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Entries, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditTrailEntry"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/audit/verification:
+    get:
+      tags: [Audit]
+      operationId: verifyAuditTrail
+      summary: Recompute the hash chain from the first entry to the last
+      description: |
+        Checks that the entries are numbered without gaps, that each one names
+        the hash of the one before, and that each hash matches the entry's
+        contents. Stops at the first entry that fails.
+      x-permission: audit:read
+      responses:
+        "200":
+          description: The result, whether or not the chain is intact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditTrailVerification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -383,6 +482,73 @@ components:
           format: date-time
         decisionNote:
           type: string
+
+    AuditTrailEntry:
+      type: object
+      required: [sequence, entryId, occurredAt, actor, action, subjectType, subjectId, details, previousHash, entryHash]
+      properties:
+        sequence:
+          type: integer
+          format: int64
+          description: Position in the trail, counting from 1, without gaps.
+        entryId:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        actor:
+          $ref: "#/components/schemas/OperatorRef"
+        action:
+          type: string
+          description: |
+            What was done: `account.viewed`, `economy.adjustment.requested`,
+            `economy.adjustment.approved` or `economy.adjustment.rejected`.
+        subjectType:
+          type: string
+          description: What it was done to, such as `account` or `economy-adjustment`.
+        subjectId:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+          description: |
+            The facts of the action. For an adjustment, the adjustment as it
+            stood after the action.
+        previousHash:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: SHA-256 of the entry before, or 64 zeros for the first entry.
+        entryHash:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: SHA-256 of this entry's fields and `previousHash`.
+
+    AuditTrailVerification:
+      type: object
+      required: [intact, entriesChecked]
+      properties:
+        intact:
+          type: boolean
+          description: Whether every entry fits the chain.
+        entriesChecked:
+          type: integer
+          format: int64
+          description: How many entries were found to fit before the check ended.
+        lastSequence:
+          type: integer
+          format: int64
+          description: The last entry that fits. Not set if there is none.
+        lastHash:
+          type: string
+          description: That entry's hash.
+        brokenAt:
+          type: integer
+          format: int64
+          description: The sequence number where the chain breaks. Set only when it is not intact.
+        problem:
+          type: string
+          description: What is wrong at `brokenAt`.
 
     Problem:
       type: object

@@ -5,12 +5,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import io.opentaan.admin.TestcontainersConfiguration;
+import io.opentaan.admin.audit.AuditActions;
+import io.opentaan.admin.audit.AuditEntry;
+import io.opentaan.admin.audit.AuditFilter;
+import io.opentaan.admin.audit.AuditQueryService;
 import io.opentaan.admin.outbox.Outbox;
 import io.opentaan.admin.security.Operator;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,7 +28,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * The adjustment workflow against a real PostgreSQL with the real migrations, so
- * the database constraints, the unique idempotency key and the outbox are all in play.
+ * the database constraints, the unique idempotency key, the outbox and the audit
+ * trail are all in play.
  */
 @SpringBootTest(properties = {
         "spring.flyway.enabled=true",
@@ -43,6 +49,9 @@ class EconomyAdjustmentServiceIT {
 
     @Autowired
     private Outbox outbox;
+
+    @Autowired
+    private AuditQueryService audit;
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -96,6 +105,36 @@ class EconomyAdjustmentServiceIT {
     }
 
     @Test
+    void each_request_and_decision_is_audited_once() {
+        var id = economy.request(RIN, command(50_000), "key-audit-0001").adjustment().adjustmentId();
+        assertThatThrownBy(() -> economy.approve(RIN, id, null)).isInstanceOf(SelfDecisionException.class);
+        economy.approve(AN, id, "matches ticket 123");
+        economy.approve(AN, id, "matches ticket 123");
+
+        // Newest first. The refused self-approval and the retried approval left nothing.
+        var entries = auditOf(id);
+        assertThat(entries).extracting(AuditEntry::action)
+                .containsExactly(AuditActions.ADJUSTMENT_APPROVED, AuditActions.ADJUSTMENT_REQUESTED);
+        assertThat(entries).extracting(AuditEntry::actor).containsExactly(AN, RIN);
+        assertThat(entries.getFirst().details())
+                .contains("\"status\":\"APPROVED\"", "\"decisionNote\":\"matches ticket 123\"");
+        assertThat(entries.getLast().details()).contains("\"status\":\"PENDING_APPROVAL\"", "\"deltaGold\":50000");
+    }
+
+    @Test
+    void a_rejection_is_audited_with_its_reason() {
+        var id = economy.request(RIN, command(-75_000), "key-audit-0002").adjustment().adjustmentId();
+
+        economy.reject(AN, id, "no ticket for this");
+        economy.reject(AN, id, "no ticket for this");
+
+        var entries = auditOf(id);
+        assertThat(entries).extracting(AuditEntry::action)
+                .containsExactly(AuditActions.ADJUSTMENT_REJECTED, AuditActions.ADJUSTMENT_REQUESTED);
+        assertThat(entries.getFirst().details()).contains("\"decisionNote\":\"no ticket for this\"");
+    }
+
+    @Test
     void a_rejected_adjustment_is_never_queued() {
         var id = economy.request(RIN, command(-75_000), "key-reject-001").adjustment().adjustmentId();
 
@@ -116,6 +155,7 @@ class EconomyAdjustmentServiceIT {
         assertThat(retry.adjustment().adjustmentId()).isEqualTo(first.adjustment().adjustmentId());
         assertThat(rows()).isEqualTo(1);
         assertThat(outbox.eventsFor(first.adjustment().adjustmentId().toString())).hasSize(1);
+        assertThat(auditOf(first.adjustment().adjustmentId())).hasSize(1);
     }
 
     @Test
@@ -150,6 +190,7 @@ class EconomyAdjustmentServiceIT {
             var first = results.get(0).get();
             var second = results.get(1).get();
             assertThat(first.adjustment().adjustmentId()).isEqualTo(second.adjustment().adjustmentId());
+            assertThat(auditOf(first.adjustment().adjustmentId())).hasSize(1);
         }
         assertThat(rows()).isEqualTo(1);
     }
@@ -173,6 +214,10 @@ class EconomyAdjustmentServiceIT {
 
     private static AdjustmentRequestCommand command(long deltaGold) {
         return new AdjustmentRequestCommand(CHARACTER, deltaGold, "refund for ticket 123");
+    }
+
+    private List<AuditEntry> auditOf(UUID adjustmentId) {
+        return audit.list(AuditFilter.subject("economy-adjustment", adjustmentId.toString()), 10);
     }
 
     private int rows() {

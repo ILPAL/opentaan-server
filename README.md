@@ -18,7 +18,8 @@ Two problems shape the design:
 - **The back office moves value.** Economy adjustments change what players own.
   It is built with the controls a bank would expect: an API contract written
   before the code, a permission check on every endpoint, four-eyes approval and
-  idempotency keys on every gold adjustment, and next, an append-only audit trail.
+  idempotency keys on every gold adjustment, and an append-only, hash-chained
+  audit trail of every operator action.
 
 ## Architecture
 
@@ -81,11 +82,12 @@ local development only; the browser client uses authorization code with PKCE.
 | Check | Where | What it catches |
 |---|---|---|
 | Contract-first API | `admin-server` build | Code that drifts from `contracts/openapi/admin-api.yaml`: controllers implement generated interfaces |
-| Permission tests | `AccountsControllerTest`, `OperatorRolesTest` | 401 and 403 paths, role-to-permission mapping, secrets in responses |
+| Permission tests | `AccountsControllerTest`, `AuditControllerTest`, `OperatorRolesTest` | 401 and 403 paths, role-to-permission mapping, secrets in responses |
 | Architecture rules | ArchUnit, NetArchTest | An endpoint without a permission check, a controller reaching a repository, transport code depending on game code |
 | Real database | Testcontainers | Mappings that do not match the schema the migrations produce; a retry racing the original request |
 | Database constraints | `database/migrations` | A code path that lets an operator approve their own adjustment, a zero amount, a rejection with no reason |
-| Whole stack | `.github/workflows/stack.yml` | Wiring, on every pull request: operators sign in through Keycloak, read an account, and take a large adjustment through four-eyes approval into the outbox |
+| Audit trail | `AuditTrailIT`, `AuditChainTest` | An audit entry changed or removed, even with the database trigger switched off; concurrent writers forking the chain; the Java verifier and the database disagreeing on a hash |
+| Whole stack | `.github/workflows/stack.yml` | Wiring, on every pull request: operators sign in through Keycloak, read an account, take a large adjustment through four-eyes approval into the outbox, and an auditor checks the trail those actions left |
 
 ## Develop
 
@@ -120,7 +122,7 @@ Each service has its own README with the details.
 | Game server: packet codecs, persistence, game logic | Planned |
 | Admin server: account lookup, contract-first API, permission model | Done |
 | Admin server: economy adjustments with four-eyes approval and idempotency keys | Done |
-| Admin server: append-only audit trail | Next |
+| Admin server: append-only, hash-chained audit trail | Done |
 | Delivering approved adjustments to the game server | Planned: needs game state in the game server |
 | Local stack with Keycloak, tested end to end in CI | Done |
 

@@ -23,3 +23,4 @@ what it expects.
 |---|---|
 | `V1__initial_schema.sql` | Accounts, characters, state documents, idempotency claims, shop ledger, operators, audit trail, match history |
 | `V2__economy_adjustments.sql` | Gold adjustments under four-eyes approval, enforced by constraints; the outbox for events to the game server |
+| `V3__audit_trail.sql` | The audit trail: append-only, numbered and hash-chained by triggers, so no service can change an entry or place one outside the chain |

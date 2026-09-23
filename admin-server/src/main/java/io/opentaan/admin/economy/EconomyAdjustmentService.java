@@ -10,6 +10,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import io.opentaan.admin.accounts.AccountQueryService;
+import io.opentaan.admin.audit.AuditActions;
+import io.opentaan.admin.audit.AuditTrail;
 import io.opentaan.admin.outbox.Outbox;
 import io.opentaan.admin.security.Operator;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -24,7 +26,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <p>An approved adjustment is recorded in the outbox in the same transaction as
  * the approval; applying it to the character is the game server's job once the
- * event is delivered.
+ * event is delivered. Every request and decision is recorded in the audit trail
+ * in the same transaction too; a retry that changes nothing records nothing.
  */
 @Service
 public class EconomyAdjustmentService {
@@ -34,15 +37,18 @@ public class EconomyAdjustmentService {
     private final EconomyAdjustmentRepository adjustments;
     private final AccountQueryService accounts;
     private final Outbox outbox;
+    private final AuditTrail auditTrail;
     private final EconomyProperties properties;
     private final Clock clock;
     private final TransactionTemplate transaction;
 
     EconomyAdjustmentService(EconomyAdjustmentRepository adjustments, AccountQueryService accounts, Outbox outbox,
-            EconomyProperties properties, Clock clock, PlatformTransactionManager transactionManager) {
+            AuditTrail auditTrail, EconomyProperties properties, Clock clock,
+            PlatformTransactionManager transactionManager) {
         this.adjustments = adjustments;
         this.accounts = accounts;
         this.outbox = outbox;
+        this.auditTrail = auditTrail;
         this.properties = properties;
         this.clock = clock;
         this.transaction = new TransactionTemplate(transactionManager);
@@ -82,7 +88,7 @@ public class EconomyAdjustmentService {
                 if (adjustment.getStatus() == AdjustmentStatus.APPROVED) {
                     recordApproval(adjustment);
                 }
-                return adjustment.toView();
+                return audit(requester, AuditActions.ADJUSTMENT_REQUESTED, adjustment);
             });
             return new RequestOutcome(created, false);
         } catch (DataIntegrityViolationException race) {
@@ -103,10 +109,14 @@ public class EconomyAdjustmentService {
     @Transactional
     public AdjustmentView approve(Operator approver, UUID adjustmentId, String note) {
         var adjustment = find(adjustmentId);
-        if (adjustment.approve(approver, note, clock.instant())) {
-            recordApproval(adjustment);
+        if (!adjustment.approve(approver, note, clock.instant())) {
+            return adjustment.toView();
         }
-        return adjustment.toView();
+        // Write the decision first: a concurrent decision fails here, before the
+        // audit trail is locked.
+        adjustments.saveAndFlush(adjustment);
+        recordApproval(adjustment);
+        return audit(approver, AuditActions.ADJUSTMENT_APPROVED, adjustment);
     }
 
     /**
@@ -118,8 +128,11 @@ public class EconomyAdjustmentService {
     @Transactional
     public AdjustmentView reject(Operator rejecter, UUID adjustmentId, String note) {
         var adjustment = find(adjustmentId);
-        adjustment.reject(rejecter, note, clock.instant());
-        return adjustment.toView();
+        if (!adjustment.reject(rejecter, note, clock.instant())) {
+            return adjustment.toView();
+        }
+        adjustments.saveAndFlush(adjustment);
+        return audit(rejecter, AuditActions.ADJUSTMENT_REJECTED, adjustment);
     }
 
     @Transactional(readOnly = true)
@@ -144,6 +157,13 @@ public class EconomyAdjustmentService {
         outbox.record(AGGREGATE_TYPE, adjustment.getAdjustmentId().toString(), AdjustmentApproved.TYPE,
                 new AdjustmentApproved(adjustment.getAdjustmentId(), adjustment.getCharacterId(),
                         adjustment.getDeltaGold(), adjustment.getDecidedAt()));
+    }
+
+    /** Records the action with the adjustment as it now stands, and returns that. */
+    private AdjustmentView audit(Operator actor, String action, EconomyAdjustment adjustment) {
+        var view = adjustment.toView();
+        auditTrail.record(actor, action, AGGREGATE_TYPE, view.adjustmentId().toString(), view);
+        return view;
     }
 
     private static RequestOutcome replay(EconomyAdjustment earlier, String requestHash) {

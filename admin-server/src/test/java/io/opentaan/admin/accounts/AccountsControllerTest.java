@@ -3,6 +3,7 @@ package io.opentaan.admin.accounts;
 import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -12,6 +13,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.util.List;
 import java.util.Map;
 
+import io.opentaan.admin.security.CurrentOperator;
+import io.opentaan.admin.security.Operator;
 import io.opentaan.admin.security.OperatorAuthoritiesConverter;
 import io.opentaan.admin.security.OperatorRoles;
 import io.opentaan.admin.security.SecurityConfig;
@@ -29,10 +32,11 @@ import org.springframework.test.web.servlet.MockMvc;
  * permission check, validation, error format and the response shape.
  */
 @WebMvcTest(AccountsController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, CurrentOperator.class})
 class AccountsControllerTest {
 
     private static final String URL = "/api/accounts/{accountId}";
+    private static final Operator VIEWER = new Operator("sub-viewer", "test-operator");
 
     @Autowired
     private MockMvc mvc;
@@ -52,11 +56,13 @@ class AccountsControllerTest {
     void refuses_an_operator_without_accounts_read() throws Exception {
         mvc.perform(get(URL, 1).with(operatorWithRoles("operations")))
                 .andExpect(status().isForbidden());
+        verifyNoInteractions(accountQueries);
     }
 
     @Test
     void returns_the_account_and_its_characters() throws Exception {
-        given(accountQueries.getAccount(42)).willReturn(new AccountDetails(42, "player@example.com", List.of(
+        // Stubbed for this operator only: the service records the read under their name.
+        given(accountQueries.getAccount(VIEWER, 42)).willReturn(new AccountDetails(42, "player@example.com", List.of(
                 new AccountDetails.Character(7, "Nova", 0),
                 new AccountDetails.Character(9, "Ember", 1))));
 
@@ -72,7 +78,7 @@ class AccountsControllerTest {
 
     @Test
     void answers_404_with_problem_details_for_an_unknown_account() throws Exception {
-        given(accountQueries.getAccount(404)).willThrow(new AccountNotFoundException(404));
+        given(accountQueries.getAccount(VIEWER, 404)).willThrow(new AccountNotFoundException(404));
 
         mvc.perform(get(URL, 404).with(operatorWithRoles("viewer")))
                 .andExpect(status().isNotFound())
@@ -99,7 +105,8 @@ class AccountsControllerTest {
     private JwtRequestPostProcessor operatorWithRoles(String... roles) {
         return jwt()
                 .jwt(token -> token
-                        .claim("preferred_username", "test-operator")
+                        .subject(VIEWER.id())
+                        .claim("preferred_username", VIEWER.name())
                         .claim("realm_access", Map.of("roles", List.of(roles))))
                 .authorities(new OperatorAuthoritiesConverter(operatorRoles));
     }

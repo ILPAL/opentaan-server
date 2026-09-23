@@ -24,7 +24,7 @@ built, and what comes next. Last updated 2026-09-23.
 | Operator login | Keycloak (OpenID Connect); roles in Keycloak, permissions in code | Done |
 | Admin UI | Operator portal served by the admin server | Not started; Swagger UI shows the API meanwhile |
 | Game client files | Never committed; supplied locally and mounted at runtime | Done: none in the repository. Mounting comes with the first code that reads them |
-| Finance controls | Four-eyes approval, idempotency keys, append-only audit trail; double-entry ledger optional | Partly: four-eyes and idempotency done; audit next; ledger not planned yet |
+| Finance controls | Four-eyes approval, idempotency keys, append-only audit trail; double-entry ledger optional | Partly: four-eyes, idempotency and the audit trail done; ledger not planned yet |
 | Quality in CI | Testcontainers, architecture rules as tests, security scanning, metrics dashboards | Partly: Testcontainers and architecture rules done; scanning and dashboards not started |
 
 ### First showable version (v1)
@@ -38,7 +38,7 @@ What a reviewer should be able to see and run, end to end.
 - [x] Integration tests on real PostgreSQL; architecture rules as tests
 - [x] CI runs the whole stack and drives a real request through it
 - [x] README: what it is, how to run it, how correctness is checked
-- [ ] Append-only audit trail for every operator action
+- [x] Append-only audit trail for every operator action
 - [ ] Game server transport (framing and encryption), checked byte for byte against the reference sessions
 - [ ] Security scanning in CI: CodeQL, Dependabot, Trivy, SBOM
 - [ ] Decision records, a threat model and a written case study in `docs/`
@@ -48,32 +48,29 @@ What a reviewer should be able to see and run, end to end.
 | Area | What exists |
 |---|---|
 | Repository setup | `.gitignore`, `.gitattributes`, `.editorconfig` |
-| Database | `V1` initial schema (11 tables); `V2` economy adjustments and the outbox, with the approval rules as constraints |
+| Database | `V1` initial schema (11 tables); `V2` economy adjustments and the outbox, with the approval rules as constraints; `V3` the audit trail |
 | Game server | .NET 10 solution: transport project, host listening on port 2180, architecture rules (1) |
 | Admin server | Contract-first API, Keycloak token validation, role-to-permission mapping, read-only account data, problem-details errors |
 | Local stack | docker-compose with PostgreSQL 18, Flyway, Keycloak and both servers; secrets as files; operator script with no committed credentials |
-| CI | `game-server`, `admin-server` and `stack` workflows; the stack job signs operators in and takes an adjustment through four-eyes approval |
+| CI | `game-server`, `admin-server` and `stack` workflows; the stack job signs operators in, takes an adjustment through four-eyes approval and checks the audit trail it left |
 | Economy adjustments | Request, list, approve, reject; threshold for dual control; idempotent retries, including two identical requests at once; transactional outbox |
+| Audit trail | An entry for every change and every account read, in the same transaction as the action; the database refuses `UPDATE`, `DELETE` and `TRUNCATE`, and numbers and hash-chains entries itself; a Java verifier recomputes the chain; list and verification endpoints behind `audit:read` |
 | Documentation | Project README; a README per service and per shared folder |
 
-Tests today: game server 1; admin server 44 unit tests and 11 integration tests.
+Tests today: game server 1; admin server 61 unit tests and 24 integration tests.
 
 ## Next
 
 In order. Each item is one pull request unless noted.
 
-1. **Append-only audit trail.** `V3` migration: the database refuses `UPDATE` and
-   `DELETE` on the audit table, and each entry carries a hash of the one before, so
-   tampering breaks the chain. Every operator action writes an entry in the same
-   transaction; auditors read it through the API with `audit:read`.
-2. **Security scanning in CI.** CodeQL for Java and C#, Dependabot for Maven, NuGet,
+1. **Security scanning in CI.** CodeQL for Java and C#, Dependabot for Maven, NuGet,
    Docker and Actions, a Trivy scan of both images, and an SBOM per build.
-3. **Game server transport.** Framing, seed-based encryption and size limits, with
+2. **Game server transport.** Framing, seed-based encryption and size limits, with
    the transport tests written first; then replaying the reference sessions through
    it and comparing every byte.
-4. **Documentation.** Decision records in `docs/adr/` for the choices above, a
+3. **Documentation.** Decision records in `docs/adr/` for the choices above, a
    threat model in `docs/security/`, and a case study of how correctness is checked.
-5. **Operator portal.** Pages served by the admin server: account lookup, requesting
+4. **Operator portal.** Pages served by the admin server: account lookup, requesting
    adjustments and an approval queue, signing in with the `admin-portal` client (PKCE).
 
 ## Later
@@ -98,3 +95,5 @@ In order. Each item is one pull request unless noted.
 | Approved adjustments go to an outbox instead of being applied directly | Gold lives in the game server's state, which does not exist yet; the outbox keeps approvals safe until it does |
 | No users in the Keycloak realm; operators are added by script | No credentials in the repository |
 | The transport test project waits for the transport | The .NET 10 test runner counts a project with no tests as a failure |
+| Reading an account is audited, not only changes | An account holds a player's email; who looked at personal data matters as much as who changed it |
+| The database builds the hash chain; the admin server only checks it | The game server will write to the same trail; with the rules in the schema, neither service can get them wrong |
