@@ -1,0 +1,148 @@
+# Threat model
+
+What OpenTaan protects, from whom, and how. Each threat names the control that
+addresses it and where that control is tested, or says plainly that it is
+open. Last reviewed 2026-09-22. Review again when a new entry point is added
+(the game server transport, the control channel, the operator portal) or
+before any deployment beyond a local machine.
+
+## Scope
+
+The stack in `docker-compose.yml`: the admin server, Keycloak, PostgreSQL,
+Flyway and the game server, plus the CI that builds them. The game server
+accepts TCP connections and closes them; its transport is not built yet, so
+its threats are listed with the controls planned for it. A production
+deployment (TLS termination, networks, backups, monitoring) is not designed
+yet and is out of scope, except where the local setup would be unsafe to copy.
+
+## Assets
+
+| Asset | Where it lives | Why it matters |
+|---|---|---|
+| In-game currency | `economy_adjustments`, later the game server's state | Changing it creates value; the economy depends on it being scarce |
+| Players' personal data | `accounts.email`; `accounts.hashed_password` | Privacy obligations; password hashes enable offline cracking |
+| The audit trail | `audit_entries` | The evidence of who did what; worthless if it can be edited |
+| Operator identities | Keycloak realm `opentaan` | An operator's token can do whatever their roles allow |
+| Secrets | `secrets/` files, mounted as Docker secrets | Database and Keycloak admin passwords |
+| Approved adjustments in flight | `outbox_events` | Losing one loses a player's money; sending one twice creates it |
+
+## Actors
+
+| Actor | Trust |
+|---|---|
+| Operator | Authenticated; limited to the permissions of their roles; may make mistakes or act dishonestly alone |
+| Two operators together | Can pass dual control; the system cannot stop collusion, only record it |
+| Auditor | Authenticated; reads the audit trail and the ledger; changes nothing |
+| Player, through the game client | Untrusted; anything the client sends may be crafted |
+| Anyone on the network | Untrusted; can connect to every published port |
+| Whoever administers the database | Trusted with the data, but the audit trail must show what they changed |
+| Third-party code | Dependencies, base images and CI actions run with the privileges of what includes them |
+
+## Trust boundaries
+
+```mermaid
+flowchart LR
+    subgraph internet["Untrusted"]
+        client["Game client"]
+        operator["Operator<br/>browser or CLI"]
+    end
+    subgraph stack["Docker network"]
+        game["game-server<br/>:2180"]
+        admin["admin-server<br/>:8080"]
+        keycloak["Keycloak<br/>:8081"]
+        db[("PostgreSQL<br/>not published")]
+        flyway["Flyway"]
+    end
+    client -- "B1: binary protocol" --> game
+    operator -- "B2: sign-in" --> keycloak
+    operator -- "B3: REST + bearer token" --> admin
+    admin -- "signing keys" --> keycloak
+    admin -- "B4: SQL" --> db
+    game -. "B4 (planned)" .-> db
+    flyway -- "DDL" --> db
+    admin -. "B5: control channel (planned)" .-> game
+```
+
+- **B1:** the internet-facing game port. Everything the client sends is input
+  to validate.
+- **B2, B3:** operators sign in to Keycloak and present its tokens to the admin
+  server.
+- **B4:** the services' access to the database. Today both use the database
+  owner role (see T-D1).
+- **B5:** the admin server's future commands to the game server.
+
+## Threats and controls
+
+Status: **Mitigated** (control in place and tested), **Partly** (control in
+place with a known gap), **Open** (no control yet), **Planned** (the component
+does not exist yet; the control comes with it).
+
+### Admin API and operators
+
+| Id | Threat | Control | Status |
+|---|---|---|---|
+| T-A1 | A request without a valid token reaches an operation | Every `/api` route requires a bearer token signed by the realm's keys, from the expected issuer; tokens live five minutes | Mitigated: `AccountsControllerTest`, stack job (401) |
+| T-A2 | An operator calls an operation their job does not allow | Each operation requires exactly one permission; roles map to permissions in `application.yml`; unknown permissions stop startup; an architecture test fails the build if an endpoint has no check | Mitigated: `ArchitectureTest`, `OperatorRolesTest`, controller tests (403) |
+| T-A3 | A token issued to another client of the realm is accepted | Tokens are not checked for audience; the realm has only operator clients | Open, low: check `aud` once the portal client exists |
+| T-A4 | Operator passwords are guessed | Keycloak brute-force protection (5 failures), no self-registration, no password reset | Partly: no MFA yet |
+| T-A5 | The password-grant client is used outside development | `opentaan-cli` is labelled local-only; the browser client uses authorization code with PKCE | Open: disable the client in any shared realm |
+| T-A6 | One operator moves a large amount alone | Dual control above the threshold, in the entity and as the `decider_is_not_requester` constraint | Mitigated: `EconomyAdjustmentTest`, `EconomyAdjustmentServiceIT`, stack job |
+| T-A7 | Two operators collude | Out of the system's reach; both are recorded in the audit trail | Accepted: detect through audit review |
+| T-A8 | A retry or double-click credits twice | Idempotency key unique per operator, with a hash of the request; concurrent duplicates resolved by the unique constraint | Mitigated: race test in `EconomyAdjustmentServiceIT`, stack job |
+| T-A9 | Two operators decide the same adjustment at once | Optimistic locking; the second decision gets 409 | Mitigated |
+| T-A10 | A player's personal data is read without trace | `accounts:read` required; every read is written to the audit trail in the same transaction; the password hash column is not mapped at all | Mitigated: `AccountQueryServiceIT`, `AccountsControllerTest` |
+| T-A11 | Errors leak internals | Problem details with fixed titles; no stack traces in responses | Mitigated |
+| T-A12 | The operator API is flooded | Only authenticated callers reach it; no rate limiting | Open, low while operators are few and internal |
+
+### Audit trail and records
+
+| Id | Threat | Control | Status |
+|---|---|---|---|
+| T-R1 | An operator denies an action | Every change and every account read is recorded in the action's transaction, with the actor taken from the token | Mitigated: `EconomyAdjustmentServiceIT`, `AccountQueryServiceIT`, stack job |
+| T-R2 | A refused attempt, such as approving one's own adjustment, leaves no record | Refused actions roll back with their entry | Open: record refusals in a separate transaction |
+| T-R3 | An entry is changed or deleted through SQL | Trigger refuses `UPDATE`, `DELETE` and `TRUNCATE` for every role | Mitigated: `AuditTrailIT`, stack job |
+| T-R4 | The table owner switches the trigger off and edits an entry | Hash chain; `GET /api/audit/verification` finds the entry | Mitigated: `AuditTrailIT` |
+| T-R5 | The table owner edits an entry and rebuilds every later hash | The chain verifies again; only a copy of an earlier chain head kept elsewhere reveals it | Partly: auditors can record `lastHash` by hand; automatic anchoring is open |
+| T-R6 | The newest entries are deleted | The chain stays valid without them | Partly: same control as T-R5 |
+
+### Database and secrets
+
+| Id | Threat | Control | Status |
+|---|---|---|---|
+| T-D1 | A flaw in a service is used to change the schema, switch triggers off or read everything | The services connect as the database owner, which can do all three | **Open, highest priority:** a login role per service with only the table privileges it needs |
+| T-D2 | The database is reached from outside | Its port is not published; only containers on the compose network reach it | Mitigated locally |
+| T-D3 | Passwords leak through the repository, an image or `docker inspect` | Secrets are files, git-ignored, mounted as Docker secrets and read inside each container; CI generates its own | Mitigated: see [ADR 0009](../adr/0009-secrets-are-files.md) |
+| T-D4 | A leaked password stays valid | Rotation is a manual procedure in `secrets/README.md` | Partly |
+| T-D5 | A schema change bypasses review | Only Flyway runs DDL, from reviewed migration files; the admin server refuses to start on a mismatch | Mitigated |
+
+### Game server (planned)
+
+| Id | Threat | Control | Status |
+|---|---|---|---|
+| T-G1 | Oversized or malformed frames exhaust memory or crash the server | Hard size limits before allocating; parsers that reject input instead of trusting lengths; transport tests with hostile input | Planned with the transport |
+| T-G2 | Connection floods | Limits per address and overall, idle and handshake timeouts | Planned |
+| T-G3 | A crafted client gives itself items or currency | The server owns all game state; client input states intent and is checked against it; currency changes only through the server's own rules and approved adjustments | Planned with game logic |
+| T-G4 | Traffic between client and server is read | The client fixes the protocol, including its encryption, and the server cannot change it; nothing is sent to the client that it may not see | Accepted: a property of the client |
+| T-G5 | Game account passwords are cracked from a database copy | Hashing is done by the game server; the admin server never reads the column | Planned with persistence |
+
+### Supply chain and CI
+
+| Id | Threat | Control | Status |
+|---|---|---|---|
+| T-S1 | A vulnerable dependency or base image ships | Versions are pinned in `pom.xml`, `Directory.Packages.props` and Dockerfiles | Partly: scanning (Dependabot, CodeQL, Trivy, SBOM) is the next CI item on the roadmap |
+| T-S2 | A compromised CI action reads the repository or its secrets | Workflows grant `contents: read` only | Partly: actions are pinned to major versions, not commit hashes |
+| T-S3 | Containers run with more privilege than they need | Both server images run as non-root users | Mitigated |
+| T-S4 | The local Keycloak setup is copied to a shared environment | It runs `start-dev`: HTTP, an embedded database, a bootstrap admin | Open: production configuration not written |
+
+## Open risks, in order
+
+1. **T-D1:** the services run as the database owner. This makes T-R4 and
+   T-R5 reachable through a single service flaw.
+2. **T-R5 and T-R6:** no automatic copy of the chain head outside the
+   database.
+3. **T-S1 and T-S2:** no dependency or image scanning, and actions not pinned
+   by hash.
+4. **T-A4:** no MFA for operators.
+5. **T-R2:** refused attempts are not recorded.
+6. **T-A3, T-A5 and T-S4:** local-only settings that need changing before any
+   shared deployment.

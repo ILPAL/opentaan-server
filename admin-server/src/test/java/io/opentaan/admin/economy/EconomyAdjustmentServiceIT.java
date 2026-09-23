@@ -3,11 +3,13 @@ package io.opentaan.admin.economy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
@@ -24,6 +26,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
@@ -42,6 +45,7 @@ class EconomyAdjustmentServiceIT {
 
     private static final Operator RIN = new Operator("sub-rin", "rin");
     private static final Operator AN = new Operator("sub-an", "an");
+    private static final Operator CHI = new Operator("sub-chi", "chi");
     private static final long CHARACTER = 2001L;
 
     @Autowired
@@ -193,6 +197,41 @@ class EconomyAdjustmentServiceIT {
             assertThat(auditOf(first.adjustment().adjustmentId())).hasSize(1);
         }
         assertThat(rows()).isEqualTo(1);
+    }
+
+    @Test
+    void of_two_operators_deciding_at_the_same_moment_exactly_one_wins() throws Exception {
+        var id = economy.request(RIN, command(50_000), "key-decide-001").adjustment().adjustmentId();
+        var start = new CountDownLatch(1);
+        Callable<AdjustmentView> approve = () -> {
+            start.await();
+            return economy.approve(AN, id, "matches ticket 123");
+        };
+        Callable<AdjustmentView> reject = () -> {
+            start.await();
+            return economy.reject(CHI, id, "no ticket for this");
+        };
+
+        var outcomes = new ArrayList<Object>();
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var results = List.of(pool.submit(approve), pool.submit(reject));
+            start.countDown();
+            for (var result : results) {
+                try {
+                    outcomes.add(result.get());
+                } catch (ExecutionException refused) {
+                    outcomes.add(refused.getCause());
+                }
+            }
+        }
+
+        // Whichever decided second either lost the version check or saw the first
+        // decision already committed; both answer 409.
+        assertThat(outcomes).filteredOn(AdjustmentView.class::isInstance).hasSize(1);
+        assertThat(outcomes).filteredOn(Throwable.class::isInstance).singleElement()
+                .isInstanceOfAny(ObjectOptimisticLockingFailureException.class,
+                        AdjustmentAlreadyDecidedException.class);
+        assertThat(auditOf(id)).hasSize(2);
     }
 
     @Test

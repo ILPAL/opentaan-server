@@ -100,6 +100,12 @@ Each service has its own README with the details.
 
 ## Key decisions
 
+Each is written up with its alternatives and consequences in
+[`docs/adr`](docs/adr). What the system protects, and what is still open, is in
+the [threat model](docs/security/threat-model.md); how each property is
+checked, with what those checks caught, is in
+[How correctness is checked](docs/correctness.md).
+
 - **Two runtimes on purpose.** The game server needs low-level control over bytes
   and threads, so it is .NET. The back office is where enterprise conventions
   matter most, so it is Spring Boot. They share contracts, not code.
