@@ -12,7 +12,7 @@ namespace OpenTaan.Architecture.Tests;
 public sealed class LayeringTests
 {
     [Fact]
-    public void Transport_depends_on_no_game_database_or_hosting_code()
+    public void TransportDependsOnNoGameDatabaseOrHostingCode()
     {
         var result = Types.InAssembly(typeof(TransportAssemblyMarker).Assembly)
             .ShouldNot()

@@ -15,13 +15,13 @@ public sealed class OpenTaanCipherTests
     [InlineData(0, 0xA628DE78u)]
     [InlineData(3, 0xD9FEF4FDu)]
     [InlineData(5, 0x6FB8BD5Bu)]
-    public void Derives_the_seed_the_handshake_implies(byte shift, uint expected)
+    public void DerivesTheSeedTheHandshakeImplies(byte shift, uint expected)
     {
         Assert.Equal(expected, OpenTaanCipher.DeriveSeed(Seed1, Seed2, shift));
     }
 
     [Fact]
-    public void Shift_uses_only_its_low_six_bits()
+    public void ShiftUsesOnlyItsLowSixBits()
     {
         // The client shifts 64-bit registers, so the count is masked rather than
         // shifting the value away entirely. 69 is 5 once masked.
@@ -35,13 +35,13 @@ public sealed class OpenTaanCipherTests
     }
 
     [Fact]
-    public void Advancing_steps_by_the_increment()
+    public void AdvancingStepsByTheIncrement()
     {
         Assert.Equal(0x11223344u + OpenTaanCipher.SeedIncrement, OpenTaanCipher.AdvanceSeed(0x11223344u));
     }
 
     [Fact]
-    public void Advancing_never_lands_on_the_seed_reserved_for_plaintext()
+    public void AdvancingNeverLandsOnTheSeedReservedForPlaintext()
     {
         // This base is one increment short of wrapping onto zero.
         const uint LandsOnZero = 0xFEB8C0E7;
@@ -51,7 +51,7 @@ public sealed class OpenTaanCipherTests
     }
 
     [Fact]
-    public void Derives_the_key_words_from_the_seed()
+    public void DerivesTheKeyWordsFromTheSeed()
     {
         Span<byte> key = stackalloc byte[OpenTaanCipher.KeyLength];
         OpenTaanCipher.DeriveKey(0x11223344, key);
@@ -76,7 +76,7 @@ public sealed class OpenTaanCipherTests
     [InlineData(32)]
     [InlineData(33)]
     [InlineData(64)]
-    public void Round_trips_a_body_of_any_length(int length)
+    public void RoundTripsABodyOfAnyLength(int length)
     {
         var plaintext = Body(length);
         var ciphertext = new byte[length];
@@ -95,7 +95,7 @@ public sealed class OpenTaanCipherTests
     [InlineData(17)]
     [InlineData(33)]
     [InlineData(48)]
-    public void Both_directions_checksum_the_same_bytes(int length)
+    public void BothDirectionsChecksumTheSameBytes(int length)
     {
         // The transformation is its own inverse, so checksumming whatever was fed in
         // would make encryption checksum plaintext and decryption checksum ciphertext.
@@ -112,7 +112,7 @@ public sealed class OpenTaanCipherTests
     }
 
     [Fact]
-    public void Encrypting_actually_changes_the_bytes()
+    public void EncryptingActuallyChangesTheBytes()
     {
         var plaintext = Body(32);
         var ciphertext = new byte[plaintext.Length];

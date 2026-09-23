@@ -8,7 +8,7 @@ public sealed class FrameReaderTests
     private const uint Seed = 0x3092A13F;
 
     [Fact]
-    public void Reads_a_frame_the_writer_produced()
+    public void ReadsAFrameTheWriterProduced()
     {
         var body = Body(40);
         var frame = Frame(body, Seed);
@@ -26,7 +26,7 @@ public sealed class FrameReaderTests
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(3)]
-    public void Waits_for_a_header_that_has_not_all_arrived(int available)
+    public void WaitsForAHeaderThatHasNotAllArrived(int available)
     {
         var frame = Frame(Body(8), Seed);
 
@@ -37,7 +37,7 @@ public sealed class FrameReaderTests
     }
 
     [Fact]
-    public void Waits_for_a_body_that_has_not_all_arrived()
+    public void WaitsForABodyThatHasNotAllArrived()
     {
         var frame = Frame(Body(40), Seed);
 
@@ -48,7 +48,7 @@ public sealed class FrameReaderTests
     }
 
     [Fact]
-    public void Reads_the_first_of_two_frames_and_leaves_the_second()
+    public void ReadsTheFirstOfTwoFramesAndLeavesTheSecond()
     {
         var first = Body(8);
         var second = Body(24);
@@ -71,7 +71,7 @@ public sealed class FrameReaderTests
     }
 
     [Fact]
-    public void Refuses_an_impossible_length_instead_of_waiting_for_bytes_that_will_never_come()
+    public void RefusesAnImpossibleLengthInsteadOfWaitingForBytesThatWillNeverCome()
     {
         // The declared length is chosen by the sender. Answering Incomplete to a
         // four-gigabyte length would leave the connection buffering until something
@@ -87,7 +87,7 @@ public sealed class FrameReaderTests
     }
 
     [Fact]
-    public void Refuses_a_body_one_byte_past_the_receive_window()
+    public void RefusesABodyOneBytePastTheReceiveWindow()
     {
         var header = new byte[TransportLimits.HeaderSize];
         var justTooBig = (uint)TransportLimits.MaxEncryptedBody + TransportLimits.ChecksumSize + 1;
@@ -100,7 +100,7 @@ public sealed class FrameReaderTests
     }
 
     [Fact]
-    public void Refuses_a_length_too_small_to_cover_its_own_checksum()
+    public void RefusesALengthTooSmallToCoverItsOwnChecksum()
     {
         var header = new byte[TransportLimits.HeaderSize];
         BinaryPrimitives.WriteUInt32LittleEndian(header, HeaderDeclaring(Seed, 3));
@@ -112,7 +112,7 @@ public sealed class FrameReaderTests
     }
 
     [Fact]
-    public void Accepts_an_empty_body()
+    public void AcceptsAnEmptyBody()
     {
         var frame = Frame([], Seed);
 
@@ -124,7 +124,7 @@ public sealed class FrameReaderTests
     }
 
     [Fact]
-    public void Refuses_a_body_whose_checksum_does_not_cover_it()
+    public void RefusesABodyWhoseChecksumDoesNotCoverIt()
     {
         var frame = Frame(Body(24), Seed);
         frame[TransportLimits.HeaderSize] ^= 0xFF;
@@ -136,7 +136,7 @@ public sealed class FrameReaderTests
     }
 
     [Fact]
-    public void Reads_a_damaged_body_when_the_checksum_is_not_checked()
+    public void ReadsADamagedBodyWhenTheChecksumIsNotChecked()
     {
         var frame = Frame(Body(24), Seed);
         frame[TransportLimits.HeaderSize] ^= 0xFF;
@@ -147,7 +147,7 @@ public sealed class FrameReaderTests
     }
 
     [Fact]
-    public void Reads_a_plaintext_frame_whose_header_is_its_length()
+    public void ReadsAPlaintextFrameWhoseHeaderIsItsLength()
     {
         var body = Body(12);
         var frame = Frame(body, OpenTaanCipher.PlaintextSeed);
@@ -162,7 +162,7 @@ public sealed class FrameReaderTests
     }
 
     [Fact]
-    public void Refuses_a_plaintext_length_past_the_receive_window()
+    public void RefusesAPlaintextLengthPastTheReceiveWindow()
     {
         var header = new byte[TransportLimits.HeaderSize];
         BinaryPrimitives.WriteUInt32LittleEndian(header, (uint)TransportLimits.MaxPlaintextBody + 1);
@@ -174,7 +174,7 @@ public sealed class FrameReaderTests
     }
 
     [Fact]
-    public void Insists_on_somewhere_to_put_the_largest_legal_body()
+    public void InsistsOnSomewhereToPutTheLargestLegalBody()
     {
         var tooSmall = new byte[TransportLimits.MaxEncryptedBody - 1];
 

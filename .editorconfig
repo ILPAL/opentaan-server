@@ -38,10 +38,6 @@ dotnet_naming_symbols.private_fields.applicable_accessibilities = private
 dotnet_naming_style.underscore_camel_case.required_prefix = _
 dotnet_naming_style.underscore_camel_case.capitalization = camel_case
 
-# Test names read as sentences: Every_registry_id_is_adler32_of_the_name
-[**/tests/**.cs]
-dotnet_diagnostic.CA1707.severity = none
-
 # ---------- Java ----------
 [*.java]
 indent_size = 4

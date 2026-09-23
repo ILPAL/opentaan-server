@@ -18,7 +18,7 @@ namespace OpenTaan.Tests.Conformance;
 public sealed class TransportReplayTests
 {
     [Fact]
-    public void Every_recorded_frame_survives_the_transport_unchanged()
+    public void EveryRecordedFrameSurvivesTheTransportUnchanged()
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 
@@ -59,7 +59,7 @@ public sealed class TransportReplayTests
     }
 
     [Fact]
-    public void No_recorded_frame_is_too_large_for_the_client_to_receive()
+    public void NoRecordedFrameIsTooLargeForTheClientToReceive()
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 
@@ -75,7 +75,7 @@ public sealed class TransportReplayTests
     }
 
     [Fact]
-    public void A_sessions_seed_schedule_never_reaches_the_value_reserved_for_plaintext()
+    public void ASessionsSeedScheduleNeverReachesTheValueReservedForPlaintext()
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 

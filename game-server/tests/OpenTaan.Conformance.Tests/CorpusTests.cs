@@ -10,7 +10,7 @@ namespace OpenTaan.Tests.Conformance;
 public sealed class CorpusTests
 {
     [Fact]
-    public void There_is_something_to_check()
+    public void ThereIsSomethingToCheck()
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 
@@ -19,7 +19,7 @@ public sealed class CorpusTests
     }
 
     [Fact]
-    public void Every_session_names_what_it_records()
+    public void EverySessionNamesWhatItRecords()
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 
@@ -31,7 +31,7 @@ public sealed class CorpusTests
     }
 
     [Fact]
-    public void No_two_sessions_record_the_same_lifecycle()
+    public void NoTwoSessionsRecordTheSameLifecycle()
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 
@@ -45,7 +45,7 @@ public sealed class CorpusTests
     }
 
     [Fact]
-    public void Every_recorded_frame_leads_with_a_known_packet()
+    public void EveryRecordedFrameLeadsWithAKnownPacket()
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 
@@ -60,7 +60,7 @@ public sealed class CorpusTests
     }
 
     [Fact]
-    public void A_frame_is_never_shorter_than_the_id_that_names_it()
+    public void AFrameIsNeverShorterThanTheIdThatNamesIt()
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 
@@ -73,7 +73,7 @@ public sealed class CorpusTests
     }
 
     [Fact]
-    public void A_frame_of_a_fixed_size_packet_is_exactly_that_size()
+    public void AFrameOfAFixedSizePacketIsExactlyThatSize()
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 
@@ -92,7 +92,7 @@ public sealed class CorpusTests
     }
 
     [Fact]
-    public void A_packet_the_layouts_describe_is_never_left_empty()
+    public void APacketTheLayoutsDescribeIsNeverLeftEmpty()
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 
@@ -107,7 +107,7 @@ public sealed class CorpusTests
     }
 
     [Fact]
-    public void Every_session_hands_over_workable_handshake_values()
+    public void EverySessionHandsOverWorkableHandshakeValues()
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 

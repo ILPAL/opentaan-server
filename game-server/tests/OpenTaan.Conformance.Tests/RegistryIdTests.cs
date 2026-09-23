@@ -8,7 +8,7 @@ namespace OpenTaan.Tests.Conformance;
 public sealed class RegistryIdTests
 {
     [Fact]
-    public void Every_registry_id_is_the_checksum_of_its_name()
+    public void EveryRegistryIdIsTheChecksumOfItsName()
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 
@@ -21,7 +21,7 @@ public sealed class RegistryIdTests
     }
 
     [Fact]
-    public void The_id_table_and_the_layouts_agree()
+    public void TheIdTableAndTheLayoutsAgree()
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 
@@ -37,7 +37,7 @@ public sealed class RegistryIdTests
     }
 
     [Fact]
-    public void The_only_class_without_an_id_is_the_root_one()
+    public void TheOnlyClassWithoutAnIdIsTheRootOne()
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 
@@ -52,7 +52,7 @@ public sealed class RegistryIdTests
     }
 
     [Fact]
-    public void The_table_counts_itself_correctly()
+    public void TheTableCountsItselfCorrectly()
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 

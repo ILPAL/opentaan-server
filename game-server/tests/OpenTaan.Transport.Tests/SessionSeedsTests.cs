@@ -8,7 +8,7 @@ public sealed class SessionSeedsTests
     private const uint LandsOnZero = 0xFEB8C0E7;
 
     [Fact]
-    public void Both_directions_start_at_the_base_seed()
+    public void BothDirectionsStartAtTheBaseSeed()
     {
         var seeds = new SessionSeeds(0x3092A13F);
 
@@ -17,7 +17,7 @@ public sealed class SessionSeedsTests
     }
 
     [Fact]
-    public void Each_direction_advances_on_its_own()
+    public void EachDirectionAdvancesOnItsOwn()
     {
         var seeds = new SessionSeeds(0x3092A13F);
 
@@ -32,7 +32,7 @@ public sealed class SessionSeedsTests
     }
 
     [Fact]
-    public void Reset_returns_both_directions_to_the_base_seed()
+    public void ResetReturnsBothDirectionsToTheBaseSeed()
     {
         var seeds = new SessionSeeds(0x3092A13F);
         seeds.AdvanceReceive();
@@ -47,7 +47,7 @@ public sealed class SessionSeedsTests
     }
 
     [Fact]
-    public void A_carried_seed_parts_company_with_a_recomputed_one_at_the_first_wrap()
+    public void ACarriedSeedPartsCompanyWithARecomputedOneAtTheFirstWrap()
     {
         // The reason the seed is carried rather than recomputed from a frame count.
         // Both agree until an advance lands on the reserved zero; the correction
@@ -67,7 +67,7 @@ public sealed class SessionSeedsTests
     }
 
     [Fact]
-    public void A_wrapped_seed_is_never_the_plaintext_seed()
+    public void AWrappedSeedIsNeverThePlaintextSeed()
     {
         var seeds = new SessionSeeds(LandsOnZero);
 

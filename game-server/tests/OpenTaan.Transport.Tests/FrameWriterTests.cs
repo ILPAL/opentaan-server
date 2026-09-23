@@ -7,19 +7,19 @@ public sealed class FrameWriterTests
     private const uint Seed = 0x3092A13F;
 
     [Fact]
-    public void An_encrypted_frame_costs_its_body_plus_a_header_and_a_trailer()
+    public void AnEncryptedFrameCostsItsBodyPlusAHeaderAndATrailer()
     {
         Assert.Equal(40 + TransportLimits.EncryptedOverhead, FrameWriter.FrameLength(40, Seed));
     }
 
     [Fact]
-    public void A_plaintext_frame_costs_its_body_plus_a_header()
+    public void APlaintextFrameCostsItsBodyPlusAHeader()
     {
         Assert.Equal(40 + TransportLimits.PlaintextOverhead, FrameWriter.FrameLength(40, OpenTaanCipher.PlaintextSeed));
     }
 
     [Fact]
-    public void Frames_the_largest_body_the_receive_window_allows()
+    public void FramesTheLargestBodyTheReceiveWindowAllows()
     {
         var body = new byte[TransportLimits.MaxEncryptedBody];
         var frame = new byte[FrameWriter.FrameLength(body.Length, Seed)];
@@ -30,7 +30,7 @@ public sealed class FrameWriterTests
     }
 
     [Fact]
-    public void Refuses_a_body_one_byte_past_what_the_client_could_receive()
+    public void RefusesABodyOneBytePastWhatTheClientCouldReceive()
     {
         // The client would not report this frame. It would wait for one that cannot
         // fit its window, in silence, so the refusal has to happen on this side.
@@ -41,7 +41,7 @@ public sealed class FrameWriterTests
     }
 
     [Fact]
-    public void Refuses_an_oversized_plaintext_body()
+    public void RefusesAnOversizedPlaintextBody()
     {
         var body = new byte[TransportLimits.MaxPlaintextBody + 1];
         var frame = new byte[TransportLimits.ReceiveWindow + TransportLimits.EncryptedOverhead];
@@ -51,7 +51,7 @@ public sealed class FrameWriterTests
     }
 
     [Fact]
-    public void Refuses_a_destination_that_cannot_hold_the_frame()
+    public void RefusesADestinationThatCannotHoldTheFrame()
     {
         var body = new byte[16];
         var tooSmall = new byte[FrameWriter.FrameLength(body.Length, Seed) - 1];
@@ -60,7 +60,7 @@ public sealed class FrameWriterTests
     }
 
     [Fact]
-    public void Leaves_the_body_unreadable_on_the_wire()
+    public void LeavesTheBodyUnreadableOnTheWire()
     {
         var body = new byte[32];
         Array.Fill(body, (byte)0xAB);
