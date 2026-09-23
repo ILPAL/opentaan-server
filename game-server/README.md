@@ -6,15 +6,32 @@
 
 | Project | What it holds |
 |---|---|
-| `src/OpenTaan.Transport` | Framing and encryption. No game logic, no database, no hosting. |
+| `src/OpenTaan.Transport` | Framing, encryption and handshake keys. No game logic, no database, no hosting. |
+| `src/OpenTaan.Protocol` | Packet codecs: the bytes inside a frame, read and written by hand. No framing, no game logic, no database. |
 | `src/OpenTaan.GameServer` | The executable: configuration, the TCP listener, logging. |
-| `tests/OpenTaan.Transport.Tests` | Framing, the packet cipher and the seed schedule, including hostile input. |
+| `tests/OpenTaan.Transport.Tests` | Framing, the packet cipher, the seed schedule and handshake keys, including hostile input. |
+| `tests/OpenTaan.Protocol.Tests` | Each codec's bytes, built from invented values, and hostile bodies: forged counts, broken text, leftover bytes. |
 | `tests/OpenTaan.Conformance.Tests` | The reference sessions and the declared layouts. Skips when the contract is absent. |
 | `tests/OpenTaan.Architecture.Tests` | Dependency rules between projects, enforced as tests. |
 
-More projects are added as the port reaches them: `OpenTaan.Protocol` (packet
-codecs), `OpenTaan.Persistence` (PostgreSQL) and `OpenTaan.Game` (handlers and
-game state).
+More projects are added as the port reaches them: `OpenTaan.Persistence`
+(PostgreSQL) and `OpenTaan.Game` (handlers and game state).
+
+## Packet codecs
+
+Each packet is a record with a `TryRead` for bodies and a `Write`. Reading never
+throws on bad input and never trusts a length: a body that is short, carries the
+wrong packet, declares more than it holds, or has bytes left over is refused with
+a `PacketError`. Credentials are held in `Secret`, which prints as `***`, so a
+logged packet does not carry its password with it.
+
+Each packet names itself once, as the client does, in `[WireClass("…")]`; the
+name may contain underscores that its C# name drops. The registry id that leads
+its bytes is computed from that name by `RegistryIds.Of`, never written down.
+
+Codecs are added one stage of the protocol at a time and written by hand, not
+generated from the reference data, so only the layouts this server implements
+appear here. So far: the handshake, and the account and login packets.
 
 ## Protocol reference data
 

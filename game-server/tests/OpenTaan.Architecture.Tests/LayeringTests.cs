@@ -1,4 +1,5 @@
 using NetArchTest.Rules;
+using OpenTaan.Protocol;
 using OpenTaan.Transport;
 using TestResult = NetArchTest.Rules.TestResult;
 
@@ -18,6 +19,24 @@ public sealed class LayeringTests
             .ShouldNot()
             .HaveDependencyOnAny(
                 "OpenTaan.Protocol",
+                "OpenTaan.Persistence",
+                "OpenTaan.Game",
+                "Npgsql",
+                "Microsoft.Extensions.Hosting")
+            .GetResult();
+
+        Assert.True(result.IsSuccessful, Describe(result));
+    }
+
+    [Fact]
+    public void ProtocolDependsOnNoTransportGameDatabaseOrHostingCode()
+    {
+        // Codecs turn bodies into packets and back. Framing and encryption happen
+        // on the other side of the body, so neither layer needs the other.
+        var result = Types.InAssembly(typeof(ProtocolAssemblyMarker).Assembly)
+            .ShouldNot()
+            .HaveDependencyOnAny(
+                "OpenTaan.Transport",
                 "OpenTaan.Persistence",
                 "OpenTaan.Game",
                 "Npgsql",

@@ -31,7 +31,7 @@ public static class WireContract
     public static CodecSpec Spec => Present().Spec;
 
     /// <summary>The registry id of every packet class.</summary>
-    public static RegistryIds Registry => Present().Registry;
+    public static RegistryTable Registry => Present().Registry;
 
     /// <summary>Every recorded session.</summary>
     public static IReadOnlyList<Session> Sessions => Present().Sessions;
@@ -65,7 +65,7 @@ public static class WireContract
             .Select(path => Read<Session>(path) with { Origin = Path.GetFileName(path) })
             .ToArray();
 
-        return new Contents(Read<CodecSpec>(spec), Read<RegistryIds>(registry), sessions);
+        return new Contents(Read<CodecSpec>(spec), Read<RegistryTable>(registry), sessions);
     }
 
     private static T Read<T>(string path) =>
@@ -74,7 +74,7 @@ public static class WireContract
 
     private sealed record Contents
     {
-        public Contents(CodecSpec spec, RegistryIds registry, IReadOnlyList<Session> sessions) =>
+        public Contents(CodecSpec spec, RegistryTable registry, IReadOnlyList<Session> sessions) =>
             (Spec, Registry, Sessions) = (spec, registry, sessions);
 
         public Contents(string failure) =>
@@ -84,7 +84,7 @@ public static class WireContract
 
         public CodecSpec Spec { get; }
 
-        public RegistryIds Registry { get; }
+        public RegistryTable Registry { get; }
 
         public IReadOnlyList<Session> Sessions { get; }
     }

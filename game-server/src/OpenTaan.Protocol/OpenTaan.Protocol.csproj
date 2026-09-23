@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Packet codecs: the bytes inside a frame. No framing, no encryption, no game
+    logic, no database: the architecture tests fail the build if any of those creep in.
+  -->
+
+</Project>

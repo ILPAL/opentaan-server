@@ -1,11 +1,13 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/OpenTaan.GameServer/OpenTaan.GameServer.csproj" />
+    <Project Path="src/OpenTaan.Protocol/OpenTaan.Protocol.csproj" />
     <Project Path="src/OpenTaan.Transport/OpenTaan.Transport.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OpenTaan.Architecture.Tests/OpenTaan.Architecture.Tests.csproj" />
     <Project Path="tests/OpenTaan.Conformance.Tests/OpenTaan.Conformance.Tests.csproj" />
+    <Project Path="tests/OpenTaan.Protocol.Tests/OpenTaan.Protocol.Tests.csproj" />
     <Project Path="tests/OpenTaan.Transport.Tests/OpenTaan.Transport.Tests.csproj" />
   </Folder>
 </Solution>
