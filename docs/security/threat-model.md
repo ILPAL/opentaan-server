@@ -119,11 +119,13 @@ does not exist yet; the control comes with it).
 
 | Id | Threat | Control | Status |
 |---|---|---|---|
-| T-G1 | Oversized or malformed frames exhaust memory or crash the server | Hard size limits before allocating; parsers that reject input instead of trusting lengths; transport tests with hostile input | Planned with the transport |
+| T-G1 | Oversized or malformed frames exhaust memory or crash the server | Hard size limits before allocating; parsers that reject input instead of trusting lengths; transport tests with hostile input | Partly: the transport and the login-stage codecs refuse impossible lengths and counts before allocating (`FrameReaderTests`, `PacketReaderTests`); no socket is read yet |
 | T-G2 | Connection floods | Limits per address and overall, idle and handshake timeouts | Planned |
 | T-G3 | A crafted client gives itself items or currency | The server owns all game state; client input states intent and is checked against it; currency changes only through the server's own rules and approved adjustments | Planned with game logic |
 | T-G4 | Traffic between client and server is read | The client fixes the protocol, including its encryption, and the server cannot change it; nothing is sent to the client that it may not see | Accepted: a property of the client |
 | T-G5 | Game account passwords are cracked from a database copy | Hashing is done by the game server; the admin server never reads the column | Planned with persistence |
+| T-G6 | A handshake switches encryption off, or one client predicts another's seeds | Handshake values that derive the plaintext seed cannot be constructed; generation re-draws them and fails loudly rather than fall back; values come from a cryptographic generator | Mitigated: `HandshakeKeysTests` |
+| T-G7 | Credentials from login packets reach logs | Password hashes are held in a type that prints as `***`; the handshake prints its shift, never its seeds | Mitigated: `SecretTests`, `HandshakeCodecTests` |
 
 ### Supply chain and CI
 

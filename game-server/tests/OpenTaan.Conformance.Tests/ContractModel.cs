@@ -21,7 +21,7 @@ public sealed record ClassSpec(
 public sealed record FieldSpec(string Type, int? Bytes, string? Name, string Source);
 
 /// <summary>The registry id of every packet class.</summary>
-public sealed record RegistryIds(int Count, IReadOnlyDictionary<string, uint> Ids);
+public sealed record RegistryTable(int Count, IReadOnlyDictionary<string, uint> Ids);
 
 /// <summary>One recorded session.</summary>
 public sealed record Session(

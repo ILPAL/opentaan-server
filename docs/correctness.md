@@ -148,6 +148,29 @@ with real tokens:
   switched it off, so it never ran and the disagreement stayed hidden. Both
   directions now checksum the plaintext, and the tests use the body lengths that
   tell the two apart.
+- **A handshake that could switch encryption off.** The server's first frame
+  carries the values both ends derive the session seed from, and a seed of zero
+  tells the client the connection is unencrypted. The obvious guard is to re-roll
+  values that derive zero a few times. But a retry loop that keeps its last roll
+  when it runs out turns a broken random source into a session with no
+  encryption, and nothing reports it. `HandshakeKeys` cannot be constructed from
+  values that derive zero, and generation that keeps failing throws instead of
+  settling for the last roll. A scripted random source that only produces such
+  values proves it.
+- **Seeds one client could predict for another.** The handshake values travel
+  in the clear, so a better generator does not hide any single connection's
+  traffic; the client's cipher cannot do that (threat model T-G4). A general
+  purpose generator is a different problem: its internal state can be rebuilt
+  from a few hundred of its outputs, and every connection shows its handshake
+  to its own client. The values come from the operating system's cryptographic
+  generator, and the shift is drawn without the modulo bias that would favour
+  small values.
+- **A unit test that could not fail.** The layout test for the check-account
+  answer used status 1 and slot 1. Both are single bytes, so writing them the
+  wrong way round produced the same body and the test stayed green. Planting
+  exactly that bug found it; the test now uses two different values. The same
+  planted bug also failed the conformance check that reads recorded bodies from
+  the declared layout, which is why that check exists.
 
 ## The game server: bytes, not types
 
@@ -166,8 +189,24 @@ The reference sessions are derived from the game client's own files, so they
 are not committed ([ADR 10](adr/0010-no-game-client-files.md)); they are
 supplied locally. The conformance tests read them from there, and skip when they
 are absent rather than passing quietly: CI reports them as skipped, with the
-reason, so an empty run cannot be mistaken for a clean one. The transport is
-checked against them today; each codec will be as it is built.
+reason, so an empty run cannot be mistaken for a clean one.
+
+Each codec is checked against them three ways, and only one of the three goes
+through the codec in both directions:
+
+- **Replay.** Every recorded body of an implemented packet, from either side, is
+  read and written back, and must come out byte for byte the same.
+- **The declared layout.** Where the reference data declares a packet's fields,
+  the recorded bytes are read from that declaration alone and compared, field by
+  field, with what the codec read. A codec that reads and writes the same field
+  in the same wrong place passes the replay and fails here.
+- **The registry.** Each packet names itself once, in a `[WireClass]` attribute,
+  and its id is computed from that name the way the client computes it. The
+  computation is checked against every id in the reference table, not only the
+  implemented ones, so a mistake in it cannot hide behind a round trip.
+
+Codecs are written by hand and published one stage of the protocol at a time,
+so the repository shows the layouts this server implements and nothing more.
 
 ## What is not checked yet
 
