@@ -1,0 +1,59 @@
+name: game-server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "game-server/**"
+      - ".github/workflows/game-server.yml"
+  pull_request:
+    paths:
+      - "game-server/**"
+      - ".github/workflows/game-server.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: game-server
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: game-server/global.json
+
+      - name: Restore
+        run: dotnet restore OpenTaan.GameServer.slnx
+
+      - name: Build
+        run: dotnet build OpenTaan.GameServer.slnx -c Release --no-restore
+
+      - name: Test
+        run: >
+          dotnet test --solution OpenTaan.GameServer.slnx -c Release --no-build
+          --results-directory "$GITHUB_WORKSPACE/game-server/TestResults" --report-xunit-trx
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-server-test-results
+          path: game-server/TestResults
+
+  image:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build image
+        run: docker build --tag opentaan/game-server:${{ github.sha }} game-server
