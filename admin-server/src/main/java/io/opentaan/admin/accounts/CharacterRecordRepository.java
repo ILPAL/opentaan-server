@@ -8,4 +8,6 @@ import org.springframework.data.repository.Repository;
 interface CharacterRecordRepository extends Repository<CharacterRecord, Long> {
 
     List<CharacterRecord> findByAccountIdOrderBySlotIndexAsc(Long accountId);
+
+    boolean existsById(Long characterId);
 }

@@ -47,6 +47,10 @@ management:
         enabled: true
 
 opentaan:
+  economy:
+    # Adjustments of at least this much gold, credit or debit, need a second operator.
+    approval-threshold-gold: 10000
+
   security:
     # Which permissions each operator role grants. Roles come from the identity
     # provider's token; permissions are checked by each operation.

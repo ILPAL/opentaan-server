@@ -30,4 +30,9 @@ public class AccountQueryService {
                 .toList();
         return new AccountDetails(account.getAccountId(), account.getEmail(), characterList);
     }
+
+    @Transactional(readOnly = true)
+    public boolean characterExists(long characterId) {
+        return characters.existsById(characterId);
+    }
 }

@@ -1,7 +1,7 @@
 # Admin server
 
-Spring Boot 4 back office for operators: account lookup today; economy
-adjustments with four-eyes approval, moderation and the audit trail next.
+Spring Boot 4 back office for operators: account lookup and gold adjustments
+under four-eyes approval today; the audit trail and moderation next.
 
 ## How it is put together
 
@@ -20,6 +20,25 @@ adjustments with four-eyes approval, moderation and the audit trail next.
 - **Read-only where it should be.** Account data is mapped with `@Immutable`
   entities behind repositories that have no save or delete methods, and the
   password hash column is not mapped at all.
+
+## Economy adjustments
+
+An operator with `economy:adjust` requests a change to a character's gold with
+an `Idempotency-Key` header.
+
+- **Below the approval threshold** (`opentaan.economy.approval-threshold-gold`,
+  10,000 by default) the adjustment is approved at once.
+- **At or above it,** a second operator with `economy:adjust` must approve or
+  reject it. The requester can never decide their own adjustment; the database
+  refuses it too (`decider_is_not_requester`).
+- **Retries are safe.** The same key with the same body returns the original
+  adjustment with `Idempotent-Replayed: true`; the same key with a different body
+  is refused with 409. Two identical requests arriving at once still create one
+  adjustment, because the key is unique per operator in the database.
+- **Approval queues delivery.** An approved adjustment is written to
+  `outbox_events` in the same transaction, for the game server to apply. Nothing
+  is sent for a rejection. Two operators deciding at once cannot both win:
+  optimistic locking answers the second with 409.
 
 ## Build and test
 

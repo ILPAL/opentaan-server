@@ -36,6 +36,8 @@ class AccountQueryServiceIT {
 
     @Test
     void reads_an_account_with_its_characters_in_slot_order() {
+        jdbc.update("DELETE FROM characters");
+        jdbc.update("DELETE FROM accounts");
         jdbc.update("INSERT INTO accounts (account_id, email, hashed_password) VALUES (?, ?, ?)",
                 1001L, "player@example.com", "v1$not-a-real-hash");
         insertCharacter(2002L, 1001L, 1, "Ember");
