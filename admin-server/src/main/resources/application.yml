@@ -5,8 +5,9 @@ spring:
   datasource:
     url: ${OPENTAAN_DB_URL:jdbc:postgresql://localhost:5432/opentaan}
     username: ${OPENTAAN_DB_USER:opentaan}
-    # Read from a file in containers (see docker-compose.yml), never baked into config.
-    password: ${OPENTAAN_DB_PASSWORD:}
+    # In containers the password is the db_password secret file, imported as a
+    # property by SPRING_CONFIG_IMPORT=configtree:/run/secrets/ (see docker-compose.yml).
+    password: ${OPENTAAN_DB_PASSWORD:${db_password:}}
 
   jpa:
     # The schema belongs to database/migrations. This service only checks that its
