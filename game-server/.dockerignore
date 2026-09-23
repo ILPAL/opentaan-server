@@ -1,0 +1,14 @@
+# Build output and IDE state
+**/bin/
+**/obj/
+**/.vs/
+**/.idea/
+**/*.user
+
+# Tests are run by CI, not shipped in the image
+tests/
+
+# Never in an image
+**/.env
+**/.env.*
+**/secrets/

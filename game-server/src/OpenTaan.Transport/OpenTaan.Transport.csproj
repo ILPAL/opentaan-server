@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Framing and encryption for the game's TCP protocol. No game logic, no database,
+    no hosting: the architecture tests fail the build if any of those creep in.
+  -->
+
+</Project>
