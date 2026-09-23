@@ -75,6 +75,54 @@ jobs:
           echo "unknown account:"
           test "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $token" http://localhost:8080/api/accounts/2)" = "404"
 
+      - name: A large adjustment needs a second operator
+        env:
+          OPERATOR_PASSWORD: ${{ github.run_id }}-smoke-test
+        run: |
+          deploy/keycloak/add-operator.sh smoke-requester economy
+          deploy/keycloak/add-operator.sh smoke-approver economy
+          docker compose exec -T postgres psql -U opentaan -d opentaan -c \
+            "INSERT INTO characters (character_id, account_id, slot_index, name, name_key, info_json)
+             VALUES (2001, 1, 0, 'Nova', 'nova', '{}')"
+
+          token() {
+            curl --silent --fail --data grant_type=password --data client_id=opentaan-cli \
+              --data username="$1" --data-urlencode "password=$OPERATOR_PASSWORD" \
+              http://localhost:8081/realms/opentaan/protocol/openid-connect/token | jq -r .access_token
+          }
+          requester=$(token smoke-requester)
+          approver=$(token smoke-approver)
+          adjustments=http://localhost:8080/api/economy/adjustments
+          body='{"characterId": 2001, "deltaGold": 50000, "reason": "smoke test refund"}'
+          request() {
+            curl --silent --dump-header headers.txt --output "$1" --write-out '%{http_code}' \
+              -H "Authorization: Bearer $requester" -H "Idempotency-Key: smoke-${{ github.run_id }}" \
+              -H "Content-Type: application/json" --data "$body" "$adjustments"
+          }
+
+          echo "request 50,000 gold:"
+          test "$(request first.json)" = "201"
+          jq . first.json
+          id=$(jq -r .adjustmentId first.json)
+          test "$(jq -r .status first.json)" = "PENDING_APPROVAL"
+
+          echo "the same request again is a replay, not a second adjustment:"
+          test "$(request retry.json)" = "201"
+          grep -qi '^idempotent-replayed: true' headers.txt
+          test "$(jq -r .adjustmentId retry.json)" = "$id"
+
+          echo "the requester cannot approve it:"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $requester" \
+            "$adjustments/$id/approve")" = "403"
+
+          echo "a second operator approves it:"
+          curl --silent --fail -X POST -H "Authorization: Bearer $approver" "$adjustments/$id/approve" \
+            | jq -e '.status == "APPROVED" and .decidedBy.name == "smoke-approver"'
+
+          echo "it is queued for the game server exactly once:"
+          test "$(docker compose exec -T postgres psql -U opentaan -d opentaan -Atc \
+            "SELECT count(*) FROM outbox_events WHERE aggregate_id = '$id'")" = "1"
+
       - name: Logs on failure
         if: failure()
         run: docker compose logs --no-color
