@@ -124,6 +124,8 @@ Each service has its own README with the details.
 | Delivering approved adjustments to the game server | Planned: needs game state in the game server |
 | Local stack with Keycloak, tested end to end in CI | Done |
 
+The full plan, what is done and what comes next: [docs/roadmap.md](docs/roadmap.md).
+
 ## Notice
 
 This repository contains no files from the game client: no executables, assets or

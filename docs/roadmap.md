@@ -1,0 +1,100 @@
+# Roadmap
+
+Where OpenTaan stands against its plan: what was decided at the start, what is
+built, and what comes next. Last updated 2026-09-23.
+
+## Goals
+
+1. **Bring the game back.** A server the TAAN game client can connect to and play on.
+2. **Build it to the standard of systems that move money.** Contracts written before
+   code, a permission check on every operation, dual control over value changes,
+   safe retries, an audit trail, and automated checks that enforce all of it.
+
+## The plan
+
+### Decisions taken at the start
+
+| Area | Decision | State |
+|---|---|---|
+| Repository | One repository: game server, admin server, contracts, database, deployment | Done |
+| Game server | .NET 10; projects added one per stage (transport first) | Done: transport project and host |
+| Admin server | Spring Boot 4 on Java 25, built with Maven | Done |
+| Shared contracts | `contracts/`: OpenAPI for the admin API, JSON Schemas for the control channel; the game protocol's reference data is supplied locally, not committed | Partly: OpenAPI done; control-channel schemas not started |
+| Database schema | Owned by `database/migrations`, applied by Flyway; services only validate it | Done |
+| Operator login | Keycloak (OpenID Connect); roles in Keycloak, permissions in code | Done |
+| Admin UI | Operator portal served by the admin server | Not started; Swagger UI shows the API meanwhile |
+| Game client files | Never committed; supplied locally and mounted at runtime | Done: none in the repository. Mounting comes with the first code that reads them |
+| Finance controls | Four-eyes approval, idempotency keys, append-only audit trail; double-entry ledger optional | Partly: four-eyes and idempotency done; audit next; ledger not planned yet |
+| Quality in CI | Testcontainers, architecture rules as tests, security scanning, metrics dashboards | Partly: Testcontainers and architecture rules done; scanning and dashboards not started |
+
+### First showable version (v1)
+
+What a reviewer should be able to see and run, end to end.
+
+- [x] `docker compose up` starts PostgreSQL, Flyway, Keycloak and both servers
+- [x] Operators sign in through Keycloak; every endpoint checks one permission
+- [x] Account lookup through a contract-first API
+- [x] Gold adjustments with four-eyes approval and idempotency keys
+- [x] Integration tests on real PostgreSQL; architecture rules as tests
+- [x] CI runs the whole stack and drives a real request through it
+- [x] README: what it is, how to run it, how correctness is checked
+- [ ] Append-only audit trail for every operator action
+- [ ] Game server transport (framing and encryption), checked byte for byte against the reference sessions
+- [ ] Security scanning in CI: CodeQL, Dependabot, Trivy, SBOM
+- [ ] Decision records, a threat model and a written case study in `docs/`
+
+## Done
+
+| Area | What exists |
+|---|---|
+| Repository setup | `.gitignore`, `.gitattributes`, `.editorconfig` |
+| Database | `V1` initial schema (11 tables); `V2` economy adjustments and the outbox, with the approval rules as constraints |
+| Game server | .NET 10 solution: transport project, host listening on port 2180, architecture rules (1) |
+| Admin server | Contract-first API, Keycloak token validation, role-to-permission mapping, read-only account data, problem-details errors |
+| Local stack | docker-compose with PostgreSQL 18, Flyway, Keycloak and both servers; secrets as files; operator script with no committed credentials |
+| CI | `game-server`, `admin-server` and `stack` workflows; the stack job signs operators in and takes an adjustment through four-eyes approval |
+| Economy adjustments | Request, list, approve, reject; threshold for dual control; idempotent retries, including two identical requests at once; transactional outbox |
+| Documentation | Project README; a README per service and per shared folder |
+
+Tests today: game server 1; admin server 44 unit tests and 11 integration tests.
+
+## Next
+
+In order. Each item is one pull request unless noted.
+
+1. **Append-only audit trail.** `V3` migration: the database refuses `UPDATE` and
+   `DELETE` on the audit table, and each entry carries a hash of the one before, so
+   tampering breaks the chain. Every operator action writes an entry in the same
+   transaction; auditors read it through the API with `audit:read`.
+2. **Security scanning in CI.** CodeQL for Java and C#, Dependabot for Maven, NuGet,
+   Docker and Actions, a Trivy scan of both images, and an SBOM per build.
+3. **Game server transport.** Framing, seed-based encryption and size limits, with
+   the transport tests written first; then replaying the reference sessions through
+   it and comparing every byte.
+4. **Documentation.** Decision records in `docs/adr/` for the choices above, a
+   threat model in `docs/security/`, and a case study of how correctness is checked.
+5. **Operator portal.** Pages served by the admin server: account lookup, requesting
+   adjustments and an approval queue, signing in with the `admin-portal` client (PKCE).
+
+## Later
+
+- **Control channel.** The signed connection from the admin server to the game
+  server: `contracts/control-channel` schemas first, then live actions such as
+  disconnecting a session, and a dispatcher that delivers approved adjustments
+  from the outbox.
+- **Game server stages.** Packet codecs (`OpenTaan.Protocol`), PostgreSQL access
+  (`OpenTaan.Persistence`), and game logic (`OpenTaan.Game`), each checked
+  against the reference sessions.
+- **The rest of the admin API.** Sessions, rooms, characters, match history,
+  moderation and node operations, each with its own permission.
+- **Observability.** OpenTelemetry from both servers into Prometheus and Grafana, as
+  an optional compose profile.
+- **Double-entry ledger** for in-game currency, with a daily reconciliation job.
+
+## Changes along the way
+
+| Change | Why |
+|---|---|
+| Approved adjustments go to an outbox instead of being applied directly | Gold lives in the game server's state, which does not exist yet; the outbox keeps approvals safe until it does |
+| No users in the Keycloak realm; operators are added by script | No credentials in the repository |
+| The transport test project waits for the transport | The .NET 10 test runner counts a project with no tests as a failure |
