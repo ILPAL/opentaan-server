@@ -1,0 +1,84 @@
+name: stack
+
+# Starts the whole docker-compose stack and drives one real request through it:
+# an operator signs in to Keycloak, and the admin server checks the token, maps
+# the roles to permissions and reads the database that Flyway migrated.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**/*.md"]
+  pull_request:
+    paths-ignore: ["**/*.md"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Create secrets
+        run: |
+          openssl rand -base64 32 | tr -d '\n' > secrets/db_password
+          openssl rand -base64 32 | tr -d '\n' > secrets/keycloak_admin_password
+
+      - name: Start the stack
+        run: docker compose up --detach --build
+
+      - name: Wait for the admin server
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://localhost:8080/actuator/health >/dev/null; then
+              echo "admin server is up"; exit 0
+            fi
+            sleep 5
+          done
+          echo "admin server did not become healthy"; exit 1
+
+      - name: Migrations ran
+        run: |
+          test "$(docker compose ps --all --format '{{.ExitCode}}' flyway)" = "0"
+          docker compose exec -T postgres psql -U opentaan -d opentaan -Atc \
+            "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank"
+
+      - name: Game server accepts connections
+        run: timeout 10 bash -c 'until (exec 3<>/dev/tcp/127.0.0.1/2180); do sleep 1; done'
+
+      - name: An operator can sign in and read an account
+        env:
+          OPERATOR_PASSWORD: ${{ github.run_id }}-smoke-test
+        run: |
+          deploy/keycloak/add-operator.sh smoke-viewer viewer
+          docker compose exec -T postgres psql -U opentaan -d opentaan -c \
+            "INSERT INTO accounts (account_id, email) VALUES (1, 'player@example.com')"
+
+          token=$(curl --silent --fail \
+            --data grant_type=password --data client_id=opentaan-cli \
+            --data username=smoke-viewer --data-urlencode "password=$OPERATOR_PASSWORD" \
+            http://localhost:8081/realms/opentaan/protocol/openid-connect/token | jq -r .access_token)
+
+          echo "without a token:"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/accounts/1)" = "401"
+
+          echo "with a viewer token:"
+          curl --silent --fail -H "Authorization: Bearer $token" http://localhost:8080/api/accounts/1 | tee account.json
+          test "$(jq -r .email account.json)" = "player@example.com"
+
+          echo "unknown account:"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $token" http://localhost:8080/api/accounts/2)" = "404"
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down --volumes
