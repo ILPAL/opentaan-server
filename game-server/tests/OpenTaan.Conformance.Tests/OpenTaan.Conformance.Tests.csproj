@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The wire contract is derived from the game client, so it is supplied locally
+    and never committed (ADR 10). When it is present the glob copies it beside the
+    test binaries, so the tests never depend on the working directory. When it is
+    absent the glob matches nothing, the tests skip, and CI still runs them.
+  -->
+  <ItemGroup>
+    <None Include="..\..\..\contracts\wire\**\*.json"
+          LinkBase="contracts\wire"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenTaan.Transport\OpenTaan.Transport.csproj" />
+  </ItemGroup>
+
+</Project>

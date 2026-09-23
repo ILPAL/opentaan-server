@@ -164,8 +164,10 @@ not packet types or decoded values:
 
 The reference sessions are derived from the game client's own files, so they
 are not committed ([ADR 10](adr/0010-no-game-client-files.md)); they are
-supplied locally. As the transport and codecs are built, each one is tested
-against them before it is used, on the machine that has them.
+supplied locally. The conformance tests read them from there, and skip when they
+are absent rather than passing quietly: CI reports them as skipped, with the
+reason, so an empty run cannot be mistaken for a clean one. The transport is
+checked against them today; each codec will be as it is built.
 
 ## What is not checked yet
 

@@ -5,6 +5,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OpenTaan.Architecture.Tests/OpenTaan.Architecture.Tests.csproj" />
+    <Project Path="tests/OpenTaan.Conformance.Tests/OpenTaan.Conformance.Tests.csproj" />
     <Project Path="tests/OpenTaan.Transport.Tests/OpenTaan.Transport.Tests.csproj" />
   </Folder>
 </Solution>

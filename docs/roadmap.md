@@ -39,7 +39,8 @@ What a reviewer should be able to see and run, end to end.
 - [x] CI runs the whole stack and drives a real request through it
 - [x] README: what it is, how to run it, how correctness is checked
 - [x] Append-only audit trail for every operator action
-- [ ] Game server transport (framing and encryption), checked byte for byte against the reference sessions
+- [x] Game server transport: framing, the packet cipher and the seed schedule, with the reference sessions replayed through it
+- [ ] Packet codecs, compared byte for byte with the reference sessions
 - [ ] Security scanning in CI: CodeQL (Dependabot, Trivy and an SBOM per image are done)
 - [x] Decision records, a threat model and a written case study in `docs/`
 
@@ -49,7 +50,7 @@ What a reviewer should be able to see and run, end to end.
 |---|---|
 | Repository setup | `.gitignore`, `.gitattributes`, `.editorconfig` |
 | Database | `V1` initial schema (11 tables); `V2` economy adjustments and the outbox, with the approval rules as constraints; `V3` the audit trail |
-| Game server | .NET 10 solution: host listening on port 2180, transport framing and the packet cipher, architecture rules |
+| Game server | .NET 10 solution: host listening on port 2180, transport framing and the packet cipher, the reference sessions replayed through it, architecture rules |
 | Admin server | Contract-first API, Keycloak token validation, role-to-permission mapping, read-only account data, problem-details errors |
 | Local stack | docker-compose with PostgreSQL 18, Flyway, Keycloak and both servers; secrets as files; operator script with no committed credentials |
 | CI | `game-server`, `admin-server` and `stack` workflows; the stack job signs operators in, takes an adjustment through four-eyes approval and checks the audit trail it left |
@@ -59,7 +60,7 @@ What a reviewer should be able to see and run, end to end.
 | Decisions and security | Ten decision records in `docs/adr`; a threat model with each threat's control, test and status; a case study of how correctness is checked; a test that two concurrent decisions leave exactly one |
 | Security scanning | `security` workflow: both images built, scanned with Trivy on every change and weekly, failing on fixable HIGH or CRITICAL findings, with a CycloneDX SBOM kept per image; Dockerfile checks; Dependabot for Maven, NuGet, base images, compose images and actions; every action pinned to a commit hash |
 
-Tests today: game server 50; admin server 61 unit tests and 25 integration tests.
+Tests today: game server 65, of which 15 need the reference sessions and skip without them; admin server 61 unit tests and 25 integration tests.
 
 ## Next
 
@@ -67,9 +68,8 @@ In order. Each item is one pull request unless noted.
 
 1. **CodeQL.** Static analysis of the Java and C# code, reported through GitHub
    code scanning.
-2. **Game server transport.** Framing, seed-based encryption and size limits, with
-   the transport tests written first; then replaying the reference sessions through
-   it and comparing every byte.
+2. **Packet codecs.** `OpenTaan.Protocol`, one stage of the protocol at a time,
+   each codec compared byte for byte with the reference sessions before it is used.
 3. **Operator portal.** Pages served by the admin server: account lookup, requesting
    adjustments and an approval queue, signing in with the `admin-portal` client (PKCE).
 
