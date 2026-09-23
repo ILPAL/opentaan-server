@@ -1,0 +1,59 @@
+spring:
+  application:
+    name: admin-server
+
+  datasource:
+    url: ${OPENTAAN_DB_URL:jdbc:postgresql://localhost:5432/opentaan}
+    username: ${OPENTAAN_DB_USER:opentaan}
+    # Read from a file in containers (see docker-compose.yml), never baked into config.
+    password: ${OPENTAAN_DB_PASSWORD:}
+
+  jpa:
+    # The schema belongs to database/migrations. This service only checks that its
+    # mappings match it, and refuses to start if they do not.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: false
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${OPENTAAN_OIDC_ISSUER:http://localhost:8081/realms/opentaan}
+
+  mvc:
+    problemdetails:
+      enabled: true
+
+springdoc:
+  swagger-ui:
+    # Show the contract file itself, not documentation reconstructed from the code.
+    # (/v3/api-docs stays enabled because Swagger UI reads its settings from there,
+    # but only its swagger-config endpoint is public.)
+    url: /openapi/admin-api.yaml
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+opentaan:
+  security:
+    # Which permissions each operator role grants. Roles come from the identity
+    # provider's token; permissions are checked by each operation.
+    roles:
+      viewer: [sessions:read, rooms:read, nodes:read, accounts:read, characters:read, matches:read, inventory:read]
+      support: [sessions:read, rooms:read, nodes:read, accounts:read, characters:read, matches:read, inventory:read, sessions:disconnect]
+      moderator: [sessions:read, rooms:read, accounts:read, characters:read, moderation:apply]
+      economy: [accounts:read, characters:read, ledger:read, economy:adjust, inventory:read]
+      operations: [nodes:read, nodes:drain, sessions:read, sessions:disconnect]
+      auditor: [audit:read, ledger:read, accounts:read, characters:read, inventory:read]
+      admin: [sessions:read, sessions:disconnect, rooms:read, nodes:read, nodes:drain, accounts:read, characters:read, inventory:read, matches:read, moderation:apply, ledger:read, economy:adjust, audit:read]

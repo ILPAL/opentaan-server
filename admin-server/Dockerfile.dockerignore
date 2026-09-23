@@ -1,0 +1,7 @@
+# The build context is the repository root. Send only what the build needs.
+*
+!admin-server/.mvn/
+!admin-server/mvnw
+!admin-server/pom.xml
+!admin-server/src/main/
+!contracts/openapi/
