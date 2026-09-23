@@ -17,8 +17,8 @@ Two problems shape the design:
   files, so it is supplied locally rather than committed.
 - **The back office moves value.** Economy adjustments change what players own.
   It is built with the controls a bank would expect: an API contract written
-  before the code, a permission check on every endpoint, and next, four-eyes
-  approval, idempotency keys and an append-only audit trail.
+  before the code, a permission check on every endpoint, four-eyes approval and
+  idempotency keys on every gold adjustment, and next, an append-only audit trail.
 
 ## Architecture
 
@@ -83,8 +83,9 @@ local development only; the browser client uses authorization code with PKCE.
 | Contract-first API | `admin-server` build | Code that drifts from `contracts/openapi/admin-api.yaml`: controllers implement generated interfaces |
 | Permission tests | `AccountsControllerTest`, `OperatorRolesTest` | 401 and 403 paths, role-to-permission mapping, secrets in responses |
 | Architecture rules | ArchUnit, NetArchTest | An endpoint without a permission check, a controller reaching a repository, transport code depending on game code |
-| Real database | Testcontainers | Mappings that do not match the schema the migrations produce |
-| Whole stack | `.github/workflows/stack.yml` | Wiring: an operator signs in through Keycloak and reads an account through the admin server, on every pull request |
+| Real database | Testcontainers | Mappings that do not match the schema the migrations produce; a retry racing the original request |
+| Database constraints | `database/migrations` | A code path that lets an operator approve their own adjustment, a zero amount, a rejection with no reason |
+| Whole stack | `.github/workflows/stack.yml` | Wiring, on every pull request: operators sign in through Keycloak, read an account, and take a large adjustment through four-eyes approval into the outbox |
 
 ## Develop
 
@@ -118,7 +119,9 @@ Each service has its own README with the details.
 | Game server: transport (framing and encryption), verified byte for byte | Next |
 | Game server: packet codecs, persistence, game logic | Planned |
 | Admin server: account lookup, contract-first API, permission model | Done |
-| Admin server: economy adjustments with four-eyes approval, idempotency keys, append-only audit | Next |
+| Admin server: economy adjustments with four-eyes approval and idempotency keys | Done |
+| Admin server: append-only audit trail | Next |
+| Delivering approved adjustments to the game server | Planned: needs game state in the game server |
 | Local stack with Keycloak, tested end to end in CI | Done |
 
 ## Notice
