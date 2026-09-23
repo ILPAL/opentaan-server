@@ -139,7 +139,15 @@ with real tokens:
   override.
 - **A test runner that fails on nothing.** The .NET 10 test runner counts a
   test project with no tests as a failure, so the transport's test project
-  waits for the transport instead of existing empty.
+  waited for the transport instead of existing empty.
+- **A checksum nothing ever checked.** The frame checksum is accumulated inside
+  the transformation, over whatever was fed to it. Because the transformation is
+  its own inverse, that means plaintext when encrypting and ciphertext when
+  decrypting, and the two agree only for an even number of whole key blocks.
+  Verification would have rejected almost every frame -- but every caller had
+  switched it off, so it never ran and the disagreement stayed hidden. Both
+  directions now checksum the plaintext, and the tests use the body lengths that
+  tell the two apart.
 
 ## The game server: bytes, not types
 

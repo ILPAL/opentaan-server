@@ -49,7 +49,7 @@ What a reviewer should be able to see and run, end to end.
 |---|---|
 | Repository setup | `.gitignore`, `.gitattributes`, `.editorconfig` |
 | Database | `V1` initial schema (11 tables); `V2` economy adjustments and the outbox, with the approval rules as constraints; `V3` the audit trail |
-| Game server | .NET 10 solution: transport project, host listening on port 2180, architecture rules (1) |
+| Game server | .NET 10 solution: host listening on port 2180, transport framing and the packet cipher, architecture rules |
 | Admin server | Contract-first API, Keycloak token validation, role-to-permission mapping, read-only account data, problem-details errors |
 | Local stack | docker-compose with PostgreSQL 18, Flyway, Keycloak and both servers; secrets as files; operator script with no committed credentials |
 | CI | `game-server`, `admin-server` and `stack` workflows; the stack job signs operators in, takes an adjustment through four-eyes approval and checks the audit trail it left |
@@ -59,7 +59,7 @@ What a reviewer should be able to see and run, end to end.
 | Decisions and security | Ten decision records in `docs/adr`; a threat model with each threat's control, test and status; a case study of how correctness is checked; a test that two concurrent decisions leave exactly one |
 | Security scanning | `security` workflow: both images built, scanned with Trivy on every change and weekly, failing on fixable HIGH or CRITICAL findings, with a CycloneDX SBOM kept per image; Dockerfile checks; Dependabot for Maven, NuGet, base images, compose images and actions; every action pinned to a commit hash |
 
-Tests today: game server 1; admin server 61 unit tests and 25 integration tests.
+Tests today: game server 50; admin server 61 unit tests and 25 integration tests.
 
 ## Next
 

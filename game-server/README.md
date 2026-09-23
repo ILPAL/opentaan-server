@@ -8,12 +8,12 @@
 |---|---|
 | `src/OpenTaan.Transport` | Framing and encryption. No game logic, no database, no hosting. |
 | `src/OpenTaan.GameServer` | The executable: configuration, the TCP listener, logging. |
+| `tests/OpenTaan.Transport.Tests` | Framing, the packet cipher and the seed schedule, including hostile input. |
 | `tests/OpenTaan.Architecture.Tests` | Dependency rules between projects, enforced as tests. |
 
-More projects are added as the port reaches them: `OpenTaan.Transport.Tests`
-(with the transport layer), `OpenTaan.Protocol` (packet codecs),
-`OpenTaan.Persistence` (PostgreSQL) and `OpenTaan.Game` (handlers and game
-state).
+More projects are added as the port reaches them: `OpenTaan.Protocol` (packet
+codecs), `OpenTaan.Persistence` (PostgreSQL) and `OpenTaan.Game` (handlers and
+game state).
 
 ## Protocol reference data
 

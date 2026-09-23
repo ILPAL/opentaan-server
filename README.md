@@ -82,6 +82,7 @@ local development only; the browser client uses authorization code with PKCE.
 
 | Check | Where | What it catches |
 |---|---|---|
+| Transport framing | `game-server/tests/OpenTaan.Transport.Tests` | A length past what the client could receive, a truncated or split frame, a body its checksum does not cover, a seed advanced without the reserved-zero correction |
 | Contract-first API | `admin-server` build | Code that drifts from `contracts/openapi/admin-api.yaml`: controllers implement generated interfaces |
 | Permission tests | `AccountsControllerTest`, `AuditControllerTest`, `OperatorRolesTest` | 401 and 403 paths, role-to-permission mapping, secrets in responses |
 | Architecture rules | ArchUnit, NetArchTest | An endpoint without a permission check, a controller reaching a repository, transport code depending on game code |
@@ -125,8 +126,9 @@ checked, with what those checks caught, is in
 | Area | State |
 |---|---|
 | Game server: host, listener, architecture tests | Done |
+| Game server: transport framing, packet cipher and seed schedule | Done |
 | Game protocol: reference sessions, supplied locally, not committed | In progress |
-| Game server: transport (framing and encryption), verified byte for byte | Next |
+| Game server: transport verified byte for byte against the reference sessions | Next |
 | Game server: packet codecs, persistence, game logic | Planned |
 | Admin server: account lookup, contract-first API, permission model | Done |
 | Admin server: economy adjustments with four-eyes approval and idempotency keys | Done |
