@@ -22,3 +22,4 @@ what it expects.
 | Migration | What it does |
 |---|---|
 | `V1__initial_schema.sql` | Accounts, characters, state documents, idempotency claims, shop ledger, operators, audit trail, match history |
+| `V2__economy_adjustments.sql` | Gold adjustments under four-eyes approval, enforced by constraints; the outbox for events to the game server |
