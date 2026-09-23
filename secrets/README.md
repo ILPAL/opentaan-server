@@ -2,8 +2,8 @@
 
 Files in this folder are mounted into containers as Docker secrets by
 `docker-compose.yml`. They never go into git (see `.gitignore` here), into an
-image, or into an environment variable, so they do not show up in
-`docker inspect`, in `ps`, or in logs that print the environment.
+image or into the compose file, so they do not show up in `docker inspect`.
+Each service reads its file at startup, inside its own container.
 
 Create them once, before the first `docker compose up`:
 
