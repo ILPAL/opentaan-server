@@ -1,0 +1,61 @@
+name: admin-server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "admin-server/**"
+      - "contracts/openapi/**"
+      - "database/**"
+      - ".github/workflows/admin-server.yml"
+  pull_request:
+    paths:
+      - "admin-server/**"
+      - "contracts/openapi/**"
+      - "database/**"
+      - ".github/workflows/admin-server.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin-server
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      # Unit tests, then integration tests against PostgreSQL in Testcontainers
+      # (the runner has Docker) with the real migrations from database/.
+      - name: Build and test
+        run: ./mvnw -B verify
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-server-test-reports
+          path: |
+            admin-server/target/surefire-reports
+            admin-server/target/failsafe-reports
+
+  image:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build image
+        run: docker build --file admin-server/Dockerfile --tag opentaan/admin-server:${{ github.sha }} .
