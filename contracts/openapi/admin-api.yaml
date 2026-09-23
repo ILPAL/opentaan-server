@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: OpenTaan Admin API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Back-office API for operators: account lookup, economy adjustments and
     moderation. This file is the contract. The admin server's controllers
@@ -24,6 +24,16 @@ security:
 tags:
   - name: Accounts
     description: Player accounts and their characters. Read-only; no secrets.
+  - name: Economy
+    description: |
+      Adjustments to a character's gold, under dual control.
+
+      An adjustment whose size is at or above the approval threshold waits for a
+      second operator to approve or reject it; the operator who requested it can
+      never decide it. Smaller adjustments are approved when requested.
+
+      Approval records the adjustment for delivery to the game server; the
+      delivery itself is asynchronous.
 
 paths:
   /api/accounts/{accountId}:
@@ -56,12 +66,210 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/economy/adjustments:
+    post:
+      tags: [Economy]
+      operationId: requestAdjustment
+      summary: Request a gold adjustment for a character
+      description: |
+        Retrying with the same `Idempotency-Key` and the same body returns the
+        original result instead of creating a second adjustment. Generate the key
+        when the operator opens the adjustment form, not per click, so a
+        double-click cannot credit twice.
+      x-permission: economy:adjust
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdjustmentRequest"
+      responses:
+        "201":
+          description: |
+            The adjustment was recorded, either approved or waiting for approval.
+            A retry with the same key returns the same adjustment and sets
+            `Idempotent-Replayed: true`.
+          headers:
+            Location:
+              description: URL of the adjustment
+              schema:
+                type: string
+            Idempotent-Replayed:
+              description: Present and `true` when this response replays an earlier request.
+              schema:
+                type: boolean
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Adjustment"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    get:
+      tags: [Economy]
+      operationId: listAdjustments
+      summary: List adjustments, newest first
+      x-permission: ledger:read
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AdjustmentStatus"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Adjustments, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Adjustment"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/economy/adjustments/{adjustmentId}:
+    get:
+      tags: [Economy]
+      operationId: getAdjustment
+      summary: Get one adjustment
+      x-permission: ledger:read
+      parameters:
+        - $ref: "#/components/parameters/AdjustmentId"
+      responses:
+        "200":
+          description: The adjustment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Adjustment"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/economy/adjustments/{adjustmentId}/approve:
+    post:
+      tags: [Economy]
+      operationId: approveAdjustment
+      summary: Approve an adjustment waiting for approval
+      description: |
+        Only an operator other than the requester may approve. Approving an
+        adjustment you already approved returns it unchanged.
+      x-permission: economy:adjust
+      parameters:
+        - $ref: "#/components/parameters/AdjustmentId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalRequest"
+      responses:
+        "200":
+          description: The approved adjustment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Adjustment"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/SelfDecision"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/economy/adjustments/{adjustmentId}/reject:
+    post:
+      tags: [Economy]
+      operationId: rejectAdjustment
+      summary: Reject an adjustment waiting for approval
+      description: |
+        Only an operator other than the requester may reject, and a rejection
+        must say why. Rejecting an adjustment you already rejected returns it
+        unchanged.
+      x-permission: economy:adjust
+      parameters:
+        - $ref: "#/components/parameters/AdjustmentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RejectionRequest"
+      responses:
+        "200":
+          description: The rejected adjustment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Adjustment"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/SelfDecision"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: A unique key per intended adjustment, chosen by the client.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 64
+        pattern: "^[A-Za-z0-9_-]+$"
+    AdjustmentId:
+      name: adjustmentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
 
   schemas:
     Account:
@@ -92,6 +300,90 @@ components:
           format: int32
           description: Position on the account's character selection screen.
 
+    AdjustmentRequest:
+      type: object
+      required: [characterId, deltaGold, reason]
+      properties:
+        characterId:
+          type: integer
+          format: int64
+          minimum: 1
+        deltaGold:
+          type: integer
+          format: int64
+          minimum: -1000000000
+          maximum: 1000000000
+          description: Gold to add (positive) or remove (negative). Must not be zero.
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why the adjustment is needed. Shown to the approver and kept with the record.
+
+    ApprovalRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          maxLength: 500
+
+    RejectionRequest:
+      type: object
+      required: [note]
+      properties:
+        note:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why the adjustment was rejected.
+
+    AdjustmentStatus:
+      type: string
+      enum: [PENDING_APPROVAL, APPROVED, REJECTED]
+
+    OperatorRef:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          description: Stable identifier from the identity provider.
+        name:
+          type: string
+
+    Adjustment:
+      type: object
+      required: [adjustmentId, characterId, deltaGold, reason, status, approvalRequired, requestedBy, requestedAt]
+      properties:
+        adjustmentId:
+          type: string
+          format: uuid
+        characterId:
+          type: integer
+          format: int64
+        deltaGold:
+          type: integer
+          format: int64
+        reason:
+          type: string
+        status:
+          $ref: "#/components/schemas/AdjustmentStatus"
+        approvalRequired:
+          type: boolean
+          description: Whether the size of the adjustment required a second operator.
+        requestedBy:
+          $ref: "#/components/schemas/OperatorRef"
+        requestedAt:
+          type: string
+          format: date-time
+        decidedBy:
+          $ref: "#/components/schemas/OperatorRef"
+        decidedAt:
+          type: string
+          format: date-time
+        decisionNote:
+          type: string
+
     Problem:
       type: object
       description: RFC 9457 problem details.
@@ -110,7 +402,7 @@ components:
 
   responses:
     BadRequest:
-      description: The request is malformed, for example a non-numeric id.
+      description: The request is malformed or breaks a constraint in this contract.
       content:
         application/problem+json:
           schema:
@@ -119,8 +411,25 @@ components:
       description: No valid bearer token.
     Forbidden:
       description: The operator lacks the permission this operation requires.
+    SelfDecision:
+      description: |
+        The operator lacks the permission, or is the one who requested the
+        adjustment and so may not decide it.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
     NotFound:
       description: No such resource.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Conflict:
+      description: |
+        The request conflicts with the current state: the adjustment was already
+        decided, it changed while this request was in flight, or the
+        Idempotency-Key was used before with a different body.
       content:
         application/problem+json:
           schema:
