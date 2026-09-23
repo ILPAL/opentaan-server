@@ -1,0 +1,57 @@
+# ---------- IDEs ----------
+.idea/
+*.iml
+.vs/
+.vscode/
+*.suo
+*.user
+*.userprefs
+*.rsuser
+
+# ---------- .NET (game server) ----------
+[Bb]in/
+[Oo]bj/
+TestResults/
+*.nupkg
+_UpgradeReport_Files/
+
+# ---------- Java (admin server) ----------
+target/
+build/
+.gradle/
+out/
+*.class
+hs_err_pid*
+replay_pid*
+
+# ---------- Game protocol reference data ----------
+# Packet layouts and reference sessions are derived from the game client.
+# They are supplied locally and never committed.
+contracts/wire/
+
+# ---------- Secrets / local overrides ----------
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.pem
+*.key
+appsettings.Local.json
+application-local.yml
+application-local.properties
+
+# ---------- Docker / Postgres local data ----------
+pgdata/
+postgres-data/
+*.dump
+*.backup
+
+# ---------- Logs ----------
+logs/
+*.log
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+Desktop.ini

@@ -1,2 +1,46 @@
-# Auto detect text files and perform LF normalization
+# Normalize line endings: store LF in the repo, let git pick for the working tree
 * text=auto
+
+# ---------- Must be LF (run inside Linux containers / Unix shells) ----------
+*.sh        text eol=lf
+*.bash      text eol=lf
+gradlew     text eol=lf
+mvnw        text eol=lf
+Dockerfile  text eol=lf
+*.dockerfile text eol=lf
+*.sql       text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+.env.example text eol=lf
+
+# ---------- Must be CRLF (Windows-only scripts) ----------
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+
+# ---------- .NET ----------
+*.sln       text eol=crlf
+*.cs        text diff=csharp
+*.csproj    text
+*.props     text
+*.targets   text
+
+# ---------- Java ----------
+*.java      text diff=java
+*.gradle    text diff=java
+*.kts       text diff=kotlin
+*.properties text
+
+# ---------- Binary (never touch) ----------
+*.jar       binary
+*.dll       binary
+*.exe       binary
+*.so        binary
+*.dylib     binary
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.zip       binary
+*.gz        binary
+*.tar       binary
