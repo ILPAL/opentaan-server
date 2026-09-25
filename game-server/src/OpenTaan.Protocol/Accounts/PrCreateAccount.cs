@@ -10,7 +10,7 @@ namespace OpenTaan.Protocol.Accounts;
 /// waiting on a slot that already succeeded.
 /// </param>
 [WireClass("PrCreateAccount")]
-public sealed record PrCreateAccount(CreateAccountStatus Status, byte AccountSlot)
+public sealed record PrCreateAccount(CreateAccountStatus Status, byte AccountSlot) : IPacket
 {
     /// <summary>The id that leads the body, computed from the wire name.</summary>
     public static uint RegistryId => WireIdentity<PrCreateAccount>.RegistryId;

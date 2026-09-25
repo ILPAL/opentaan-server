@@ -10,7 +10,7 @@ namespace OpenTaan.Protocol.Characters;
 /// </remarks>
 /// <param name="CharacterName">The name to look up.</param>
 [WireClass("PqExistCharacter")]
-public sealed record PqExistCharacter(string CharacterName)
+public sealed record PqExistCharacter(string CharacterName) : IPacket
 {
     /// <summary>The id that leads the body, computed from the wire name.</summary>
     public static uint RegistryId => WireIdentity<PqExistCharacter>.RegistryId;

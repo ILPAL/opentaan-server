@@ -27,6 +27,7 @@ public sealed record RegistryTable(int Count, IReadOnlyDictionary<string, uint> 
 public sealed record Session(
     string Lifecycle,
     string Clock,
+    World? World,
     IReadOnlyList<Exchange> Exchanges)
 {
     /// <summary>The file this session was read from, for test failure messages.</summary>
@@ -38,8 +39,17 @@ public sealed record Session(
     public CryptoParameters? Handshake => Exchanges.Select(exchange => exchange.Crypto).FirstOrDefault(c => c is not null);
 }
 
-/// <summary>One step of a session: what arrived, and what went back.</summary>
+/// <summary>How the server was set up when the session was recorded.</summary>
+/// <param name="Authentication">Whether an account had to exist, with its password, to log in.</param>
+/// <param name="GmAccountEmails">The accounts configured as game masters.</param>
+public sealed record World(bool Authentication, IReadOnlyList<string>? GmAccountEmails);
+
+/// <summary>
+/// One step of a session: who it came from, what arrived, and what went back. Each
+/// participant has a connection of its own.
+/// </summary>
 public sealed record Exchange(
+    string? From,
     string? Event,
     CryptoParameters? Crypto,
     [property: JsonPropertyName("in")] string? Inbound,
