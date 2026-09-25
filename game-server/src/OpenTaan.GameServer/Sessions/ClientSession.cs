@@ -76,11 +76,23 @@ public sealed partial class ClientSession
 
     private ILogger Logger => _services.Logger;
 
-    /// <summary>Records a successful login.</summary>
-    public void LogIn(IReadOnlyList<Account> accounts)
+    /// <summary>
+    /// Logs this connection in with <paramref name="accounts"/>, unless one of them is live
+    /// on another connection. They stay this connection's until it closes.
+    /// </summary>
+    /// <returns>Null when logged in; otherwise the connection holding one of the accounts.</returns>
+    public ClientSession? TryLogIn(IReadOnlyList<Account> accounts)
     {
+        ArgumentNullException.ThrowIfNull(accounts);
         ArgumentOutOfRangeException.ThrowIfZero(accounts.Count, nameof(accounts));
-        Accounts = accounts;
+
+        var holder = _services.LoggedIn.TryClaim(this, accounts);
+        if (holder is null)
+        {
+            Accounts = accounts;
+        }
+
+        return holder;
     }
 
     /// <summary>
@@ -153,6 +165,10 @@ public sealed partial class ClientSession
             // Every path above has set a reason by now. Only an exception this method
             // does not catch arrives here without one, and it leaves as a server error.
             Close(CloseReason.ServerError);
+
+            // The read loop awaits every handler, so no login can still be under way here.
+            _services.LoggedIn.Release(this, Accounts);
+
             await writing.ConfigureAwait(false);
             await _stream.DisposeAsync().ConfigureAwait(false);
             _closing.Dispose();

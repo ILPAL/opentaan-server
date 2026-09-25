@@ -1,3 +1,4 @@
+using OpenTaan.GameServer;
 using OpenTaan.GameServer.Accounts;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol;
@@ -276,6 +277,146 @@ public sealed class LoginFlowTests
 
         Assert.Equal(CloseReason.SecondLogin, await connection.ClosedReason());
         Assert.True(await connection.Client.IsClosedByServerAsync());
+    }
+
+    [Fact]
+    public async Task OneAccountInBothSlotsIsRefusedAsAlreadyInGame()
+    {
+        var store = new InMemoryAccountStore();
+        await store.CreateAsync("player@example.test", RightPassword, Gender.Male, Cancel);
+        var services = SessionHarness.Services(store: store);
+        await using var connection = await SessionHarness.ConnectAsync(services, Cancel);
+
+        await connection.Client.SendAsync(Login(("player@example.test", RightPassword), ("player@example.test", RightPassword)));
+
+        Assert.Equal(
+            new PrUserLoginFailed(LoginRefusalReason.AlreadyInGame),
+            await connection.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+        Assert.False(connection.Session.IsLoggedIn);
+        Assert.Null(services.LoggedIn.HolderOf((await store.FindAsync("player@example.test", Cancel))!.AccountId));
+    }
+
+    [Fact]
+    public async Task AddressesDifferingOnlyInCaseAreTwoAccountsAndMayShareALogin()
+    {
+        await using var connection = await SessionHarness.ConnectAsync(SessionHarness.Services(requireRegistration: false), Cancel);
+
+        await connection.Client.SendAsync(Login(("Player@example.test", RightPassword), ("player@example.test", RightPassword)));
+
+        var answer = Assert.IsType<PrUserLoginSucceeded>(await connection.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+        Assert.Equal(2, answer.Accounts.Count);
+    }
+
+    [Fact]
+    public async Task ASecondLoginWhileTheFirstIsLiveIsRefusedAndTheFirstIsUndisturbed()
+    {
+        var services = SessionHarness.Services(requireRegistration: false);
+        await using var first = await SessionHarness.ConnectAsync(services, Cancel);
+        await using var second = await SessionHarness.ConnectAsync(services, Cancel);
+
+        await first.Client.SendAsync(Login(("player@example.test", RightPassword)));
+        Assert.IsType<PrUserLoginSucceeded>(await first.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+
+        await second.Client.SendAsync(Login(("player@example.test", RightPassword)));
+        Assert.Equal(
+            new PrUserLoginFailed(LoginRefusalReason.AlreadyInGame),
+            await second.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+        Assert.False(second.Session.IsLoggedIn);
+
+        // The holder is still logged in and still answered.
+        Assert.True(first.Session.IsLoggedIn);
+        await first.Client.SendAsync(new PqExistCharacter("Somebody"));
+        Assert.Equal(new PrExistCharacter(false), await first.Client.ReceiveAsync<PrExistCharacter>(PrExistCharacter.TryRead));
+    }
+
+    [Fact]
+    public async Task TheAccountInTheHoldersSecondSlotAlsoBlocks()
+    {
+        var services = SessionHarness.Services(requireRegistration: false);
+        await using var first = await SessionHarness.ConnectAsync(services, Cancel);
+        await using var second = await SessionHarness.ConnectAsync(services, Cancel);
+
+        await first.Client.SendAsync(Login(("first@example.test", RightPassword), ("second@example.test", RightPassword)));
+        Assert.IsType<PrUserLoginSucceeded>(await first.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+
+        await second.Client.SendAsync(Login(("other@example.test", RightPassword), ("second@example.test", RightPassword)));
+        Assert.Equal(
+            new PrUserLoginFailed(LoginRefusalReason.AlreadyInGame),
+            await second.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+    }
+
+    [Fact]
+    public async Task ARefusedConnectionMayLogInWithAnotherAccount()
+    {
+        var services = SessionHarness.Services(requireRegistration: false);
+        await using var first = await SessionHarness.ConnectAsync(services, Cancel);
+        await using var second = await SessionHarness.ConnectAsync(services, Cancel);
+
+        await first.Client.SendAsync(Login(("player@example.test", RightPassword)));
+        await first.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead);
+
+        await second.Client.SendAsync(Login(("other@example.test", RightPassword), ("player@example.test", RightPassword)));
+        Assert.IsType<PrUserLoginFailed>(await second.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+
+        // The refused login took nothing, not even the account that was free.
+        await second.Client.SendAsync(Login(("other@example.test", RightPassword)));
+        Assert.IsType<PrUserLoginSucceeded>(await second.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+    }
+
+    [Fact]
+    public async Task AWrongPasswordAgainstALiveAccountSaysWrongPassword()
+    {
+        var store = new InMemoryAccountStore();
+        await store.CreateAsync("player@example.test", RightPassword, Gender.Male, Cancel);
+        var services = SessionHarness.Services(store: store);
+        await using var first = await SessionHarness.ConnectAsync(services, Cancel);
+        await using var second = await SessionHarness.ConnectAsync(services, Cancel);
+
+        await first.Client.SendAsync(Login(("player@example.test", RightPassword)));
+        await first.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead);
+
+        // Answering "already in game" here would tell anyone the account is online.
+        await second.Client.SendAsync(Login(("player@example.test", WrongPassword)));
+        Assert.Equal(
+            new PrUserLoginFailed(LoginRefusalReason.WrongPassword),
+            await second.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+    }
+
+    [Fact]
+    public async Task AClosedConnectionReleasesItsAccounts()
+    {
+        var services = SessionHarness.Services(requireRegistration: false);
+
+        await using (var first = await SessionHarness.ConnectAsync(services, Cancel))
+        {
+            await first.Client.SendAsync(Login(("player@example.test", RightPassword)));
+            await first.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead);
+
+            await first.Client.DisposeAsync();
+            Assert.Equal(CloseReason.PeerClosed, await first.ClosedReason());
+        }
+
+        await using var second = await SessionHarness.ConnectAsync(services, Cancel);
+        await second.Client.SendAsync(Login(("player@example.test", RightPassword)));
+        Assert.IsType<PrUserLoginSucceeded>(await second.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+    }
+
+    [Fact]
+    public async Task ASilentHolderIsClosedByTheIdleTimeoutAndReleasesItsAccounts()
+    {
+        // A holder that lost power sends nothing more, not even a close.
+        var options = new GameServerOptions { IdleTimeout = TimeSpan.FromMilliseconds(300) };
+        var services = SessionHarness.Services(requireRegistration: false, options: options);
+        await using var first = await SessionHarness.ConnectAsync(services, Cancel);
+
+        await first.Client.SendAsync(Login(("player@example.test", RightPassword)));
+        await first.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead);
+        Assert.Equal(CloseReason.IdleTimeout, await first.ClosedReason());
+
+        // The same accounts and store, but a timeout the newcomer cannot hit on a busy machine.
+        await using var second = await SessionHarness.ConnectAsync(services with { Options = new GameServerOptions() }, Cancel);
+        await second.Client.SendAsync(Login(("player@example.test", RightPassword)));
+        Assert.IsType<PrUserLoginSucceeded>(await second.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
     }
 
     private static PqUserLogin Login(params (string EmailAddress, Secret PasswordHash)[] accounts) =>

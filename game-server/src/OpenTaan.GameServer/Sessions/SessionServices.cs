@@ -13,10 +13,12 @@ public delegate HandshakeKeys HandshakeKeySource();
 /// Where handshake values come from: a cryptographic generator in the server, the
 /// recorded values when a test replays a session.
 /// </param>
+/// <param name="LoggedIn">Which connection each logged-in account is live on.</param>
 /// <param name="Logger">The sessions' logger.</param>
 public sealed record SessionServices(
     PacketDispatcher Dispatcher,
     PacketNames Names,
     GameServerOptions Options,
     HandshakeKeySource HandshakeKeys,
+    LoggedInAccounts LoggedIn,
     ILogger<ClientSession> Logger);

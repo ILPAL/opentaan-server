@@ -69,6 +69,9 @@ The expensive bugs happen when two requests arrive at the same moment.
   out numbered without gaps and linked without forks. Before the trigger was
   trusted, a load run of sixteen clients inserting 1,600 entries was checked
   the same way.
+- Sixty-four game connections claim one account at the same moment, released
+  together by a barrier. Exactly one holds it, and every other is told which
+  one. A version that checked and claimed under two locks failed this test.
 
 The trigger's comment says that a writer under `REPEATABLE READ` fails rather
 than forking the chain. That claim was tested by hand with two sessions before
@@ -205,6 +208,12 @@ with real tokens:
   would close connections a real client holds. The session keeps one rule, a
   connection logs in once, and the rest waits until recorded traffic can
   justify it.
+- **A test that slowed every other test.** The first version of the concurrent
+  claim test held sixty-four thread-pool threads on its barrier. The pool
+  starved, the whole suite took ten times as long, and two tests with short
+  timeouts failed, one of them an existing heartbeat test. The failures
+  were in other tests; the cause was the new one. Its contenders now run on
+  threads of their own.
 
 ## The game server: bytes, not types
 

@@ -23,6 +23,8 @@ internal sealed record Connection(ClientSession Session, LoopbackClient Client, 
 /// <summary>Runs real sessions over loopback sockets.</summary>
 internal static class SessionHarness
 {
+    private static long _nextId;
+
     /// <summary>What sessions share, with a store and settings a test may choose.</summary>
     public static SessionServices Services(
         bool requireRegistration = true,
@@ -44,6 +46,7 @@ internal static class SessionHarness
             names,
             options ?? new GameServerOptions(),
             handshakeKeys ?? (() => HandshakeKeys.Generate(RandomNumberGenerator.Create())),
+            new LoggedInAccounts(),
             NullLogger<ClientSession>.Instance);
     }
 
@@ -69,7 +72,7 @@ internal static class SessionHarness
         listener.Stop();
 
         Stream stream = new NetworkStream(serverSocket, ownsSocket: true);
-        var session = new ClientSession(1, serverSocket.RemoteEndPoint, wrap?.Invoke(stream) ?? stream, services);
+        var session = new ClientSession(Interlocked.Increment(ref _nextId), serverSocket.RemoteEndPoint, wrap?.Invoke(stream) ?? stream, services);
         var closed = Task.Run(() => session.RunAsync(stopping), CancellationToken.None);
 
         var client = await LoopbackClient.AttachAsync(clientSocket);
