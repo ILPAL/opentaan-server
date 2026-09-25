@@ -63,6 +63,14 @@ instead of being skipped.
 The client checks or creates an account on one connection, closes it, and logs
 in on another, so accounts belong to the server rather than to a connection.
 
+An account is live on one connection at a time. A login naming one account in
+both of the client's slots, or an account another connection holds, is refused
+as already in the game, and the client returns to its login form; the
+connection already playing is left alone. An account is freed when its
+connection closes. A client that vanishes without closing, after a power cut
+say, holds its account until the idle timeout (three minutes by default) closes
+its connection.
+
 ## Protocol reference data
 
 The packet layouts and reference sessions this server is checked against are

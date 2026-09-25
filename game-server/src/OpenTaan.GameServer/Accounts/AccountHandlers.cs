@@ -82,6 +82,14 @@ public sealed partial class AccountHandlers(
     /// Logs in every account the request names, or none of them: the answer has one
     /// success flag for all of them.
     /// </summary>
+    /// <remarks>
+    /// An account is live on one connection at a time. A login naming one account in
+    /// both slots, or an account another connection holds, is refused as already in the
+    /// game, which returns the client to its login form. The newcomer is refused; the
+    /// connection already playing is never closed for it, so knowing a password is not
+    /// enough to throw a player out. Both checks come after the passwords, so a login
+    /// attempt cannot tell anyone whether an account is online.
+    /// </remarks>
     public async ValueTask UserLoginAsync(ClientSession session, PqUserLogin request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -115,7 +123,22 @@ public sealed partial class AccountHandlers(
             accounts.Add(account);
         }
 
-        session.LogIn(accounts);
+        // By account, not by address, so this holds however the store compares addresses.
+        if (accounts.DistinctBy(account => account.AccountId).Count() != accounts.Count)
+        {
+            LogSameAccountTwice(logger, session.Id);
+            session.Send(new PrUserLoginFailed(LoginRefusalReason.AlreadyInGame));
+            return;
+        }
+
+        var holder = session.TryLogIn(accounts);
+        if (holder is not null)
+        {
+            LogAlreadyInGame(logger, session.Id, holder.Id);
+            session.Send(new PrUserLoginFailed(LoginRefusalReason.AlreadyInGame));
+            return;
+        }
+
         LogLoggedIn(logger, session.Id, accounts.Count);
 
         session.Send(new PrUserLoginSucceeded(
@@ -181,6 +204,14 @@ public sealed partial class AccountHandlers(
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Connection {ConnectionId}: login refused ({Reason}) at account {Position}")]
     private static partial void LogRefused(ILogger logger, long connectionId, LoginRefusalReason reason, int position);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Connection {ConnectionId}: login refused, one account named in both slots")]
+    private static partial void LogSameAccountTwice(ILogger logger, long connectionId);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Connection {ConnectionId}: login refused, an account is live on connection {HolderId}")]
+    private static partial void LogAlreadyInGame(ILogger logger, long connectionId, long holderId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Connection {ConnectionId} logged in with {Accounts} account(s)")]
     private static partial void LogLoggedIn(ILogger logger, long connectionId, int accounts);

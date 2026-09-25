@@ -32,6 +32,7 @@ builder.Services.AddSingleton<IAccountStore, InMemoryAccountStore>();
 builder.Services.AddSingleton<AccountHandlers>();
 builder.Services.AddSingleton<CharacterHandlers>();
 builder.Services.AddSingleton<PacketDispatcher>();
+builder.Services.AddSingleton<LoggedInAccounts>();
 
 builder.Services.AddSingleton(provider => PacketNames.Load(
     provider.GetRequiredService<IOptions<GameServerOptions>>().Value.PacketNamesFile,
@@ -50,6 +51,7 @@ builder.Services.AddSingleton(provider => new SessionServices(
     provider.GetRequiredService<PacketNames>(),
     provider.GetRequiredService<IOptions<GameServerOptions>>().Value,
     provider.GetRequiredService<HandshakeKeySource>(),
+    provider.GetRequiredService<LoggedInAccounts>(),
     provider.GetRequiredService<ILogger<ClientSession>>()));
 
 builder.Services.AddHostedService<GameListener>();
