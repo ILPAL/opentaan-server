@@ -8,7 +8,7 @@ namespace OpenTaan.Protocol.Accounts;
 /// <param name="Gender">The gender chosen for the account. A real client never sends <see cref="Gender.Unspecified"/>.</param>
 /// <param name="AccountSlot">Which of the client's two account slots this is for. The reply must echo it.</param>
 [WireClass("PqCreateAccount")]
-public sealed record PqCreateAccount(string EmailAddress, Secret PasswordHash, Gender Gender, byte AccountSlot)
+public sealed record PqCreateAccount(string EmailAddress, Secret PasswordHash, Gender Gender, byte AccountSlot) : IPacket
 {
     /// <summary>The id that leads the body, computed from the wire name.</summary>
     public static uint RegistryId => WireIdentity<PqCreateAccount>.RegistryId;

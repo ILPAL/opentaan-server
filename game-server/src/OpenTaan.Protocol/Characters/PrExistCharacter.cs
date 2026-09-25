@@ -9,7 +9,7 @@ namespace OpenTaan.Protocol.Characters;
 /// </remarks>
 /// <param name="Exists">Whether a character with that name exists.</param>
 [WireClass("PrExistCharacter")]
-public sealed record PrExistCharacter(bool Exists)
+public sealed record PrExistCharacter(bool Exists) : IPacket
 {
     /// <summary>The id that leads the body, computed from the wire name.</summary>
     public static uint RegistryId => WireIdentity<PrExistCharacter>.RegistryId;

@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "OpenTaan.GameServer": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

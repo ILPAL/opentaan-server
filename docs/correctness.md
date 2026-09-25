@@ -171,6 +171,40 @@ with real tokens:
   exactly that bug found it; the test now uses two different values. The same
   planted bug also failed the conformance check that reads recorded bodies from
   the declared layout, which is why that check exists.
+- **A connection that kept talking after it stopped understanding.** Every frame
+  is read with a seed both ends move on in step. A reader that meets a length no
+  client could send, throws its buffer away and carries on has lost that step for
+  good: each later frame is decrypted with the wrong seed and misread, while the
+  connection looks alive. Such a frame now closes the connection, and so does a
+  frame whose checksum does not match.
+- **A request dropped in silence is a client that hangs.** The client never
+  re-sends a request, and several of its screens stay locked until their reply
+  arrives. Skipping an unknown packet, or one whose body cannot be read, would
+  leave the player on a screen that never recovers, with nothing in the log
+  worth reading. Every such case closes the connection, and the log names the
+  packet.
+- **A server setting the plan had left for later.** Playing the recorded
+  sessions against real connections found one login answered with a different
+  account type from all the others: the session was recorded with that account
+  configured as a game master, which opens the client's console. It was small,
+  it comes only from configuration, and it is now `Accounts:GameMasters`, rather
+  than an exception in the test.
+- **A request no recording had.** The first real client to connect opened its
+  login connection with a request that no recorded session contains, because the
+  sessions were scripted rather than captured from play. The server closed the
+  connection and logged the request by name, so the gap took one log line to
+  find, where a dropped request would have left a client waiting in silence. Its
+  answer is now built from the client's own reader. With no recording to replay,
+  a body written from invented values is read back through the declared layout
+  instead, and the check fails the day a recording turns up, so the packet then
+  joins the rest.
+- **A state table stricter than the client.** A table of which packet is allowed
+  in which state is the obvious guard. The recorded sessions show the client
+  checking a character name after a failed login, and sending telemetry and a
+  heartbeat whenever it likes, so such a table, written ahead of real traffic,
+  would close connections a real client holds. The session keeps one rule, a
+  connection logs in once, and the rest waits until recorded traffic can
+  justify it.
 
 ## The game server: bytes, not types
 
@@ -204,6 +238,12 @@ through the codec in both directions:
   and its id is computed from that name the way the client computes it. The
   computation is checked against every id in the reference table, not only the
   implemented ones, so a mistake in it cannot hide behind a round trip.
+
+The server itself is checked a fourth way. Every recorded session is played
+against real sessions over loopback sockets, each participant on a connection of
+its own and greeted with the handshake values the session recorded, and every
+reply, the greeting included, must match the recording byte for byte. A
+participant is followed until it sends something that belongs to a later stage.
 
 Codecs are written by hand and published one stage of the protocol at a time,
 so the repository shows the layouts this server implements and nothing more.

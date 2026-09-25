@@ -9,7 +9,7 @@ namespace OpenTaan.Protocol.Accounts;
 /// complete from this byte, so it must echo the request's slot.
 /// </param>
 [WireClass("PrCheckAccount")]
-public sealed record PrCheckAccount(CheckAccountStatus Status, byte AccountSlot)
+public sealed record PrCheckAccount(CheckAccountStatus Status, byte AccountSlot) : IPacket
 {
     /// <summary>The id that leads the body, computed from the wire name.</summary>
     public static uint RegistryId => WireIdentity<PrCheckAccount>.RegistryId;

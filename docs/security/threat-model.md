@@ -115,17 +115,19 @@ does not exist yet; the control comes with it).
 | T-D4 | A leaked password stays valid | Rotation is a manual procedure in `secrets/README.md` | Partly |
 | T-D5 | A schema change bypasses review | Only Flyway runs DDL, from reviewed migration files; the admin server refuses to start on a mismatch | Mitigated |
 
-### Game server (planned)
+### Game server
 
 | Id | Threat | Control | Status |
 |---|---|---|---|
-| T-G1 | Oversized or malformed frames exhaust memory or crash the server | Hard size limits before allocating; parsers that reject input instead of trusting lengths; transport tests with hostile input | Partly: the transport and the login-stage codecs refuse impossible lengths and counts before allocating (`FrameReaderTests`, `PacketReaderTests`); no socket is read yet |
-| T-G2 | Connection floods | Limits per address and overall, idle and handshake timeouts | Planned |
+| T-G1 | Oversized or malformed frames exhaust memory or crash the server | Hard size limits before allocating; parsers that reject input instead of trusting lengths; transport tests with hostile input | Mitigated for the login stage: the transport and the codecs refuse impossible lengths and counts before allocating (`FrameReaderTests`, `PacketReaderTests`); each connection reads into one fixed buffer the size of the receive window, and a frame that cannot be read or a body that cannot be decoded closes the connection at once (`SessionTests`). Each new codec brings its own hostile tests |
+| T-G2 | Connection floods, or clients that hold connections and memory without using them | Limits per address and overall; an idle timeout; a bounded send queue and a send timeout, so a client that stops reading costs only its own connection | Partly: all four (`ConnectionLimiterTests`, `GameListenerTests`, `SessionTests`); no limit on packets per second yet |
 | T-G3 | A crafted client gives itself items or currency | The server owns all game state; client input states intent and is checked against it; currency changes only through the server's own rules and approved adjustments | Planned with game logic |
 | T-G4 | Traffic between client and server is read | The client fixes the protocol, including its encryption, and the server cannot change it; nothing is sent to the client that it may not see | Accepted: a property of the client |
 | T-G5 | Game account passwords are cracked from a database copy | Hashing is done by the game server; the admin server never reads the column | Planned with persistence |
 | T-G6 | A handshake switches encryption off, or one client predicts another's seeds | Handshake values that derive the plaintext seed cannot be constructed; generation re-draws them and fails loudly rather than fall back; values come from a cryptographic generator | Mitigated: `HandshakeKeysTests` |
-| T-G7 | Credentials from login packets reach logs | Password hashes are held in a type that prints as `***`; the handshake prints its shift, never its seeds | Mitigated: `SecretTests`, `HandshakeCodecTests` |
+| T-G7 | Credentials from login packets reach logs | Password hashes are held in a type that prints as `***`; the handshake prints its shift, never its seeds | Mitigated: `SecretTests`, `HandshakeCodecTests`; email addresses are not logged either |
+| T-G8 | Game account passwords are guessed, or any account is logged in to | Outside Development an account must be created before it logs in, with the password it was created with, compared in constant time; the server refuses to start with that switched off; a throttle per account and per address | Partly: registration and passwords enforced (`LoginFlowTests`), and the start-up check; no throttle yet (planned with persistence) |
+| T-G9 | A player gets the game master console | Only configuration names game master accounts, never a packet; the flag opens the client's console and nothing more, and every game master request is checked again by the server | Partly: the flag comes only from configuration (`LoginFlowTests`); no game master requests are handled yet |
 
 ### Supply chain and CI
 
@@ -145,5 +147,7 @@ does not exist yet; the control comes with it).
 3. **T-S1:** no static analysis of our own code yet.
 4. **T-A4:** no MFA for operators.
 5. **T-R2:** refused attempts are not recorded.
-6. **T-A3, T-A5 and T-S4:** local-only settings that need changing before any
+6. **T-G8:** no login throttle, so passwords can be guessed as fast as the
+   network allows.
+7. **T-A3, T-A5 and T-S4:** local-only settings that need changing before any
    shared deployment.

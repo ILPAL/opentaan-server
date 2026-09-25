@@ -19,7 +19,7 @@ namespace OpenTaan.Protocol.Handshake;
 /// <param name="Seed2">The second derivation value.</param>
 /// <param name="Shift">How far both values are shifted before they are combined.</param>
 [WireClass("PcFirstAccept")]
-public sealed record PcFirstAccept(ulong Seed1, ulong Seed2, byte Shift)
+public sealed record PcFirstAccept(ulong Seed1, ulong Seed2, byte Shift) : IPacket
 {
     /// <summary>The id that leads the body, computed from the wire name.</summary>
     public static uint RegistryId => WireIdentity<PcFirstAccept>.RegistryId;

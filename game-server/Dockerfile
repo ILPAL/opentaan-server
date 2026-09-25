@@ -6,6 +6,7 @@ WORKDIR /src
 
 # Project files first, so a source change does not re-download packages.
 COPY Directory.Build.props Directory.Packages.props ./
+COPY src/OpenTaan.Protocol/OpenTaan.Protocol.csproj src/OpenTaan.Protocol/
 COPY src/OpenTaan.Transport/OpenTaan.Transport.csproj src/OpenTaan.Transport/
 COPY src/OpenTaan.GameServer/OpenTaan.GameServer.csproj src/OpenTaan.GameServer/
 RUN dotnet restore src/OpenTaan.GameServer/OpenTaan.GameServer.csproj

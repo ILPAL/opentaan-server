@@ -7,7 +7,7 @@ namespace OpenTaan.Protocol.Accounts;
 /// <param name="ServerAddress">A server address the client includes. Zero from a fresh login.</param>
 /// <param name="GameGuardFlag">A flag from the client's anti-cheat layer.</param>
 [WireClass("PqUserLogin")]
-public sealed record PqUserLogin(IReadOnlyList<LoginAccountInfo> Accounts, ConnectionAddress ServerAddress, byte GameGuardFlag)
+public sealed record PqUserLogin(IReadOnlyList<LoginAccountInfo> Accounts, ConnectionAddress ServerAddress, byte GameGuardFlag) : IPacket
 {
     /// <summary>The id that leads the body, computed from the wire name.</summary>
     public static uint RegistryId => WireIdentity<PqUserLogin>.RegistryId;

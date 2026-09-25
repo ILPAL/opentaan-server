@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenTaan.GameServer\OpenTaan.GameServer.csproj" />
+    <ProjectReference Include="..\..\src\OpenTaan.Protocol\OpenTaan.Protocol.csproj" />
+    <ProjectReference Include="..\..\src\OpenTaan.Transport\OpenTaan.Transport.csproj" />
+  </ItemGroup>
+
+</Project>

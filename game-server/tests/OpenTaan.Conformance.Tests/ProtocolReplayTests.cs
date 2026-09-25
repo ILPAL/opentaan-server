@@ -5,6 +5,7 @@ using System.Reflection;
 using OpenTaan.Protocol;
 using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Characters;
+using OpenTaan.Protocol.Connection;
 using OpenTaan.Protocol.Handshake;
 using OpenTaan.Transport;
 
@@ -36,6 +37,15 @@ public sealed class ProtocolReplayTests
         [PrUserLogin.RegistryId] = body => Replay.Of(PrUserLogin.TryRead(body), packet => packet.Write),
         [PqExistCharacter.RegistryId] = body => Replay.Of(PqExistCharacter.TryRead(body), packet => packet.Write),
         [PrExistCharacter.RegistryId] = body => Replay.Of(PrExistCharacter.TryRead(body), packet => packet.Write),
+        [PrFirstPacket.RegistryId] = body => Replay.Of(PrFirstPacket.TryRead(body), packet => packet.Write),
+    };
+
+    // Codecs for packets no recorded session carries, built from the client's own reader.
+    // Each has a body written from invented values, whose bytes differ field to field, so
+    // that the declared layout still checks where the codec puts each field.
+    private static readonly Dictionary<uint, byte[]> Unrecorded = new()
+    {
+        [PrFirstPacket.RegistryId] = Written(new PrFirstPacket(0x11, 0x44332211, 0x01)),
     };
 
     [Fact]
@@ -107,8 +117,12 @@ public sealed class ProtocolReplayTests
 
         Assert.Empty(failures);
 
-        var neverSeen = Codecs.Keys.Where(id => !exercised.Contains(id)).Select(NameOf).ToArray();
+        var neverSeen = Codecs.Keys.Where(id => !exercised.Contains(id) && !Unrecorded.ContainsKey(id)).Select(NameOf).ToArray();
         Assert.True(neverSeen.Length == 0, "no recorded body to check: " + string.Join(", ", neverSeen));
+
+        // Once a session records one, it is checked like the rest and leaves the list.
+        var recorded = Unrecorded.Keys.Where(exercised.Contains).Select(NameOf).ToArray();
+        Assert.True(recorded.Length == 0, "recorded after all, so no longer unrecorded: " + string.Join(", ", recorded));
     }
 
     [Fact]
@@ -122,7 +136,7 @@ public sealed class ProtocolReplayTests
 
         var failures = new List<string>();
 
-        foreach (var (origin, body) in Bodies())
+        foreach (var (origin, body) in Bodies().Concat(Unrecorded.Values.Select(body => ("a written body", body))))
         {
             if (!declared.TryGetValue(LeadingId(body), out var spec))
             {
@@ -203,6 +217,7 @@ public sealed class ProtocolReplayTests
         [PrCheckAccount.RegistryId] = body => PrCheckAccount.TryRead(body).Packet,
         [PrCreateAccount.RegistryId] = body => PrCreateAccount.TryRead(body).Packet,
         [PrExistCharacter.RegistryId] = body => PrExistCharacter.TryRead(body).Packet,
+        [PrFirstPacket.RegistryId] = body => PrFirstPacket.TryRead(body).Packet,
     };
 
     private static object Decode(uint registryId, byte[] body) =>
@@ -264,6 +279,13 @@ public sealed class ProtocolReplayTests
     private static string NameOf(uint registryId) =>
         WireContract.Spec.Classes.FirstOrDefault(spec => spec.RegistryId == registryId)?.WireName
         ?? registryId.ToString("X8", CultureInfo.InvariantCulture);
+
+    private static byte[] Written(IPacket packet)
+    {
+        var destination = new ArrayBufferWriter<byte>();
+        packet.Write(destination);
+        return destination.WrittenSpan.ToArray();
+    }
 
     private static uint LeadingId(byte[] body) =>
         body.Length >= sizeof(uint) ? BinaryPrimitives.ReadUInt32LittleEndian(body) : 0;

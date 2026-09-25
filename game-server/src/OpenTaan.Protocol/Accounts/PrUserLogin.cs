@@ -14,7 +14,7 @@ namespace OpenTaan.Protocol.Accounts;
 /// stops receiving without disconnecting or reporting an error.
 /// </remarks>
 [WireClass("PrUserLogin")]
-public abstract record PrUserLogin
+public abstract record PrUserLogin : IPacket
 {
     /// <summary>The id that leads the body, computed from the wire name.</summary>
     public static uint RegistryId => WireIdentity<PrUserLogin>.RegistryId;

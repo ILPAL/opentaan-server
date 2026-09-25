@@ -9,7 +9,7 @@ namespace OpenTaan.Protocol.Accounts;
 /// anything from a modified one. The reply must echo a valid slot.
 /// </param>
 [WireClass("PqCheckAccount")]
-public sealed record PqCheckAccount(string EmailAddress, byte AccountSlot)
+public sealed record PqCheckAccount(string EmailAddress, byte AccountSlot) : IPacket
 {
     /// <summary>The id that leads the body, computed from the wire name.</summary>
     public static uint RegistryId => WireIdentity<PqCheckAccount>.RegistryId;

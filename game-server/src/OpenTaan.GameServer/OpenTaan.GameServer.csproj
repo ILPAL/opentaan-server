@@ -10,6 +10,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\OpenTaan.Protocol\OpenTaan.Protocol.csproj" />
     <ProjectReference Include="..\OpenTaan.Transport\OpenTaan.Transport.csproj" />
   </ItemGroup>
 
