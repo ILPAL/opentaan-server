@@ -33,7 +33,7 @@ services:
   # Applies database/migrations, then exits. The servers never create or alter
   # tables; they start only after this has finished successfully.
   flyway:
-    image: flyway/flyway:13.7.0
+    image: flyway/flyway:13.8.0
     depends_on:
       postgres:
         condition: service_healthy
