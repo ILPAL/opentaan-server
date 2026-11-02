@@ -208,6 +208,16 @@ with real tokens:
   would close connections a real client holds. The session keeps one rule, a
   connection logs in once, and the rest waits until recorded traffic can
   justify it.
+- **Recorded values that cannot tell fields apart.** A new character in the
+  reference sessions has the same value in most of its counters, so two of them
+  read and written the wrong way round replay perfectly and agree with the
+  declared layout. The unit tests build every field of a character and its
+  appearance from a different value, and a planted swap of two such counters
+  fails them.
+- **A planted bug that did not compile.** One planted bug left code unreachable,
+  which this build treats as an error, so no test ran and nothing reported a
+  failure. A planted bug proves something only when the build succeeds and a
+  test then fails; the runs now report build errors next to test failures.
 - **A test that slowed every other test.** The first version of the concurrent
   claim test held sixty-four thread-pool threads on its barrier. The pool
   starved, the whole suite took ten times as long, and two tests with short
@@ -242,7 +252,10 @@ through the codec in both directions:
 - **The declared layout.** Where the reference data declares a packet's fields,
   the recorded bytes are read from that declaration alone and compared, field by
   field, with what the codec read. A codec that reads and writes the same field
-  in the same wrong place passes the replay and fails here.
+  in the same wrong place passes the replay and fails here. Fields are paired
+  with the codec's record by position, not by name, so a field can be named for
+  what it holds; objects inside lists are read by their own class's declaration,
+  so nested layouts are checked too.
 - **The registry.** Each packet names itself once, in a `[WireClass]` attribute,
   and its id is computed from that name the way the client computes it. The
   computation is checked against every id in the reference table, not only the
