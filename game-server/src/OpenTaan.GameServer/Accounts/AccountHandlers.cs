@@ -146,7 +146,7 @@ public sealed partial class AccountHandlers(
             Field24: 0,
             Accounts: [.. accounts.Select(account =>
                 new AccountInfo(account.AccountId, TypeOf(account), 0, 0, account.Gender))],
-            Catalogs: [.. accounts.Select(_ => new CharacterCatalog())],
+            Catalogs: [.. accounts.Select(_ => CharacterCatalog.Empty)],
             Field28: 0,
             Field2C: string.Empty,
             Field30: 0));

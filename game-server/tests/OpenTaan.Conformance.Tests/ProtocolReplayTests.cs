@@ -38,6 +38,14 @@ public sealed class ProtocolReplayTests
         [PqExistCharacter.RegistryId] = body => Replay.Of(PqExistCharacter.TryRead(body), packet => packet.Write),
         [PrExistCharacter.RegistryId] = body => Replay.Of(PrExistCharacter.TryRead(body), packet => packet.Write),
         [PrFirstPacket.RegistryId] = body => Replay.Of(PrFirstPacket.TryRead(body), packet => packet.Write),
+        [PqNewCharacter.RegistryId] = body => Replay.Of(PqNewCharacter.TryRead(body), packet => packet.Write),
+        [PrNewCharacter.RegistryId] = body => Replay.Of(PrNewCharacter.TryRead(body), packet => packet.Write),
+        [PqSelectCharacter.RegistryId] = body => Replay.Of(PqSelectCharacter.TryRead(body), packet => packet.Write),
+        [PrSelectCharacter.RegistryId] = body => Replay.Of(PrSelectCharacter.TryRead(body), packet => packet.Write),
+        [PqConfirmName.RegistryId] = body => Replay.Of(PqConfirmName.TryRead(body), packet => packet.Write),
+        [PrConfirmName.RegistryId] = body => Replay.Of(PrConfirmName.TryRead(body), packet => packet.Write),
+        [PqDelCharacter.RegistryId] = body => Replay.Of(PqDelCharacter.TryRead(body), packet => packet.Write),
+        [PrDelCharacter.RegistryId] = body => Replay.Of(PrDelCharacter.TryRead(body), packet => packet.Write),
     };
 
     // Codecs for packets no recorded session carries, built from the client's own reader.
@@ -130,31 +138,24 @@ public sealed class ProtocolReplayTests
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 
+        // Every declared layout, nested ones included: a packet's lists hold objects that
+        // are read by their own class's layout.
         var declared = WireContract.Spec.Classes
-            .Where(spec => spec.Fields.Count > 0 && Codecs.ContainsKey(spec.RegistryId))
+            .Where(spec => spec.Fields.Count > 0)
             .ToDictionary(spec => spec.RegistryId);
 
         var failures = new List<string>();
 
         foreach (var (origin, body) in Bodies().Concat(Unrecorded.Values.Select(body => ("a written body", body))))
         {
-            if (!declared.TryGetValue(LeadingId(body), out var spec))
+            var id = LeadingId(body);
+            if (!Codecs.ContainsKey(id) || !declared.ContainsKey(id))
             {
                 continue;
             }
 
-            var packet = Decode(spec.RegistryId, body);
-
-            foreach (var (field, value) in ReadDeclared(spec, body))
-            {
-                var property = packet.GetType().GetProperty(PascalCase(field))
-                    ?? throw new InvalidOperationException($"{spec.WireName} has no property for '{field}'");
-
-                if (AsNumber(property.GetValue(packet)) != value)
-                {
-                    failures.Add($"{origin}: {spec.WireName}.{property.Name} is not what the layout puts there");
-                }
-            }
+            failures.AddRange(DeclaredLayout.Mismatches(body, Decode(id, body), declared)
+                .Select(mismatch => $"{origin}: {mismatch}"));
         }
 
         Assert.Empty(failures);
@@ -218,6 +219,8 @@ public sealed class ProtocolReplayTests
         [PrCreateAccount.RegistryId] = body => PrCreateAccount.TryRead(body).Packet,
         [PrExistCharacter.RegistryId] = body => PrExistCharacter.TryRead(body).Packet,
         [PrFirstPacket.RegistryId] = body => PrFirstPacket.TryRead(body).Packet,
+        [PrConfirmName.RegistryId] = body => PrConfirmName.TryRead(body).Packet,
+        [PrSelectCharacter.RegistryId] = body => PrSelectCharacter.TryRead(body).Packet,
     };
 
     private static object Decode(uint registryId, byte[] body) =>
@@ -225,50 +228,6 @@ public sealed class ProtocolReplayTests
             ? decode(body) ?? throw new InvalidOperationException($"{NameOf(registryId)} refused a recorded body")
             : throw new InvalidOperationException(
                 $"{NameOf(registryId)} has a declared layout; add it to {nameof(Decoders)} so the layout is checked");
-
-    // Reads the fixed-width fields the contract declares, in its order, independently
-    // of any codec. A declared type this does not know fails the test rather than
-    // being skipped, so a new layout cannot go unchecked.
-    private static IEnumerable<(string Field, ulong Value)> ReadDeclared(ClassSpec spec, byte[] body)
-    {
-        var offset = 0;
-        foreach (var field in spec.Fields)
-        {
-            var width = field.Type switch
-            {
-                "u8" => 1,
-                "u16" => 2,
-                "u32" or "i32" => 4,
-                "u64" => 8,
-                _ => throw new InvalidOperationException($"{spec.WireName}.{field.Name}: '{field.Type}' is not read here yet"),
-            };
-
-            var bytes = body.AsSpan(offset, width);
-            var value = width switch
-            {
-                1 => bytes[0],
-                2 => BinaryPrimitives.ReadUInt16LittleEndian(bytes),
-                4 => BinaryPrimitives.ReadUInt32LittleEndian(bytes),
-                _ => BinaryPrimitives.ReadUInt64LittleEndian(bytes),
-            };
-            offset += width;
-
-            if (field.Name is { } name && name != "registry_id")
-            {
-                yield return (name, value);
-            }
-        }
-    }
-
-    private static ulong AsNumber(object? value) => value switch
-    {
-        bool flag => flag ? 1ul : 0ul,
-        Enum member => Convert.ToUInt64(member, CultureInfo.InvariantCulture),
-        _ => Convert.ToUInt64(value, CultureInfo.InvariantCulture),
-    };
-
-    private static string PascalCase(string snakeCase) =>
-        string.Concat(snakeCase.Split('_').Select(word => char.ToUpperInvariant(word[0]) + word[1..]));
 
     private static IEnumerable<(string WireName, uint RegistryId, bool IsPacket)> ImplementedClasses() =>
         from type in typeof(ProtocolAssemblyMarker).Assembly.GetExportedTypes()

@@ -124,7 +124,7 @@ public sealed class AccountCodecTests
             LocalPlayerId: 42,
             Field24: 0,
             Accounts: [new AccountInfo(1001, AccountType.Normal, 0, 0, Gender.Male)],
-            Catalogs: [new CharacterCatalog()],
+            Catalogs: [CharacterCatalog.Empty],
             Field28: 0,
             Field2C: "Nam",
             Field30: 0);
@@ -183,16 +183,27 @@ public sealed class AccountCodecTests
     }
 
     [Fact]
-    public void ACatalogThatListsCharactersIsNotReadYet()
+    public void ALoginAnswerCarriesEachAccountsCharacters()
     {
-        var answer = new PrUserLoginSucceeded(0, 0, [], [new CharacterCatalog()], 0, string.Empty, 0);
-        var body = Encoded.Bytes(answer.Write);
+        var catalog = new CharacterCatalog([CharacterSamples.Character], [CharacterSamples.Appearance]);
+        var answer = new PrUserLoginSucceeded(0, 0, [], [catalog], 0, string.Empty, 0);
 
-        // The catalog's character count follows the id, flag, two numbers, an empty
-        // account list, the catalog count and the catalog's own id.
-        const int CharacterCount = 4 + 1 + 4 + 4 + 4 + 4 + 4;
-        body[CharacterCount] = 1;
+        byte[] expected =
+        [
+            .. Encoded.UInt32(PrUserLogin.RegistryId),
+            0x01,
+            .. Encoded.UInt32(0),
+            .. Encoded.UInt32(0),
+            .. Encoded.UInt32(0),
+            .. Encoded.UInt32(1), .. CharacterSamples.CatalogBytes,
+            .. Encoded.UInt16(0),
+            .. Encoded.Utf16(string.Empty),
+            0x00,
+        ];
 
-        Assert.Equal(PacketError.Unsupported, PrUserLogin.TryRead(body).Error);
+        Assert.Equal(expected, Encoded.Bytes(answer.Write));
+
+        var read = Assert.IsType<PrUserLoginSucceeded>(PrUserLogin.TryRead(expected).Packet);
+        Assert.Equal(CharacterSamples.Character, Assert.Single(Assert.Single(read.Catalogs).Characters));
     }
 }

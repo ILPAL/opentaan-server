@@ -32,7 +32,9 @@ its bytes is computed from that name by `RegistryIds.Of`, never written down.
 
 Codecs are added one stage of the protocol at a time and written by hand, not
 generated from the reference data, so only the layouts this server implements
-appear here. So far: the handshake, and the account and login packets.
+appear here. So far: the handshake, the account and login packets, and the
+character packets for creation, name checks, selection and deletion, whose
+handlers come next.
 
 ## Connections
 

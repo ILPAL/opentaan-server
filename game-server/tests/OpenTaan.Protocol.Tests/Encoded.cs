@@ -14,6 +14,14 @@ internal static class Encoded
         return destination.WrittenSpan.ToArray();
     }
 
+    /// <summary>A 16-bit value as it appears in a body: little-endian.</summary>
+    public static byte[] UInt16(ushort value)
+    {
+        var bytes = new byte[sizeof(ushort)];
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes, value);
+        return bytes;
+    }
+
     /// <summary>A 32-bit value as it appears in a body: little-endian.</summary>
     public static byte[] UInt32(uint value)
     {
@@ -21,4 +29,7 @@ internal static class Encoded
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, value);
         return bytes;
     }
+
+    /// <summary>A string as it appears in a body: a 32-bit count of UTF-16 code units, then the units.</summary>
+    public static byte[] Utf16(string value) => [.. UInt32((uint)value.Length), .. System.Text.Encoding.Unicode.GetBytes(value)];
 }
