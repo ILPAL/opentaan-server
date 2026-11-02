@@ -87,6 +87,14 @@ public readonly struct PacketWriter
         _destination.Advance(written);
     }
 
+    /// <summary>Writes a 32-bit count of bytes, then the bytes.</summary>
+    public void WriteCountedBytes(ReadOnlySpan<byte> bytes)
+    {
+        WriteUInt32((uint)bytes.Length);
+        bytes.CopyTo(_destination.GetSpan(bytes.Length));
+        _destination.Advance(bytes.Length);
+    }
+
     /// <summary>Writes a 32-bit element count, then each element.</summary>
     public void WriteList<T>(IReadOnlyCollection<T> elements, Action<PacketWriter, T> writeElement)
     {

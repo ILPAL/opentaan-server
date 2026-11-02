@@ -32,8 +32,19 @@ its bytes is computed from that name by `RegistryIds.Of`, never written down.
 
 Codecs are added one stage of the protocol at a time and written by hand, not
 generated from the reference data, so only the layouts this server implements
-appear here. So far: the handshake, the account and login packets, and the
-character packets for creation, name checks, selection and deletion.
+appear here. So far: the handshake, the account and login packets, the
+character packets for creation, name checks, selection and deletion, and the
+packets for cash, the channel list, channel moves and entering and leaving the
+lobby, whose handlers come next.
+
+Some packets carry data in the client's envelope (`DataEnvelope`): a signature, a
+checksum, and contents that may be compressed, scrambled with a key, or both. The
+channel list is one, holding a tree of nodes shaped like XML (`DataNode`). Every
+form is read, because the client compresses what it builds when that saves space;
+the server writes envelopes uncompressed, as the client has always been sent them.
+Reading takes a size limit and checks it against the declared size before
+allocating anything, stops decompressing at that size, verifies the checksum, and
+refuses a tree nested deeper than 32 levels.
 
 ## Connections
 

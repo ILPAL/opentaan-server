@@ -41,7 +41,7 @@ What a reviewer should be able to see and run, end to end.
 - [x] Append-only audit trail for every operator action
 - [x] Game server transport: framing, the packet cipher and the seed schedule, with the reference sessions replayed through it
 - [x] Game server sessions: a real client connects, logs in, and creates and selects a character; the reference sessions are played against real connections
-- [ ] Packet codecs, compared byte for byte with the reference sessions (started: the handshake, the account and login packets, and the character packets)
+- [ ] Packet codecs, compared byte for byte with the reference sessions (started: the handshake, the account and login packets, the character packets, and the channel and lobby packets)
 - [ ] Security scanning in CI: CodeQL (Dependabot, Trivy and an SBOM per image are done)
 - [x] Decision records, a threat model and a written case study in `docs/`
 
@@ -61,7 +61,7 @@ What a reviewer should be able to see and run, end to end.
 | Decisions and security | Ten decision records in `docs/adr`; a threat model with each threat's control, test and status; a case study of how correctness is checked; a test that two concurrent decisions leave exactly one |
 | Security scanning | `security` workflow: both images built, scanned with Trivy on every change and weekly, failing on fixable HIGH or CRITICAL findings, with a CycloneDX SBOM kept per image; Dockerfile checks; Dependabot for Maven, NuGet, base images, compose images and actions; every action pinned to a commit hash |
 
-Tests today: game server 260, of which 21 need the reference sessions and skip without them; admin server 61 unit tests and 25 integration tests.
+Tests today: game server 303, of which 21 need the reference sessions and skip without them; admin server 61 unit tests and 25 integration tests.
 
 ## Next
 
@@ -71,8 +71,9 @@ In order. Each item is one pull request unless noted.
    at a time, each codec compared byte for byte with the reference sessions before
    it is used. The handshake, the account and login packets, and the character
    packets (creation, name checks, selection and deletion) are done and served by
-   real sessions. The lobby comes next: it is the first thing a real client asks
-   for once it has selected a character, and where it stops today.
+   real sessions. Channel selection and the lobby come next: their packets are done,
+   with the client's data envelope and data tree; serving them is where a real
+   client stops today, at the cash request its channel screen opens with.
 2. **CodeQL.** Static analysis of the Java and C# code, reported through GitHub
    code scanning.
 3. **Operator portal.** Pages served by the admin server: account lookup, requesting

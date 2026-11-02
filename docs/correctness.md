@@ -218,6 +218,12 @@ with real tokens:
   which this build treats as an error, so no test ran and nothing reported a
   failure. A planted bug proves something only when the build succeeds and a
   test then fails; the runs now report build errors next to test failures.
+- **A bug in both directions at once.** The data envelope can scramble its
+  payload with a keystream, and scrambling and unscrambling are the same
+  operation. A keystream built wrong, by adding a step instead of subtracting
+  it, scrambles and unscrambles consistently, so every round trip passes. Two
+  envelopes built by an independent implementation from invented contents are
+  now test vectors; the planted mistake fails both and nothing else.
 - **A recorded placeholder the server should not copy.** The reference sessions
   give every new character's appearance a gender of 0, where the client builds
   its own with the player's gender and draws a character's default parts by it.

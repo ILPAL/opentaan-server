@@ -108,6 +108,11 @@ public ref struct PacketReader
     public string ReadByteString() =>
         TryTakeCounted(sizeof(byte), out var bytes) ? Encoding.Latin1.GetString(bytes) : string.Empty;
 
+    /// <summary>Reads raw bytes, preceded by a 32-bit count of them.</summary>
+    /// <remarks>The bytes are a view of the body, valid as long as the body is.</remarks>
+    public ReadOnlySpan<byte> ReadCountedBytes() =>
+        TryTakeCounted(sizeof(byte), out var bytes) ? bytes : default;
+
     /// <summary>
     /// Reads a list preceded by a 32-bit element count.
     /// </summary>
