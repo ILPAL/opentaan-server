@@ -218,6 +218,13 @@ with real tokens:
   which this build treats as an error, so no test ran and nothing reported a
   failure. A planted bug proves something only when the build succeeds and a
   test then fails; the runs now report build errors next to test failures.
+- **A recorded placeholder the server should not copy.** The reference sessions
+  give every new character's appearance a gender of 0, where the client builds
+  its own with the player's gender and draws a character's default parts by it.
+  This server sends the account's gender. Rather than loosen the session replay,
+  the one field is adjusted in the recording before comparing: the recorded
+  answer is decoded, the field set, and the answer encoded again, so every other
+  byte is still compared as recorded. A planted run without the adjustment fails.
 - **A test that slowed every other test.** The first version of the concurrent
   claim test held sixty-four thread-pool threads on its barrier. The pool
   starved, the whole suite took ten times as long, and two tests with short

@@ -5,6 +5,7 @@ using OpenTaan.GameServer;
 using OpenTaan.GameServer.Accounts;
 using OpenTaan.GameServer.Characters;
 using OpenTaan.GameServer.Sessions;
+using OpenTaan.Protocol.Characters;
 using OpenTaan.Transport;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -28,7 +29,21 @@ builder.Services
         "with it off, anyone can log in to any account")
     .ValidateOnStart();
 
+builder.Services
+    .AddOptions<CharacterOptions>()
+    .Bind(builder.Configuration.GetSection(CharacterOptions.Section))
+    .Validate(
+        o => o.Start.ExperienceCeiling > 0,
+        "Characters:Start:ExperienceCeiling must be above zero: the client divides by it to draw the experience bar")
+    .Validate(
+        o => o.CreatorParts.Count > 0
+             && o.CreatorParts.All(part => part is >= 0 and < AppearanceSlot.Count)
+             && o.CreatorParts.Distinct().Count() == o.CreatorParts.Count,
+        $"Characters:CreatorParts must list distinct appearance parts from 0 to {AppearanceSlot.Count - 1}")
+    .ValidateOnStart();
+
 builder.Services.AddSingleton<IAccountStore, InMemoryAccountStore>();
+builder.Services.AddSingleton<ICharacterStore, InMemoryCharacterStore>();
 builder.Services.AddSingleton<AccountHandlers>();
 builder.Services.AddSingleton<CharacterHandlers>();
 builder.Services.AddSingleton<PacketDispatcher>();

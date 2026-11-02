@@ -25,21 +25,36 @@ internal static class SessionHarness
 {
     private static long _nextId;
 
-    /// <summary>What sessions share, with a store and settings a test may choose.</summary>
+    /// <summary>The character settings the server ships with, as <c>appsettings.json</c> sets them.</summary>
+    public static CharacterOptions ShippedCharacterOptions() => new()
+    {
+        CreatorParts = [1, 3, 5, 8],
+        Start = new CharacterStart { ExperienceCeiling = 300 },
+    };
+
+    /// <summary>What sessions share, with stores and settings a test may choose.</summary>
     public static SessionServices Services(
         bool requireRegistration = true,
         IReadOnlyList<string>? gameMasters = null,
         IAccountStore? store = null,
         GameServerOptions? options = null,
-        HandshakeKeySource? handshakeKeys = null)
+        HandshakeKeySource? handshakeKeys = null,
+        ICharacterStore? characterStore = null,
+        CharacterOptions? characterOptions = null)
     {
+        characterStore ??= new InMemoryCharacterStore();
         var accounts = new AccountHandlers(
             store ?? new InMemoryAccountStore(),
+            characterStore,
             Options.Create(new AccountOptions { RequireRegistration = requireRegistration, GameMasters = gameMasters ?? [] }),
             NullLogger<AccountHandlers>.Instance);
+        var characters = new CharacterHandlers(
+            characterStore,
+            Options.Create(characterOptions ?? ShippedCharacterOptions()),
+            NullLogger<CharacterHandlers>.Instance);
 
         var names = new PacketNames();
-        var dispatcher = new PacketDispatcher(accounts, new CharacterHandlers(), names, NullLogger<PacketDispatcher>.Instance);
+        var dispatcher = new PacketDispatcher(accounts, characters, names, NullLogger<PacketDispatcher>.Instance);
 
         return new SessionServices(
             dispatcher,
