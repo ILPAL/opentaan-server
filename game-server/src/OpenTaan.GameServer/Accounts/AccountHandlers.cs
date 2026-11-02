@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using OpenTaan.GameServer.Characters;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Characters;
@@ -18,6 +19,7 @@ namespace OpenTaan.GameServer.Accounts;
 /// </remarks>
 public sealed partial class AccountHandlers(
     IAccountStore store,
+    ICharacterStore characters,
     IOptions<AccountOptions> options,
     ILogger<AccountHandlers> logger)
 {
@@ -139,6 +141,14 @@ public sealed partial class AccountHandlers(
             return;
         }
 
+        // Each account's characters, which the client's character screen lists.
+        var catalogs = new List<CharacterCatalog>(accounts.Count);
+        foreach (var account in accounts)
+        {
+            catalogs.Add(Character.CatalogOf(
+                await characters.FindByAccountAsync(account.AccountId, cancellationToken).ConfigureAwait(false)));
+        }
+
         LogLoggedIn(logger, session.Id, accounts.Count);
 
         session.Send(new PrUserLoginSucceeded(
@@ -146,7 +156,7 @@ public sealed partial class AccountHandlers(
             Field24: 0,
             Accounts: [.. accounts.Select(account =>
                 new AccountInfo(account.AccountId, TypeOf(account), 0, 0, account.Gender))],
-            Catalogs: [.. accounts.Select(_ => CharacterCatalog.Empty)],
+            Catalogs: catalogs,
             Field28: 0,
             Field2C: string.Empty,
             Field30: 0));

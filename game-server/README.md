@@ -33,8 +33,7 @@ its bytes is computed from that name by `RegistryIds.Of`, never written down.
 Codecs are added one stage of the protocol at a time and written by hand, not
 generated from the reference data, so only the layouts this server implements
 appear here. So far: the handshake, the account and login packets, and the
-character packets for creation, name checks, selection and deletion, whose
-handlers come next.
+character packets for creation, name checks, selection and deletion.
 
 ## Connections
 
@@ -73,6 +72,22 @@ connection closes. A client that vanishes without closing, after a power cut
 say, holds its account until the idle timeout (three minutes by default) closes
 its connection.
 
+## Characters
+
+An account has one character, as in the client, which offers to create one only
+for an account without. Names follow the client's own rules, 4 to 16 characters
+from its Latin and Vietnamese set, and two names that differ only in case are one
+name. Checking that a name is free and taking it are one step, so of two players
+creating the same name at once, one gets it.
+
+The client stores the characters a creation or deletion answer carries at the
+account slot the answer names, without checking it. A slot the connection does
+not hold is never echoed: the answer goes to slot 0. A selection or deletion
+naming a character the account does not own is refused, and since a selection's
+answer cannot say no, that one closes the connection. A new character keeps only
+the appearance parts the client's creator offers (`Characters:CreatorParts`), so
+a modified client cannot give itself items or a partner at creation.
+
 ## Protocol reference data
 
 The packet layouts and reference sessions this server is checked against are
@@ -94,10 +109,10 @@ dotnet run --project src/OpenTaan.GameServer
 ```
 
 This runs in the Development environment, where any login creates the account
-it names (`Accounts:RequireRegistration` is off). A real client can log in, sees
-an empty character list, and waits at character creation, which is the next
+it names (`Accounts:RequireRegistration` is off). A real client can log in,
+create and select a character, and then waits at the lobby, which is the next
 stage. The server refuses to start with registration off in any other
-environment. Accounts live in memory until the database stage.
+environment. Accounts and characters live in memory until the database stage.
 
 Settings live in `appsettings.json` and can be overridden with environment
 variables, for example `GameServer__Port=2181`:
@@ -111,3 +126,5 @@ variables, for example `GameServer__Port=2181`:
 | `GameServer:PacketNamesFile` | none | A JSON file naming packets by id, so logs name packets this server does not handle. Development points it at the local reference data. |
 | `Accounts:RequireRegistration` | `true` | Whether an account must be created, with its password, before it can log in. |
 | `Accounts:GameMasters` | none | Addresses of the accounts that log in as game masters. |
+| `Characters:Start` | gold and counters `0`, `ExperienceCeiling` `300` | What a new character starts with. Every character starts at level 1; `ExperienceCeiling` is where level 2 begins and must be above 0. |
+| `Characters:CreatorParts` | `1, 3, 5, 8` | The appearance parts the client's character creator offers; a new character keeps only these. |

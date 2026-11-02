@@ -29,6 +29,12 @@ public enum CloseReason
     /// <summary>A login arrived on a connection that had already logged in.</summary>
     SecondLogin,
 
+    /// <summary>
+    /// A selection named characters the connection's accounts do not have, or a number
+    /// of them no real client sends. Its answer has no way to refuse.
+    /// </summary>
+    InvalidSelection,
+
     /// <summary>A reply was too large to fit the client's receive window.</summary>
     OversizedReply,
 

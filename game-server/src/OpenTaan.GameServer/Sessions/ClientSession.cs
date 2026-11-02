@@ -74,6 +74,33 @@ public sealed partial class ClientSession
     /// <summary>Whether this connection has logged in.</summary>
     public bool IsLoggedIn => Accounts.Count > 0;
 
+    /// <summary>The characters this connection plays, one per account in slot order. Empty until selected.</summary>
+    public IReadOnlyList<uint> SelectedCharacterIds { get; private set; } = [];
+
+    /// <summary>
+    /// Records the characters this connection plays, replacing any earlier choice, as the
+    /// client may choose again on the same connection.
+    /// </summary>
+    public void SelectCharacters(IReadOnlyList<uint> characterIds)
+    {
+        ArgumentNullException.ThrowIfNull(characterIds);
+        if (characterIds.Count != Accounts.Count)
+        {
+            throw new ArgumentException("A connection plays one character per account it logged in with.", nameof(characterIds));
+        }
+
+        SelectedCharacterIds = characterIds;
+    }
+
+    /// <summary>Forgets every selection, once one of the selected characters is deleted.</summary>
+    public void ForgetSelection(uint deletedCharacterId)
+    {
+        if (SelectedCharacterIds.Contains(deletedCharacterId))
+        {
+            SelectedCharacterIds = [];
+        }
+    }
+
     private ILogger Logger => _services.Logger;
 
     /// <summary>

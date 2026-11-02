@@ -1,5 +1,8 @@
+using System.Buffers;
 using System.Buffers.Binary;
+using OpenTaan.GameServer.Characters;
 using OpenTaan.Protocol.Accounts;
+using OpenTaan.Protocol.Characters;
 using OpenTaan.Tests.GameServer;
 using OpenTaan.Transport;
 
@@ -28,10 +31,36 @@ namespace OpenTaan.Tests.Conformance;
 /// server would answer that step on its merits. The steps after it are still played,
 /// and still have to match.
 /// </para>
+/// <para>
+/// One recorded value is adjusted before comparing, and only that one: a new
+/// character's appearance carries the account's gender, where the recordings carry 0,
+/// a placeholder of the server they were recorded from. The client draws a character's
+/// default parts by that gender. The recorded answer is decoded, that field set, and
+/// the answer encoded again, so every other byte is still compared as recorded.
+/// </para>
 /// </remarks>
 public sealed class SessionReplayTests
 {
     private static CancellationToken Cancel => TestContext.Current.CancellationToken;
+
+    // The starting values the sessions were recorded with: placeholders, not a design.
+    private static readonly CharacterOptions RecordedCharacterOptions = new()
+    {
+        CreatorParts = SessionHarness.ShippedCharacterOptions().CreatorParts,
+        Start = new CharacterStart
+        {
+            ExperienceCeiling = 300,
+            Gold = 1_000_000,
+            RankPlacement = 1,
+            RankScore = 1,
+            LeagueMoney = 1,
+            Wins = 1,
+            Losses = 1,
+            ForceMedals = 1,
+            KillMedals = 1,
+            SupportMedals = 1,
+        },
+    };
 
     [Fact]
     public async Task EveryParticipantIsAnsweredAsRecordedUntilItLeavesThisStage()
@@ -56,7 +85,8 @@ public sealed class SessionReplayTests
         var services = SessionHarness.Services(
             requireRegistration: session.World?.Authentication ?? false,
             gameMasters: session.World?.GmAccountEmails,
-            handshakeKeys: () => new HandshakeKeys(nextHandshake!.FirstSeed, nextHandshake.SecondSeed, nextHandshake.Shift));
+            handshakeKeys: () => new HandshakeKeys(nextHandshake!.FirstSeed, nextHandshake.SecondSeed, nextHandshake.Shift),
+            characterOptions: RecordedCharacterOptions);
 
         var connections = new Dictionary<string, Connection>(StringComparer.Ordinal);
         var compared = 0;
@@ -116,7 +146,7 @@ public sealed class SessionReplayTests
                 await connection.Client.SendBodyAsync(body);
                 foreach (var frame in exchange.Frames)
                 {
-                    Compare(failures, where, frame.Body(), await connection.Client.ReceiveBodyAsync());
+                    Compare(failures, where, Adjusted(frame.Body()), await connection.Client.ReceiveBodyAsync());
                     compared++;
                 }
             }
@@ -141,6 +171,24 @@ public sealed class SessionReplayTests
             .TakeWhile(exchange => exchange.Event != "connect")
             .Select(exchange => exchange.Crypto)
             .FirstOrDefault(crypto => crypto is not null);
+
+    // The recorded answer with each new character's appearance given its account's
+    // gender, which the character's own description carries. See the remarks above.
+    private static byte[] Adjusted(byte[] recorded)
+    {
+        if (BinaryPrimitives.ReadUInt32LittleEndian(recorded) != PrNewCharacter.RegistryId
+            || PrNewCharacter.TryRead(recorded).Packet is not { Catalog: { } catalog } answer)
+        {
+            return recorded;
+        }
+
+        var appearances = catalog.Appearances
+            .Select((appearance, position) => appearance with { Gender = catalog.Characters[position].Gender })
+            .ToArray();
+        var adjusted = new ArrayBufferWriter<byte>();
+        (answer with { Catalog = new CharacterCatalog(catalog.Characters, appearances) }).Write(adjusted);
+        return adjusted.WrittenSpan.ToArray();
+    }
 
     private static bool IsThrottleRefusal(Exchange exchange) =>
         exchange.Frames.Count == 1

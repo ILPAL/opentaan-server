@@ -2,7 +2,7 @@
 
 What OpenTaan protects, from whom, and how. Each threat names the control that
 addresses it and where that control is tested, or says plainly that it is
-open. Last reviewed 2026-09-22. Review again when a new entry point is added
+open. Last reviewed 2026-11-02. Review again when a new entry point is added
 (the game server transport, the control channel, the operator portal) or
 before any deployment beyond a local machine.
 
@@ -119,9 +119,9 @@ does not exist yet; the control comes with it).
 
 | Id | Threat | Control | Status |
 |---|---|---|---|
-| T-G1 | Oversized or malformed frames exhaust memory or crash the server | Hard size limits before allocating; parsers that reject input instead of trusting lengths; transport tests with hostile input | Mitigated for the login stage: the transport and the codecs refuse impossible lengths and counts before allocating (`FrameReaderTests`, `PacketReaderTests`); each connection reads into one fixed buffer the size of the receive window, and a frame that cannot be read or a body that cannot be decoded closes the connection at once (`SessionTests`). Each new codec brings its own hostile tests |
+| T-G1 | Oversized or malformed frames exhaust memory or crash the server | Hard size limits before allocating; parsers that reject input instead of trusting lengths; transport tests with hostile input | Mitigated for the login and character stages: the transport and the codecs refuse impossible lengths and counts before allocating (`FrameReaderTests`, `PacketReaderTests`); each connection reads into one fixed buffer the size of the receive window, and a frame that cannot be read or a body that cannot be decoded closes the connection at once (`SessionTests`). Each new codec brings its own hostile tests |
 | T-G2 | Connection floods, or clients that hold connections and memory without using them | Limits per address and overall; an idle timeout; a bounded send queue and a send timeout, so a client that stops reading costs only its own connection | Partly: all four (`ConnectionLimiterTests`, `GameListenerTests`, `SessionTests`); no limit on packets per second yet |
-| T-G3 | A crafted client gives itself items or currency | The server owns all game state; client input states intent and is checked against it; currency changes only through the server's own rules and approved adjustments | Planned with game logic |
+| T-G3 | A crafted client gives itself items or currency, or acts on characters that are not its own | The server owns all game state; client input states intent and is checked against it; currency changes only through the server's own rules and approved adjustments. A character is selected or deleted only by its own account; a new character's starting values come from configuration, never the request, and it keeps only the appearance parts the client's creator offers | Partly: ownership and creation (`CharacterFlowTests`, `InMemoryCharacterStoreTests`); appearance item ids are not checked against the client's item data yet, and the rest comes with game logic |
 | T-G4 | Traffic between client and server is read | The client fixes the protocol, including its encryption, and the server cannot change it; nothing is sent to the client that it may not see | Accepted: a property of the client |
 | T-G5 | Game account passwords are cracked from a database copy | Hashing is done by the game server; the admin server never reads the column | Planned with persistence |
 | T-G6 | A handshake switches encryption off, or one client predicts another's seeds | Handshake values that derive the plaintext seed cannot be constructed; generation re-draws them and fails loudly rather than fall back; values come from a cryptographic generator | Mitigated: `HandshakeKeysTests` |
@@ -129,6 +129,8 @@ does not exist yet; the control comes with it).
 | T-G8 | Game account passwords are guessed, or any account is logged in to | Outside Development an account must be created before it logs in, with the password it was created with, compared in constant time; the server refuses to start with that switched off; a throttle per account and per address | Partly: registration and passwords enforced (`LoginFlowTests`), and the start-up check; no throttle yet (planned with persistence) |
 | T-G9 | A player gets the game master console | Only configuration names game master accounts, never a packet; the flag opens the client's console and nothing more, and every game master request is checked again by the server | Partly: the flag comes only from configuration (`LoginFlowTests`); no game master requests are handled yet |
 | T-G10 | One account is played twice at once, by two clients or by one client naming it in both of its slots: each copy spends the same items, messages reach the wrong copy, and a match pays twice | An account is live on one connection at a time. A login naming an account twice, or an account another connection holds, is refused; the connection already playing is never closed for it. The check follows the password check, so it cannot tell anyone whether an account is online, and it is one step with the claim, so of two logins at once exactly one succeeds. An account is freed when its connection closes, including by the idle timeout; a match will pay each character once whatever seats it holds | Partly: login refuses both (`LoginFlowTests`, `LoggedInAccountsTests`); the payout rule comes with matches |
+| T-G11 | A crafted request makes the server echo an account slot the client then writes through: the client stores the characters a creation or deletion answer carries at the slot it names, without checking it, so an echoed slot of the attacker's choosing is a write into the client's memory at an offset they pick | Only a slot the connection holds is ever echoed; any other is answered for slot 0, and the request still gets an answer, since the client waits for it with no time limit | Mitigated: `CharacterFlowTests` (slots 1, 7 and 255 on a one-account connection, for creation and deletion) |
+| T-G12 | Character names are listed by asking about each one: the name check and the in-game lookup both say whether a name is taken | A name no client could create is answered without a lookup; a throttle per connection, and collapsing the copies of one request the client sends on each of its connections, come with the second connection of the game stage | Open: no throttle yet |
 
 ### Supply chain and CI
 
@@ -150,5 +152,6 @@ does not exist yet; the control comes with it).
 5. **T-R2:** refused attempts are not recorded.
 6. **T-G8:** no login throttle, so passwords can be guessed as fast as the
    network allows.
-7. **T-A3, T-A5 and T-S4:** local-only settings that need changing before any
+7. **T-G12:** no throttle on name checks, so character names can be listed.
+8. **T-A3, T-A5 and T-S4:** local-only settings that need changing before any
    shared deployment.

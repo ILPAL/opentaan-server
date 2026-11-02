@@ -67,6 +67,10 @@ public sealed partial class PacketDispatcher
             [PqCreateAccount.RegistryId] = Route.To<PqCreateAccount>(PqCreateAccount.TryRead, accounts.CreateAccountAsync),
             [PqUserLogin.RegistryId] = Route.To<PqUserLogin>(PqUserLogin.TryRead, accounts.UserLoginAsync),
             [PqExistCharacter.RegistryId] = Route.To<PqExistCharacter>(PqExistCharacter.TryRead, characters.ExistCharacterAsync),
+            [PqConfirmName.RegistryId] = Route.To<PqConfirmName>(PqConfirmName.TryRead, characters.ConfirmNameAsync),
+            [PqNewCharacter.RegistryId] = Route.To<PqNewCharacter>(PqNewCharacter.TryRead, characters.NewCharacterAsync),
+            [PqSelectCharacter.RegistryId] = Route.To<PqSelectCharacter>(PqSelectCharacter.TryRead, characters.SelectCharacterAsync),
+            [PqDelCharacter.RegistryId] = Route.To<PqDelCharacter>(PqDelCharacter.TryRead, characters.DelCharacterAsync),
         };
     }
 
