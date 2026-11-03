@@ -74,6 +74,7 @@ builder.Services.AddSingleton<AccountHandlers>();
 builder.Services.AddSingleton<CharacterHandlers>();
 builder.Services.AddSingleton<ChannelHandlers>();
 builder.Services.AddSingleton<LobbyHandlers>();
+builder.Services.AddSingleton<LobbyRoster>();
 builder.Services.AddSingleton<PacketDispatcher>();
 builder.Services.AddSingleton<LoggedInAccounts>();
 
@@ -113,6 +114,7 @@ builder.Services.AddSingleton(provider => new SessionServices(
     provider.GetRequiredService<HandshakeKeySource>(),
     provider.GetRequiredService<LoggedInAccounts>(),
     provider.GetRequiredService<ChannelDirectory>(),
+    provider.GetRequiredService<LobbyRoster>(),
     provider.GetRequiredService<ILogger<ClientSession>>()));
 
 builder.Services.AddHostedService<GameListener>();

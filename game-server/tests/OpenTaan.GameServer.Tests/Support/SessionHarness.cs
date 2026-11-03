@@ -73,13 +73,19 @@ internal static class SessionHarness
             (ushort)(channelOptions.Server.PublicPort ?? options.Port),
             () => IPAddress.Loopback);
         var channels = new ChannelDirectory(channelOptions, address);
+        var lobbies = new LobbyRoster();
 
         var names = new PacketNames();
         var dispatcher = new PacketDispatcher(
             accounts,
             characters,
-            new ChannelHandlers(channels, NullLogger<ChannelHandlers>.Instance),
-            new LobbyHandlers(channels, Options.Create(portraitOptions ?? new PortraitOptions()), NullLogger<LobbyHandlers>.Instance),
+            new ChannelHandlers(channels, lobbies, NullLogger<ChannelHandlers>.Instance),
+            new LobbyHandlers(
+                channels,
+                lobbies,
+                characterStore,
+                Options.Create(portraitOptions ?? new PortraitOptions()),
+                NullLogger<LobbyHandlers>.Instance),
             names,
             NullLogger<PacketDispatcher>.Instance);
 
@@ -90,6 +96,7 @@ internal static class SessionHarness
             handshakeKeys ?? (() => HandshakeKeys.Generate(RandomNumberGenerator.Create())),
             new LoggedInAccounts(),
             channels,
+            lobbies,
             NullLogger<ClientSession>.Instance);
     }
 

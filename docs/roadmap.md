@@ -1,7 +1,7 @@
 # Roadmap
 
 Where OpenTaan stands against its plan: what was decided at the start, what is
-built, and what comes next. Last updated 2026-11-02.
+built, and what comes next. Last updated 2026-11-03.
 
 ## Goals
 
@@ -71,8 +71,8 @@ In order. Each item is one pull request unless noted.
    at a time, each codec compared byte for byte with the reference sessions before
    it is used. The handshake, the account and login packets, and the character
    packets (creation, name checks, selection and deletion), cash, channel selection
-   and entering the lobby are done and served by real sessions. Rooms come next,
-   with the other players in a lobby.
+   and the lobby with the players in it are done and served by real sessions.
+   Rooms come next.
 2. **CodeQL.** Static analysis of the Java and C# code, reported through GitHub
    code scanning.
 3. **Operator portal.** Pages served by the admin server: account lookup, requesting

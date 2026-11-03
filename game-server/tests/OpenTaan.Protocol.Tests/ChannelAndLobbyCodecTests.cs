@@ -194,6 +194,53 @@ public sealed class ChannelAndLobbyCodecTests
     }
 
     [Fact]
+    public void ALobbyUserListUpdateIsTheCharactersAddedThenTheIdsRemovedThenTheAddedAppearances()
+    {
+        var update = new PcLobbyUpdateUserList([CharacterSamples.Character], [0x01020304, 0x05060708], [CharacterSamples.Appearance]);
+
+        byte[] expected =
+        [
+            .. Encoded.UInt32(PcLobbyUpdateUserList.RegistryId),
+            .. Encoded.UInt32(1), .. CharacterSamples.CharacterBytes,
+            .. Encoded.UInt32(2), .. Encoded.UInt32(0x01020304), .. Encoded.UInt32(0x05060708),
+            .. Encoded.UInt32(1), .. CharacterSamples.AppearanceBytes,
+        ];
+
+        Assert.Equal(expected, Encoded.Bytes(update.Write));
+        var read = PcLobbyUpdateUserList.TryRead(expected).Packet!;
+        Assert.Equal(CharacterSamples.Character, Assert.Single(read.Characters));
+        Assert.Equal([0x01020304u, 0x05060708u], read.RemovedCharacterIds);
+        var appearance = Assert.Single(read.Appearances);
+        Assert.Equal(CharacterSamples.Appearance.Field08, appearance.Field08);
+        Assert.Equal(CharacterSamples.Slots, appearance.Slots);
+    }
+
+    [Fact]
+    public void ALobbyUserListUpdateMadeToAddOrToRemoveCarriesNothingElse()
+    {
+        var adding = PcLobbyUpdateUserList.Adding([CharacterSamples.Character], [CharacterSamples.Appearance]);
+        var removing = PcLobbyUpdateUserList.Removing([0x01020304]);
+
+        Assert.Equal((1, 0, 1), (adding.Characters.Count, adding.RemovedCharacterIds.Count, adding.Appearances.Count));
+        Assert.Equal((0, 1, 0), (removing.Characters.Count, removing.RemovedCharacterIds.Count, removing.Appearances.Count));
+    }
+
+    [Fact]
+    public void ALobbyUserListUpdateWhoseAddedCharactersAndAppearancesDoNotPairIsRefused()
+    {
+        Assert.Throws<ArgumentException>(() => new PcLobbyUpdateUserList([CharacterSamples.Character], [], []));
+
+        byte[] unpaired =
+        [
+            .. Encoded.UInt32(PcLobbyUpdateUserList.RegistryId),
+            .. Encoded.UInt32(1), .. CharacterSamples.CharacterBytes,
+            .. Encoded.UInt32(0),
+            .. Encoded.UInt32(0),
+        ];
+        Assert.Equal(PacketError.UnexpectedValue, PcLobbyUpdateUserList.TryRead(unpaired).Error);
+    }
+
+    [Fact]
     public void LeavingTheLobbyIsTheIdAloneBothWays()
     {
         Assert.Equal(Encoded.UInt32(PqLobbyLeave.RegistryId), Encoded.Bytes(new PqLobbyLeave().Write));

@@ -35,7 +35,8 @@ generated from the reference data, so only the layouts this server implements
 appear here. So far: the handshake, the account and login packets, the
 character packets for creation, name checks, selection and deletion, and the
 packets for cash, the channel list, channel moves, entering and leaving the
-lobby, and the picture the client sends of a character.
+lobby, the lobby's player list and its changes, and the picture the client sends
+of a character.
 
 Some packets carry data in the client's envelope (`DataEnvelope`): a signature, a
 checksum, and contents that may be compressed, scrambled with a key, or both. The
@@ -117,8 +118,14 @@ network but not behind a router or in a container. The address and how it was
 chosen are logged at start-up.
 
 A lobby entry goes to the channel the connection moved to, or the first one when
-it moved nowhere. Other players and rooms come with the room stage, so a lobby is
-shown empty. Cash is the account's, and starts at `Accounts:Start:Cash`; a cash
+it moved nowhere. The player is listed everyone in that lobby, itself included,
+and everyone already there is told it came in; when it leaves, by leaving the
+lobby, by moving to a channel or by its connection closing, everyone left is told
+it went. The client adds a player for every add and removes one for every removal
+without checking what it shows, so each player is added once and removed once,
+and listing a lobby, adding a player and telling the others are one step under
+one lock. A lobby too large for one frame is listed in as many frames as it
+needs. Rooms come with the room stage, so the room list is empty. Cash is the account's, and starts at `Accounts:Start:Cash`; a cash
 request for a slot the connection does not hold is answered for slot 0, as the
 character requests are.
 

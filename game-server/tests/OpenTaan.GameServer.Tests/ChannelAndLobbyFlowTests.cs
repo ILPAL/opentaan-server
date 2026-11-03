@@ -148,17 +148,17 @@ public sealed class ChannelAndLobbyFlowTests
     }
 
     [Fact]
-    public async Task ALobbyEntryWithoutAMoveEntersTheFirstChannelsEmptyLobby()
+    public async Task ALobbyEntryWithoutAMoveEntersTheFirstChannelsLobby()
     {
         await using var connection = await ConnectAsync();
-        await PlayAsync(connection, "player@example.test", "Kimi");
+        var character = await PlayAsync(connection, "player@example.test", "Kimi");
 
         await connection.Client.SendAsync(new PqLobbyEnter(1, 0, 1));
 
         Assert.Equal(new PrLobbyEnter(11, LobbyEnterResult.Entered), await connection.Client.ReceiveAsync<PrLobbyEnter>(PrLobbyEnter.TryRead));
         Assert.True((await connection.Client.ReceiveAsync<PcLobbyInitRoomList>(PcLobbyInitRoomList.TryRead)) is not null);
         var users = await connection.Client.ReceiveAsync<PcLobbyInitUserList>(PcLobbyInitUserList.TryRead);
-        Assert.Empty(users.Characters);
+        Assert.Equal(character, Assert.Single(users.Characters).CharacterId);
     }
 
     [Fact]

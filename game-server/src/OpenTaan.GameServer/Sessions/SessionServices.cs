@@ -1,4 +1,5 @@
 using OpenTaan.GameServer.Channels;
+using OpenTaan.GameServer.Lobby;
 using OpenTaan.Transport;
 
 namespace OpenTaan.GameServer.Sessions;
@@ -16,6 +17,7 @@ public delegate HandshakeKeys HandshakeKeySource();
 /// </param>
 /// <param name="LoggedIn">Which connection each logged-in account is live on.</param>
 /// <param name="Channels">The channels, and which one each connection is in.</param>
+/// <param name="Lobbies">Who is in each channel's lobby.</param>
 /// <param name="Logger">The sessions' logger.</param>
 public sealed record SessionServices(
     PacketDispatcher Dispatcher,
@@ -24,4 +26,5 @@ public sealed record SessionServices(
     HandshakeKeySource HandshakeKeys,
     LoggedInAccounts LoggedIn,
     ChannelDirectory Channels,
+    LobbyRoster Lobbies,
     ILogger<ClientSession> Logger);

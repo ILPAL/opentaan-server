@@ -8,6 +8,7 @@ using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Channels;
 using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.Data;
+using OpenTaan.Protocol.Lobby;
 using OpenTaan.Tests.GameServer;
 using OpenTaan.Transport;
 
@@ -37,9 +38,16 @@ namespace OpenTaan.Tests.Conformance;
 /// and still have to match.
 /// </para>
 /// <para>
-/// A recorded answer to a request this server handles can hold packets of later stages,
-/// such as friends or quests sent on entering the lobby. A recorded packet this server
-/// has no codec for is not expected; every other one is, in order.
+/// A recorded answer to a request this server handles can hold packets of later stages.
+/// A recorded packet this server has no codec for is not expected; every other one is,
+/// in order.
+/// </para>
+/// <para>
+/// The lobby's player list is not compared, in either direction. The recordings list
+/// every lobby as empty and never add or remove a player, where this server lists the
+/// players in it and tells them of each one who comes or goes, to participants whose
+/// steps may be anywhere in the session. Who is listed is checked through real
+/// connections in the game server's own tests.
 /// </para>
 /// <para>
 /// Two kinds of recorded value are adjusted before comparing, and only those. A new
@@ -174,9 +182,9 @@ public sealed class SessionReplayTests
 
                 await connection.Client.SendBodyAsync(body);
                 var reconnects = false;
-                foreach (var recorded in exchange.Frames.Select(frame => frame.Body()).Where(IsImplemented))
+                foreach (var recorded in exchange.Frames.Select(frame => frame.Body()).Where(IsImplemented).Where(body => !IsLobbyPlayerList(body)))
                 {
-                    var actual = await connection.Client.ReceiveBodyAsync();
+                    var actual = await ReceiveComparedAsync(connection);
                     if (IsReconnect(recorded))
                     {
                         CompareEnteredInstead(failures, where, recorded, actual);
@@ -238,6 +246,23 @@ public sealed class SessionReplayTests
     };
 
     private static bool IsImplemented(byte[] body) => Implemented.Contains(BinaryPrimitives.ReadUInt32LittleEndian(body));
+
+    private static bool IsLobbyPlayerList(byte[] body) =>
+        BinaryPrimitives.ReadUInt32LittleEndian(body) is var id
+        && (id == PcLobbyInitUserList.RegistryId || id == PcLobbyUpdateUserList.RegistryId);
+
+    // The participant's next body that the replay compares, past any lobby player list.
+    private static async Task<byte[]> ReceiveComparedAsync(Connection connection)
+    {
+        while (true)
+        {
+            var body = await connection.Client.ReceiveBodyAsync();
+            if (!IsLobbyPlayerList(body))
+            {
+                return body;
+            }
+        }
+    }
 
     // The recorded answer with the adjustments the remarks above describe.
     private static byte[] Adjusted(byte[] recorded)

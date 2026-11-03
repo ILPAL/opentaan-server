@@ -193,8 +193,9 @@ public sealed partial class ClientSession
             // does not catch arrives here without one, and it leaves as a server error.
             Close(CloseReason.ServerError);
 
-            // The read loop awaits every handler, so no login or channel move can still be under way here.
+            // The read loop awaits every handler, so no login, channel move or lobby entry can still be under way here.
             _services.LoggedIn.Release(this, Accounts);
+            _services.Lobbies.Leave(this);
             _services.Channels.Leave(this);
 
             await writing.ConfigureAwait(false);

@@ -1,3 +1,4 @@
+using OpenTaan.GameServer.Lobby;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol.Channels;
 
@@ -8,7 +9,7 @@ namespace OpenTaan.GameServer.Channels;
 /// Every channel is on this server, so a move is answered as entered and the player stays
 /// on its connection. The client then goes to the channel's lobby.
 /// </remarks>
-public sealed partial class ChannelHandlers(ChannelDirectory channels, ILogger<ChannelHandlers> logger)
+public sealed partial class ChannelHandlers(ChannelDirectory channels, LobbyRoster lobbies, ILogger<ChannelHandlers> logger)
 {
     /// <summary>Sends the channel list, with how full each channel is now.</summary>
     public ValueTask GetChannelListAsync(ClientSession session, PqGetChannelList request, CancellationToken cancellationToken)
@@ -31,6 +32,11 @@ public sealed partial class ChannelHandlers(ChannelDirectory channels, ILogger<C
     /// it then names no channel and passes the person to follow. Following needs friends
     /// and guilds, which do not exist yet, so such a move is refused like any move to a
     /// channel that does not exist: as closed, which the client shows and gets over.
+    /// </para>
+    /// <para>
+    /// A move that is entered takes the connection out of the lobby it was in, as the
+    /// client goes to the new channel's lobby next. One that is refused leaves it where it
+    /// was: the client stays there.
     /// </para>
     /// </remarks>
     public ValueTask MoveToAsync(ClientSession session, PqChannelMoveTo request, CancellationToken cancellationToken)
@@ -59,6 +65,7 @@ public sealed partial class ChannelHandlers(ChannelDirectory channels, ILogger<C
 
         if (result == ChannelMoveResult.Entered)
         {
+            lobbies.Leave(session);
             LogEntered(logger, session.Id, request.ChannelId);
         }
 
