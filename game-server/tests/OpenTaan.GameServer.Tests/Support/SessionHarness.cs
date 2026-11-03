@@ -5,7 +5,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OpenTaan.GameServer;
 using OpenTaan.GameServer.Accounts;
+using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Characters;
+using OpenTaan.GameServer.Lobby;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Transport;
 
@@ -32,6 +34,13 @@ internal static class SessionHarness
         Start = new CharacterStart { ExperienceCeiling = 300 },
     };
 
+    /// <summary>The channel settings the server ships with, as <c>appsettings.json</c> sets them.</summary>
+    public static ChannelOptions ShippedChannelOptions() => new()
+    {
+        Server = new ChannelServer { Name = "Alpha", Type = 1 },
+        List = [.. Enumerable.Range(1, 5).Select(id => new ChannelSettings { Id = (ushort)id, Name = $"Channel {id}", Capacity = 100 })],
+    };
+
     /// <summary>What sessions share, with stores and settings a test may choose.</summary>
     public static SessionServices Services(
         bool requireRegistration = true,
@@ -40,7 +49,9 @@ internal static class SessionHarness
         GameServerOptions? options = null,
         HandshakeKeySource? handshakeKeys = null,
         ICharacterStore? characterStore = null,
-        CharacterOptions? characterOptions = null)
+        CharacterOptions? characterOptions = null,
+        ChannelOptions? channelOptions = null,
+        PortraitOptions? portraitOptions = null)
     {
         characterStore ??= new InMemoryCharacterStore();
         var accounts = new AccountHandlers(
@@ -53,15 +64,39 @@ internal static class SessionHarness
             Options.Create(characterOptions ?? ShippedCharacterOptions()),
             NullLogger<CharacterHandlers>.Instance);
 
+        options ??= new GameServerOptions();
+        channelOptions ??= ShippedChannelOptions();
+        // Never this machine's own address, so no test depends on the network it runs on.
+        var address = AdvertisedAddress.Choose(
+            channelOptions.Server.PublicAddress,
+            options.BindAddress,
+            (ushort)(channelOptions.Server.PublicPort ?? options.Port),
+            () => IPAddress.Loopback);
+        var channels = new ChannelDirectory(channelOptions, address);
+        var lobbies = new LobbyRoster();
+
         var names = new PacketNames();
-        var dispatcher = new PacketDispatcher(accounts, characters, names, NullLogger<PacketDispatcher>.Instance);
+        var dispatcher = new PacketDispatcher(
+            accounts,
+            characters,
+            new ChannelHandlers(channels, lobbies, NullLogger<ChannelHandlers>.Instance),
+            new LobbyHandlers(
+                channels,
+                lobbies,
+                characterStore,
+                Options.Create(portraitOptions ?? new PortraitOptions()),
+                NullLogger<LobbyHandlers>.Instance),
+            names,
+            NullLogger<PacketDispatcher>.Instance);
 
         return new SessionServices(
             dispatcher,
             names,
-            options ?? new GameServerOptions(),
+            options,
             handshakeKeys ?? (() => HandshakeKeys.Generate(RandomNumberGenerator.Create())),
             new LoggedInAccounts(),
+            channels,
+            lobbies,
             NullLogger<ClientSession>.Instance);
     }
 

@@ -32,8 +32,20 @@ its bytes is computed from that name by `RegistryIds.Of`, never written down.
 
 Codecs are added one stage of the protocol at a time and written by hand, not
 generated from the reference data, so only the layouts this server implements
-appear here. So far: the handshake, the account and login packets, and the
-character packets for creation, name checks, selection and deletion.
+appear here. So far: the handshake, the account and login packets, the
+character packets for creation, name checks, selection and deletion, and the
+packets for cash, the channel list, channel moves, entering and leaving the
+lobby, the lobby's player list and its changes, and the picture the client sends
+of a character.
+
+Some packets carry data in the client's envelope (`DataEnvelope`): a signature, a
+checksum, and contents that may be compressed, scrambled with a key, or both. The
+channel list is one, holding a tree of nodes shaped like XML (`DataNode`). Every
+form is read, because the client compresses what it builds when that saves space;
+the server writes envelopes uncompressed, as the client has always been sent them.
+Reading takes a size limit and checks it against the declared size before
+allocating anything, stops decompressing at that size, verifies the checksum, and
+refuses a tree nested deeper than 32 levels.
 
 ## Connections
 
@@ -88,6 +100,41 @@ answer cannot say no, that one closes the connection. A new character keeps only
 the appearance parts the client's creator offers (`Characters:CreatorParts`), so
 a modified client cannot give itself items or a partner at creation.
 
+## Channels and the lobby
+
+The channels are configured (`Channels`), all served by this server: a move to
+one is answered as entered, and the player stays on the connection it already
+has. The client lists them under one group, which it calls a server, and shows
+how full each is; a full or closed channel is refused, and the client does not
+try one it is told is either. Channels have no level range. Checking that a
+channel has room and taking the place are one step, so two players cannot both
+take its last place, and a place is freed when its connection closes.
+
+The client is told an address for the channels, which it would connect to only
+to move to a channel on another server. It is `Channels:Server:PublicAddress`
+when set; otherwise the bind address when that names one; otherwise the address
+of the network interface this machine sends from, which is right on a local
+network but not behind a router or in a container. The address and how it was
+chosen are logged at start-up.
+
+A lobby entry goes to the channel the connection moved to, or the first one when
+it moved nowhere. The player is listed everyone in that lobby, itself included,
+and everyone already there is told it came in; when it leaves, by leaving the
+lobby, by moving to a channel or by its connection closing, everyone left is told
+it went. The client adds a player for every add and removes one for every removal
+without checking what it shows, so each player is added once and removed once,
+and listing a lobby, adding a player and telling the others are one step under
+one lock. A lobby too large for one frame is listed in as many frames as it
+needs. Rooms come with the room stage, so the room list is empty. Cash is the account's, and starts at `Accounts:Start:Cash`; a cash
+request for a slot the connection does not hold is answered for slot 0, as the
+character requests are.
+
+On entering the lobby the client sends a PNG picture of each selected character.
+It is kept only when `Portraits:Folder` is set (Development sets `portraits`),
+as one file per character named by its id; a picture of a character the
+connection has not selected is dropped, and one that is not a PNG file is kept
+apart with a `.bin` extension.
+
 ## Protocol reference data
 
 The packet layouts and reference sessions this server is checked against are
@@ -110,8 +157,8 @@ dotnet run --project src/OpenTaan.GameServer
 
 This runs in the Development environment, where any login creates the account
 it names (`Accounts:RequireRegistration` is off). A real client can log in,
-create and select a character, and then waits at the lobby, which is the next
-stage. The server refuses to start with registration off in any other
+create and select a character, pick a channel and enter its lobby; rooms are the
+next stage. The server refuses to start with registration off in any other
 environment. Accounts and characters live in memory until the database stage.
 
 Settings live in `appsettings.json` and can be overridden with environment
@@ -127,4 +174,9 @@ variables, for example `GameServer__Port=2181`:
 | `Accounts:RequireRegistration` | `true` | Whether an account must be created, with its password, before it can log in. |
 | `Accounts:GameMasters` | none | Addresses of the accounts that log in as game masters. |
 | `Characters:Start` | gold and counters `0`, `ExperienceCeiling` `300` | What a new character starts with. Every character starts at level 1; `ExperienceCeiling` is where level 2 begins and must be above 0. |
+| `Accounts:Start:Cash` | `0` | The cash a new account starts with. |
+| `Channels:Server:Name`, `Channels:Server:Type` | `Alpha`, `1` | The group the channels are listed under. The client uses the type only to pick the group it shows first, by level. |
+| `Channels:Server:PublicAddress`, `Channels:Server:PublicPort` | none, `GameServer:Port` | The IPv4 address and port the client is told the channels are at; see above for what is used when none is set. |
+| `Channels:List` | `Channel 1` to `Channel 5`, room for 100 each | Each channel's `Id`, `Name`, `Capacity`, and optionally `Disabled` and `Mode` (`6`, ordinary; arena modes are not served yet). |
+| `Portraits:Folder` | none | Where the pictures clients send of their characters are kept. A relative path is taken from the content root. |
 | `Characters:CreatorParts` | `1, 3, 5, 8` | The appearance parts the client's character creator offers; a new character keeps only these. |

@@ -4,9 +4,11 @@ using System.Globalization;
 using System.Reflection;
 using OpenTaan.Protocol;
 using OpenTaan.Protocol.Accounts;
+using OpenTaan.Protocol.Channels;
 using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.Connection;
 using OpenTaan.Protocol.Handshake;
+using OpenTaan.Protocol.Lobby;
 using OpenTaan.Transport;
 
 namespace OpenTaan.Tests.Conformance;
@@ -46,6 +48,19 @@ public sealed class ProtocolReplayTests
         [PrConfirmName.RegistryId] = body => Replay.Of(PrConfirmName.TryRead(body), packet => packet.Write),
         [PqDelCharacter.RegistryId] = body => Replay.Of(PqDelCharacter.TryRead(body), packet => packet.Write),
         [PrDelCharacter.RegistryId] = body => Replay.Of(PrDelCharacter.TryRead(body), packet => packet.Write),
+        [PcUpdateCash.RegistryId] = body => Replay.Of(PcUpdateCash.TryRead(body), packet => packet.Write),
+        [PqGetChannelList.RegistryId] = body => Replay.Of(PqGetChannelList.TryRead(body), packet => packet.Write),
+        [PrGetChannelList.RegistryId] = body => Replay.Of(PrGetChannelList.TryRead(body), packet => packet.Write),
+        [PqChannelMoveTo.RegistryId] = body => Replay.Of(PqChannelMoveTo.TryRead(body), packet => packet.Write),
+        [PrChannelMoveTo.RegistryId] = body => Replay.Of(PrChannelMoveTo.TryRead(body), packet => packet.Write),
+        [PqLobbyEnter.RegistryId] = body => Replay.Of(PqLobbyEnter.TryRead(body), packet => packet.Write),
+        [PrLobbyEnter.RegistryId] = body => Replay.Of(PrLobbyEnter.TryRead(body), packet => packet.Write),
+        [PcLobbyInitRoomList.RegistryId] = body => Replay.Of(PcLobbyInitRoomList.TryRead(body), packet => packet.Write),
+        [PcLobbyInitUserList.RegistryId] = body => Replay.Of(PcLobbyInitUserList.TryRead(body), packet => packet.Write),
+        [PqLobbyLeave.RegistryId] = body => Replay.Of(PqLobbyLeave.TryRead(body), packet => packet.Write),
+        [PrLobbyLeave.RegistryId] = body => Replay.Of(PrLobbyLeave.TryRead(body), packet => packet.Write),
+        [PcUploadWebImage.RegistryId] = body => Replay.Of(PcUploadWebImage.TryRead(body), packet => packet.Write),
+        [PcLobbyUpdateUserList.RegistryId] = body => Replay.Of(PcLobbyUpdateUserList.TryRead(body), packet => packet.Write),
     };
 
     // Codecs for packets no recorded session carries, built from the client's own reader.
@@ -54,6 +69,8 @@ public sealed class ProtocolReplayTests
     private static readonly Dictionary<uint, byte[]> Unrecorded = new()
     {
         [PrFirstPacket.RegistryId] = Written(new PrFirstPacket(0x11, 0x44332211, 0x01)),
+        [PcUploadWebImage.RegistryId] = Written(new PcUploadWebImage(0x44332211, [0x55, 0x66, 0x77])),
+        [PcLobbyUpdateUserList.RegistryId] = Written(PcLobbyUpdateUserList.Removing([0x44332211, 0x88776655])),
     };
 
     [Fact]
@@ -221,6 +238,11 @@ public sealed class ProtocolReplayTests
         [PrFirstPacket.RegistryId] = body => PrFirstPacket.TryRead(body).Packet,
         [PrConfirmName.RegistryId] = body => PrConfirmName.TryRead(body).Packet,
         [PrSelectCharacter.RegistryId] = body => PrSelectCharacter.TryRead(body).Packet,
+        [PcUpdateCash.RegistryId] = body => PcUpdateCash.TryRead(body).Packet,
+        [PrLobbyEnter.RegistryId] = body => PrLobbyEnter.TryRead(body).Packet,
+        [PcLobbyInitRoomList.RegistryId] = body => PcLobbyInitRoomList.TryRead(body).Packet,
+        [PcLobbyInitUserList.RegistryId] = body => PcLobbyInitUserList.TryRead(body).Packet,
+        [PrLobbyLeave.RegistryId] = body => PrLobbyLeave.TryRead(body).Packet,
     };
 
     private static object Decode(uint registryId, byte[] body) =>

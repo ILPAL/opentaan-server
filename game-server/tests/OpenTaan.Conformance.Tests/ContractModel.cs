@@ -28,6 +28,7 @@ public sealed record Session(
     string Lifecycle,
     string Clock,
     World? World,
+    RecordedAddress? AdvertisedAddress,
     IReadOnlyList<Exchange> Exchanges)
 {
     /// <summary>The file this session was read from, for test failure messages.</summary>
@@ -43,6 +44,9 @@ public sealed record Session(
 /// <param name="Authentication">Whether an account had to exist, with its password, to log in.</param>
 /// <param name="GmAccountEmails">The accounts configured as game masters.</param>
 public sealed record World(bool Authentication, IReadOnlyList<string>? GmAccountEmails);
+
+/// <summary>The address the server told clients its channels were at.</summary>
+public sealed record RecordedAddress(string Ip, ushort Port);
 
 /// <summary>
 /// One step of a session: who it came from, what arrived, and what went back. Each

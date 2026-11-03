@@ -22,4 +22,14 @@ public sealed class AccountOptions
     /// master request is still checked by the server when it arrives.
     /// </remarks>
     public IReadOnlyList<string> GameMasters { get; set; } = [];
+
+    /// <summary>What a new account starts with.</summary>
+    public AccountStart Start { get; set; } = new();
+}
+
+/// <summary>What a new account starts with.</summary>
+public sealed class AccountStart
+{
+    /// <summary>Cash, the currency bought with real money.</summary>
+    public uint Cash { get; set; }
 }

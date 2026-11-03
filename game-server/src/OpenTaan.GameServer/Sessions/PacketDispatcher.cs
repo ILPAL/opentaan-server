@@ -1,10 +1,14 @@
 using System.Buffers.Binary;
 using OpenTaan.GameServer.Accounts;
+using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Characters;
+using OpenTaan.GameServer.Lobby;
 using OpenTaan.Protocol;
 using OpenTaan.Protocol.Accounts;
+using OpenTaan.Protocol.Channels;
 using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.Connection;
+using OpenTaan.Protocol.Lobby;
 
 namespace OpenTaan.GameServer.Sessions;
 
@@ -50,11 +54,15 @@ public sealed partial class PacketDispatcher
     public PacketDispatcher(
         AccountHandlers accounts,
         CharacterHandlers characters,
+        ChannelHandlers channels,
+        LobbyHandlers lobby,
         PacketNames names,
         ILogger<PacketDispatcher> logger)
     {
         ArgumentNullException.ThrowIfNull(accounts);
         ArgumentNullException.ThrowIfNull(characters);
+        ArgumentNullException.ThrowIfNull(channels);
+        ArgumentNullException.ThrowIfNull(lobby);
 
         _names = names;
         _logger = logger;
@@ -71,6 +79,12 @@ public sealed partial class PacketDispatcher
             [PqNewCharacter.RegistryId] = Route.To<PqNewCharacter>(PqNewCharacter.TryRead, characters.NewCharacterAsync),
             [PqSelectCharacter.RegistryId] = Route.To<PqSelectCharacter>(PqSelectCharacter.TryRead, characters.SelectCharacterAsync),
             [PqDelCharacter.RegistryId] = Route.To<PqDelCharacter>(PqDelCharacter.TryRead, characters.DelCharacterAsync),
+            [PcUpdateCash.RegistryId] = Route.To<PcUpdateCash>(PcUpdateCash.TryRead, accounts.UpdateCashAsync),
+            [PqGetChannelList.RegistryId] = Route.To<PqGetChannelList>(PqGetChannelList.TryRead, channels.GetChannelListAsync),
+            [PqChannelMoveTo.RegistryId] = Route.To<PqChannelMoveTo>(PqChannelMoveTo.TryRead, channels.MoveToAsync),
+            [PqLobbyEnter.RegistryId] = Route.To<PqLobbyEnter>(PqLobbyEnter.TryRead, lobby.EnterAsync),
+            [PqLobbyLeave.RegistryId] = Route.To<PqLobbyLeave>(PqLobbyLeave.TryRead, lobby.LeaveAsync),
+            [PcUploadWebImage.RegistryId] = Route.To<PcUploadWebImage>(PcUploadWebImage.TryRead, lobby.UploadPortraitAsync),
         };
     }
 
