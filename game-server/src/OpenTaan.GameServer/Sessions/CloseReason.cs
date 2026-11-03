@@ -35,6 +35,12 @@ public enum CloseReason
     /// </summary>
     InvalidSelection,
 
+    /// <summary>
+    /// A request that needs selected characters arrived before any were, which no real
+    /// client sends, and its answer has no way to refuse it.
+    /// </summary>
+    NoCharacterSelected,
+
     /// <summary>A reply was too large to fit the client's receive window.</summary>
     OversizedReply,
 

@@ -72,6 +72,9 @@ The expensive bugs happen when two requests arrive at the same moment.
 - Sixty-four game connections claim one account at the same moment, released
   together by a barrier. Exactly one holds it, and every other is told which
   one. A version that checked and claimed under two locks failed this test.
+- Twelve players enter one lobby at the same moment, and each must end up
+  listing all twelve, every one exactly once. A version that listed the lobby and
+  added the player without the roster's lock failed this test on every run.
 
 The trigger's comment says that a writer under `REPEATABLE READ` fails rather
 than forking the chain. That claim was tested by hand with two sessions before
@@ -231,6 +234,25 @@ with real tokens:
   the one field is adjusted in the recording before comparing: the recorded
   answer is decoded, the field set, and the answer encoded again, so every other
   byte is still compared as recorded. A planted run without the adjustment fails.
+- **A recorded level range nobody applied.** The reference sessions list every
+  channel for levels 50 to 100, and then let level 1 characters into one. This
+  server lists no range, since it applies none, and the session replay adjusts
+  the recorded list the way it adjusts the gender above. A planted range fails
+  the replay and a unit test.
+- **A field no test could see.** A planted channel move that described every
+  channel as an ordinary one passed: every channel in the tests was ordinary. A
+  closed channel of another kind is now described in a test.
+- **A restored file older than its bug.** Planted bugs are undone by restoring
+  the file from a copy, which leaves it older than the build that holds the bug,
+  so an incremental build kept the planted code and later runs failed for a bug
+  that was no longer in the source. Planted runs are now followed by a build
+  from scratch.
+- **A planted bug that never ran.** Warnings fail the build, and three of the
+  first bugs planted in the lobby's player list left a parameter unused or code
+  unreachable. Their runs failed to build, reported no failing test, and read as
+  bugs the tests missed. The runs now tell a build that failed from tests that
+  passed, and those bugs were planted again in a form that builds; each was
+  caught.
 - **A test that slowed every other test.** The first version of the concurrent
   claim test held sixty-four thread-pool threads on its barrier. The pool
   starved, the whole suite took ten times as long, and two tests with short
@@ -279,6 +301,15 @@ against real sessions over loopback sockets, each participant on a connection of
 its own and greeted with the handshake values the session recorded, and every
 reply, the greeting included, must match the recording byte for byte. A
 participant is followed until it sends something that belongs to a later stage.
+A recorded answer can also hold packets of later stages; a recorded packet the
+server has no codec for is not expected, and every other one is, in order. One
+answer differs by design: the recordings move to another channel by reconnecting,
+and this server keeps the player on its connection, so that move is checked as
+entered instead. And the lobby's player list is not compared at all: the
+recordings list every lobby as empty and never add or remove anyone, where this
+server lists who is there and tells them of each player who comes or goes. Who
+is listed is checked through real connections instead, player by player and add
+by add.
 
 Codecs are written by hand and published one stage of the protocol at a time,
 so the repository shows the layouts this server implements and nothing more.

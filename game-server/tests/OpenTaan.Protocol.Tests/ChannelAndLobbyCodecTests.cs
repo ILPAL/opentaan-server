@@ -1,6 +1,7 @@
 using OpenTaan.Protocol;
 using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Channels;
+using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.Data;
 using OpenTaan.Protocol.Lobby;
 
@@ -193,11 +194,94 @@ public sealed class ChannelAndLobbyCodecTests
     }
 
     [Fact]
+    public void ALobbyUserListUpdateIsTheCharactersAddedThenTheIdsRemovedThenTheAddedAppearances()
+    {
+        var update = new PcLobbyUpdateUserList([CharacterSamples.Character], [0x01020304, 0x05060708], [CharacterSamples.Appearance]);
+
+        byte[] expected =
+        [
+            .. Encoded.UInt32(PcLobbyUpdateUserList.RegistryId),
+            .. Encoded.UInt32(1), .. CharacterSamples.CharacterBytes,
+            .. Encoded.UInt32(2), .. Encoded.UInt32(0x01020304), .. Encoded.UInt32(0x05060708),
+            .. Encoded.UInt32(1), .. CharacterSamples.AppearanceBytes,
+        ];
+
+        Assert.Equal(expected, Encoded.Bytes(update.Write));
+        var read = PcLobbyUpdateUserList.TryRead(expected).Packet!;
+        Assert.Equal(CharacterSamples.Character, Assert.Single(read.Characters));
+        Assert.Equal([0x01020304u, 0x05060708u], read.RemovedCharacterIds);
+        var appearance = Assert.Single(read.Appearances);
+        Assert.Equal(CharacterSamples.Appearance.Field08, appearance.Field08);
+        Assert.Equal(CharacterSamples.Slots, appearance.Slots);
+    }
+
+    [Fact]
+    public void ALobbyUserListUpdateMadeToAddOrToRemoveCarriesNothingElse()
+    {
+        var adding = PcLobbyUpdateUserList.Adding([CharacterSamples.Character], [CharacterSamples.Appearance]);
+        var removing = PcLobbyUpdateUserList.Removing([0x01020304]);
+
+        Assert.Equal((1, 0, 1), (adding.Characters.Count, adding.RemovedCharacterIds.Count, adding.Appearances.Count));
+        Assert.Equal((0, 1, 0), (removing.Characters.Count, removing.RemovedCharacterIds.Count, removing.Appearances.Count));
+    }
+
+    [Fact]
+    public void ALobbyUserListUpdateWhoseAddedCharactersAndAppearancesDoNotPairIsRefused()
+    {
+        Assert.Throws<ArgumentException>(() => new PcLobbyUpdateUserList([CharacterSamples.Character], [], []));
+
+        byte[] unpaired =
+        [
+            .. Encoded.UInt32(PcLobbyUpdateUserList.RegistryId),
+            .. Encoded.UInt32(1), .. CharacterSamples.CharacterBytes,
+            .. Encoded.UInt32(0),
+            .. Encoded.UInt32(0),
+        ];
+        Assert.Equal(PacketError.UnexpectedValue, PcLobbyUpdateUserList.TryRead(unpaired).Error);
+    }
+
+    [Fact]
     public void LeavingTheLobbyIsTheIdAloneBothWays()
     {
         Assert.Equal(Encoded.UInt32(PqLobbyLeave.RegistryId), Encoded.Bytes(new PqLobbyLeave().Write));
         Assert.Equal(Encoded.UInt32(PrLobbyLeave.RegistryId), Encoded.Bytes(new PrLobbyLeave().Write));
         Assert.True(PqLobbyLeave.TryRead(Encoded.UInt32(PqLobbyLeave.RegistryId)).Succeeded);
         Assert.True(PrLobbyLeave.TryRead(Encoded.UInt32(PrLobbyLeave.RegistryId)).Succeeded);
+    }
+
+    [Fact]
+    public void APortraitIsTheCharacterThenAPresenceFlagThenTheCountedImage()
+    {
+        var packet = new PcUploadWebImage(0x0A0B0C0D, [0x89, 0x50, 0x4E]);
+
+        byte[] expected =
+        [
+            .. Encoded.UInt32(PcUploadWebImage.RegistryId),
+            .. Encoded.UInt32(0x0A0B0C0D),
+            0x01,
+            .. Encoded.UInt32(3), 0x89, 0x50, 0x4E,
+        ];
+
+        Assert.Equal(expected, Encoded.Bytes(packet.Write));
+        var read = PcUploadWebImage.TryRead(expected).Packet!;
+        Assert.Equal(0x0A0B0C0Du, read.CharacterId);
+        Assert.Equal([0x89, 0x50, 0x4E], read.Image);
+    }
+
+    [Fact]
+    public void APortraitWithoutAnImageEndsAtItsPresenceFlag()
+    {
+        byte[] expected = [.. Encoded.UInt32(PcUploadWebImage.RegistryId), .. Encoded.UInt32(0x0A0B0C0D), 0x00];
+
+        Assert.Equal(expected, Encoded.Bytes(new PcUploadWebImage(0x0A0B0C0D, Image: null).Write));
+        Assert.Null(PcUploadWebImage.TryRead(expected).Packet!.Image);
+    }
+
+    [Fact]
+    public void APortraitLongerThanItsBodyIsRefusedBeforeAnythingIsCopied()
+    {
+        byte[] body = [.. Encoded.UInt32(PcUploadWebImage.RegistryId), .. Encoded.UInt32(1), 0x01, .. Encoded.UInt32(0x7FFFFFFF), 0x00];
+
+        Assert.Equal(PacketError.CountOutOfRange, PcUploadWebImage.TryRead(body).Error);
     }
 }

@@ -12,6 +12,8 @@
 [Bb]in/
 [Oo]bj/
 TestResults/
+# Character pictures a development server keeps from its clients.
+portraits/
 *.nupkg
 _UpgradeReport_Files/
 
