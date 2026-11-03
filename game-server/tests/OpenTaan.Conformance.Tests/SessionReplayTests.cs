@@ -1,8 +1,13 @@
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Reflection;
+using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Characters;
+using OpenTaan.Protocol;
 using OpenTaan.Protocol.Accounts;
+using OpenTaan.Protocol.Channels;
 using OpenTaan.Protocol.Characters;
+using OpenTaan.Protocol.Data;
 using OpenTaan.Tests.GameServer;
 using OpenTaan.Transport;
 
@@ -32,11 +37,25 @@ namespace OpenTaan.Tests.Conformance;
 /// and still have to match.
 /// </para>
 /// <para>
-/// One recorded value is adjusted before comparing, and only that one: a new
-/// character's appearance carries the account's gender, where the recordings carry 0,
-/// a placeholder of the server they were recorded from. The client draws a character's
-/// default parts by that gender. The recorded answer is decoded, that field set, and
-/// the answer encoded again, so every other byte is still compared as recorded.
+/// A recorded answer to a request this server handles can hold packets of later stages,
+/// such as friends or quests sent on entering the lobby. A recorded packet this server
+/// has no codec for is not expected; every other one is, in order.
+/// </para>
+/// <para>
+/// Two kinds of recorded value are adjusted before comparing, and only those. A new
+/// character's appearance carries the account's gender, where the recordings carry 0, a
+/// placeholder of the server they were recorded from; the client draws a character's
+/// default parts by that gender. And the channel list carries no level range, where the
+/// recordings carry one that the server they were recorded from never applied: their
+/// new characters enter channels below its minimum. This server advertises only what it
+/// applies. Each recorded answer is decoded, those values set, and the answer encoded
+/// again, so every other byte is still compared as recorded.
+/// </para>
+/// <para>
+/// One recorded answer is replaced by design: a channel move answered with a reconnect.
+/// This server keeps every channel on the connection the player already has, so it
+/// answers that the player entered the channel, and the participant's recorded steps
+/// after it, which reconnect, are not played.
 /// </para>
 /// </remarks>
 public sealed class SessionReplayTests
@@ -62,6 +81,15 @@ public sealed class SessionReplayTests
         },
     };
 
+    // Every packet this server has a codec for, by registry id.
+    private static readonly HashSet<uint> Implemented =
+    [
+        .. from type in typeof(ProtocolAssemblyMarker).Assembly.GetExportedTypes()
+           let wireClass = type.GetCustomAttribute<WireClassAttribute>(inherit: false)
+           where wireClass is not null
+           select RegistryIds.Of(wireClass.Name),
+    ];
+
     [Fact]
     public async Task EveryParticipantIsAnsweredAsRecordedUntilItLeavesThisStage()
     {
@@ -86,7 +114,8 @@ public sealed class SessionReplayTests
             requireRegistration: session.World?.Authentication ?? false,
             gameMasters: session.World?.GmAccountEmails,
             handshakeKeys: () => new HandshakeKeys(nextHandshake!.FirstSeed, nextHandshake.SecondSeed, nextHandshake.Shift),
-            characterOptions: RecordedCharacterOptions);
+            characterOptions: RecordedCharacterOptions,
+            channelOptions: RecordedChannelOptions(session));
 
         var connections = new Dictionary<string, Connection>(StringComparer.Ordinal);
         var compared = 0;
@@ -144,10 +173,26 @@ public sealed class SessionReplayTests
                 }
 
                 await connection.Client.SendBodyAsync(body);
-                foreach (var frame in exchange.Frames)
+                var reconnects = false;
+                foreach (var recorded in exchange.Frames.Select(frame => frame.Body()).Where(IsImplemented))
                 {
-                    Compare(failures, where, Adjusted(frame.Body()), await connection.Client.ReceiveBodyAsync());
+                    var actual = await connection.Client.ReceiveBodyAsync();
+                    if (IsReconnect(recorded))
+                    {
+                        CompareEnteredInstead(failures, where, recorded, actual);
+                        reconnects = true;
+                    }
+                    else
+                    {
+                        Compare(failures, where, Adjusted(recorded), actual);
+                    }
+
                     compared++;
+                }
+
+                if (reconnects)
+                {
+                    await Retire(connections, participant);
                 }
             }
         }
@@ -172,22 +217,77 @@ public sealed class SessionReplayTests
             .Select(exchange => exchange.Crypto)
             .FirstOrDefault(crypto => crypto is not null);
 
-    // The recorded answer with each new character's appearance given its account's
-    // gender, which the character's own description carries. See the remarks above.
+    // The settings the sessions were recorded with: five ordinary channels and an arena
+    // one, all at the address the session records. The recordings show every channel
+    // empty while three players are in the first, so the capacity is large enough to
+    // round them down to 0%.
+    private static ChannelOptions RecordedChannelOptions(Session session) => new()
+    {
+        Server = new ChannelServer
+        {
+            Name = "Alpha",
+            Type = 1,
+            PublicAddress = session.AdvertisedAddress?.Ip,
+            PublicPort = session.AdvertisedAddress?.Port,
+        },
+        List =
+        [
+            .. Enumerable.Range(1, 5).Select(id => new ChannelSettings { Id = (ushort)id, Name = $"Channel {id}", Capacity = 1000 }),
+            new ChannelSettings { Id = 6, Name = "Arena", Mode = 7, Capacity = 1000 },
+        ],
+    };
+
+    private static bool IsImplemented(byte[] body) => Implemented.Contains(BinaryPrimitives.ReadUInt32LittleEndian(body));
+
+    // The recorded answer with the adjustments the remarks above describe.
     private static byte[] Adjusted(byte[] recorded)
     {
-        if (BinaryPrimitives.ReadUInt32LittleEndian(recorded) != PrNewCharacter.RegistryId
-            || PrNewCharacter.TryRead(recorded).Packet is not { Catalog: { } catalog } answer)
+        var adjusted = new ArrayBufferWriter<byte>();
+        switch (BinaryPrimitives.ReadUInt32LittleEndian(recorded))
         {
-            return recorded;
+            case var id when id == PrNewCharacter.RegistryId
+                             && PrNewCharacter.TryRead(recorded).Packet is { Catalog: { } catalog } answer:
+                // Each new character's appearance gets its account's gender, which the
+                // character's own description carries.
+                var appearances = catalog.Appearances
+                    .Select((appearance, position) => appearance with { Gender = catalog.Characters[position].Gender })
+                    .ToArray();
+                (answer with { Catalog = new CharacterCatalog(catalog.Characters, appearances) }).Write(adjusted);
+                break;
+
+            case var id when id == PrGetChannelList.RegistryId
+                             && PrGetChannelList.TryRead(recorded).Packet is { } list:
+                new PrGetChannelList(WithoutLevelRanges(list.Channels)).Write(adjusted);
+                break;
+
+            default:
+                return recorded;
         }
 
-        var appearances = catalog.Appearances
-            .Select((appearance, position) => appearance with { Gender = catalog.Characters[position].Gender })
-            .ToArray();
-        var adjusted = new ArrayBufferWriter<byte>();
-        (answer with { Catalog = new CharacterCatalog(catalog.Characters, appearances) }).Write(adjusted);
         return adjusted.WrittenSpan.ToArray();
+    }
+
+    private static DataNode WithoutLevelRanges(DataNode node) => node with
+    {
+        Attributes = [.. node.Attributes.Select(attribute => attribute.Name is "minLevel" or "maxLevel" ? attribute with { Value = "0" } : attribute)],
+        Children = [.. node.Children.Select(WithoutLevelRanges)],
+    };
+
+    private static bool IsReconnect(byte[] recorded) =>
+        BinaryPrimitives.ReadUInt32LittleEndian(recorded) == PrChannelMoveTo.RegistryId
+        && PrChannelMoveTo.TryRead(recorded).Packet is { Result: ChannelMoveResult.Reconnect };
+
+    // A move this server answers as entered where the recording reconnects: the same
+    // channel, entered, described.
+    private static void CompareEnteredInstead(List<string> failures, string where, byte[] recorded, byte[] actual)
+    {
+        var expected = PrChannelMoveTo.TryRead(recorded).Packet!;
+        if (PrChannelMoveTo.TryRead(actual).Packet is not { Result: ChannelMoveResult.Entered, Channel: { } channel } answer
+            || answer.ChannelId != expected.ChannelId
+            || channel.ChannelId != expected.ChannelId)
+        {
+            failures.Add($"{where}: expected the move to channel {expected.ChannelId} answered as entered, got {Convert.ToHexString(actual)}");
+        }
     }
 
     private static bool IsThrottleRefusal(Exchange exchange) =>

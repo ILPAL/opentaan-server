@@ -231,6 +231,19 @@ with real tokens:
   the one field is adjusted in the recording before comparing: the recorded
   answer is decoded, the field set, and the answer encoded again, so every other
   byte is still compared as recorded. A planted run without the adjustment fails.
+- **A recorded level range nobody applied.** The reference sessions list every
+  channel for levels 50 to 100, and then let level 1 characters into one. This
+  server lists no range, since it applies none, and the session replay adjusts
+  the recorded list the way it adjusts the gender above. A planted range fails
+  the replay and a unit test.
+- **A field no test could see.** A planted channel move that described every
+  channel as an ordinary one passed: every channel in the tests was ordinary. A
+  closed channel of another kind is now described in a test.
+- **A restored file older than its bug.** Planted bugs are undone by restoring
+  the file from a copy, which leaves it older than the build that holds the bug,
+  so an incremental build kept the planted code and later runs failed for a bug
+  that was no longer in the source. Planted runs are now followed by a build
+  from scratch.
 - **A test that slowed every other test.** The first version of the concurrent
   claim test held sixty-four thread-pool threads on its barrier. The pool
   starved, the whole suite took ten times as long, and two tests with short
@@ -279,6 +292,11 @@ against real sessions over loopback sockets, each participant on a connection of
 its own and greeted with the handshake values the session recorded, and every
 reply, the greeting included, must match the recording byte for byte. A
 participant is followed until it sends something that belongs to a later stage.
+A recorded answer can also hold packets of later stages, such as friends and
+quests on entering the lobby; a recorded packet the server has no codec for is
+not expected, and every other one is, in order. One answer differs by design: the
+recordings move to another channel by reconnecting, and this server keeps the
+player on its connection, so that move is checked as entered instead.
 
 Codecs are written by hand and published one stage of the protocol at a time,
 so the repository shows the layouts this server implements and nothing more.

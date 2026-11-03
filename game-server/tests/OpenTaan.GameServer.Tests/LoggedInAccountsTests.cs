@@ -10,8 +10,8 @@ public sealed class LoggedInAccountsTests
 {
     private static readonly SessionServices Services = SessionHarness.Services();
 
-    private static readonly Account First = new(1001, 1, "first@example.test", new Secret("digest"), Gender.Male);
-    private static readonly Account Second = new(1002, 2, "second@example.test", new Secret("digest"), Gender.Female);
+    private static readonly Account First = new(1001, 1, "first@example.test", new Secret("digest"), Gender.Male, Cash: 0);
+    private static readonly Account Second = new(1002, 2, "second@example.test", new Secret("digest"), Gender.Female, Cash: 0);
 
     [Fact]
     public void AFreeAccountIsClaimedAndHeldByItsConnection()

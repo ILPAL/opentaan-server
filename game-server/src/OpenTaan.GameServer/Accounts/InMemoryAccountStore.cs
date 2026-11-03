@@ -11,7 +11,8 @@ namespace OpenTaan.GameServer.Accounts;
 /// Addresses are compared exactly. Folding case would merge two accounts the client
 /// treats as different, and let a guess against one count against the other.
 /// </remarks>
-public sealed class InMemoryAccountStore : IAccountStore
+/// <param name="startingCash">The cash a new account starts with.</param>
+public sealed class InMemoryAccountStore(uint startingCash = 0) : IAccountStore
 {
     // The first ids the reference sessions record: account 1001 is player 1.
     private const uint FirstAccountId = 1001;
@@ -50,7 +51,7 @@ public sealed class InMemoryAccountStore : IAccountStore
     private Account Add(string emailAddress, Secret passwordHash, Gender gender)
     {
         var count = (uint)_accounts.Count;
-        var account = new Account(FirstAccountId + count, FirstLocalPlayerId + count, emailAddress, passwordHash, gender);
+        var account = new Account(FirstAccountId + count, FirstLocalPlayerId + count, emailAddress, passwordHash, gender, startingCash);
         _accounts.Add(emailAddress, account);
         return account;
     }

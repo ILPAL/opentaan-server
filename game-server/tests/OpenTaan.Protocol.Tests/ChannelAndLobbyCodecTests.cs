@@ -1,6 +1,7 @@
 using OpenTaan.Protocol;
 using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Channels;
+using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.Data;
 using OpenTaan.Protocol.Lobby;
 
@@ -199,5 +200,41 @@ public sealed class ChannelAndLobbyCodecTests
         Assert.Equal(Encoded.UInt32(PrLobbyLeave.RegistryId), Encoded.Bytes(new PrLobbyLeave().Write));
         Assert.True(PqLobbyLeave.TryRead(Encoded.UInt32(PqLobbyLeave.RegistryId)).Succeeded);
         Assert.True(PrLobbyLeave.TryRead(Encoded.UInt32(PrLobbyLeave.RegistryId)).Succeeded);
+    }
+
+    [Fact]
+    public void APortraitIsTheCharacterThenAPresenceFlagThenTheCountedImage()
+    {
+        var packet = new PcUploadWebImage(0x0A0B0C0D, [0x89, 0x50, 0x4E]);
+
+        byte[] expected =
+        [
+            .. Encoded.UInt32(PcUploadWebImage.RegistryId),
+            .. Encoded.UInt32(0x0A0B0C0D),
+            0x01,
+            .. Encoded.UInt32(3), 0x89, 0x50, 0x4E,
+        ];
+
+        Assert.Equal(expected, Encoded.Bytes(packet.Write));
+        var read = PcUploadWebImage.TryRead(expected).Packet!;
+        Assert.Equal(0x0A0B0C0Du, read.CharacterId);
+        Assert.Equal([0x89, 0x50, 0x4E], read.Image);
+    }
+
+    [Fact]
+    public void APortraitWithoutAnImageEndsAtItsPresenceFlag()
+    {
+        byte[] expected = [.. Encoded.UInt32(PcUploadWebImage.RegistryId), .. Encoded.UInt32(0x0A0B0C0D), 0x00];
+
+        Assert.Equal(expected, Encoded.Bytes(new PcUploadWebImage(0x0A0B0C0D, Image: null).Write));
+        Assert.Null(PcUploadWebImage.TryRead(expected).Packet!.Image);
+    }
+
+    [Fact]
+    public void APortraitLongerThanItsBodyIsRefusedBeforeAnythingIsCopied()
+    {
+        byte[] body = [.. Encoded.UInt32(PcUploadWebImage.RegistryId), .. Encoded.UInt32(1), 0x01, .. Encoded.UInt32(0x7FFFFFFF), 0x00];
+
+        Assert.Equal(PacketError.CountOutOfRange, PcUploadWebImage.TryRead(body).Error);
     }
 }

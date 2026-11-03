@@ -11,7 +11,8 @@ namespace OpenTaan.GameServer.Accounts;
 /// <param name="EmailAddress">The address the account is known by. Compared exactly, case included.</param>
 /// <param name="PasswordHash">The password as the client hashed it when the account was created. Prints as <c>***</c>.</param>
 /// <param name="Gender">The gender chosen at creation. Never <see cref="Gender.Unspecified"/>.</param>
-public sealed record Account(uint AccountId, uint LocalPlayerId, string EmailAddress, Secret PasswordHash, Gender Gender)
+/// <param name="Cash">The account's cash, the currency bought with real money.</param>
+public sealed record Account(uint AccountId, uint LocalPlayerId, string EmailAddress, Secret PasswordHash, Gender Gender, uint Cash)
 {
     /// <summary>Whether <paramref name="presented"/> is this account's password, compared in constant time.</summary>
     public bool HasPassword(Secret presented)

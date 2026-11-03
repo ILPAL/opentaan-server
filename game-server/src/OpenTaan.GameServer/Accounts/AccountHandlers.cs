@@ -162,6 +162,36 @@ public sealed partial class AccountHandlers(
             Field30: 0));
     }
 
+    /// <summary>Answers how much cash one of the connection's accounts has.</summary>
+    /// <remarks>
+    /// The client asks once per account slot as its channel screen opens, and again from
+    /// its shop. A slot the connection does not hold is answered with slot 0's cash, and a
+    /// connection that has not logged in is answered with none, so every request is
+    /// answered and none echoes the slot it named.
+    /// </remarks>
+    public ValueTask UpdateCashAsync(ClientSession session, PcUpdateCash request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!session.IsLoggedIn)
+        {
+            LogCashBeforeLogin(logger, session.Id);
+            session.Send(new PcUpdateCash(Cash: 0, AccountSlot: SafeSlot));
+            return ValueTask.CompletedTask;
+        }
+
+        var slot = request.AccountSlot;
+        if (slot >= session.Accounts.Count)
+        {
+            LogCashSlotNotHeld(logger, session.Id, slot);
+            slot = SafeSlot;
+        }
+
+        session.Send(new PcUpdateCash(session.Accounts[(int)slot].Cash, slot));
+        return ValueTask.CompletedTask;
+    }
+
     private async ValueTask<(Account? Account, LoginRefusalReason Refusal)> AuthenticateAsync(
         LoginAccountInfo credential,
         CancellationToken cancellationToken)
@@ -222,6 +252,14 @@ public sealed partial class AccountHandlers(
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Connection {ConnectionId}: login refused, an account is live on connection {HolderId}")]
     private static partial void LogAlreadyInGame(ILogger logger, long connectionId, long holderId);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Connection {ConnectionId} asked for cash before logging in; answered with none")]
+    private static partial void LogCashBeforeLogin(ILogger logger, long connectionId);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Connection {ConnectionId} asked for the cash of account slot {Slot}, which it does not hold; answered for slot 0")]
+    private static partial void LogCashSlotNotHeld(ILogger logger, long connectionId, uint slot);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Connection {ConnectionId} logged in with {Accounts} account(s)")]
     private static partial void LogLoggedIn(ILogger logger, long connectionId, int accounts);

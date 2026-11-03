@@ -59,6 +59,7 @@ public sealed class ProtocolReplayTests
         [PcLobbyInitUserList.RegistryId] = body => Replay.Of(PcLobbyInitUserList.TryRead(body), packet => packet.Write),
         [PqLobbyLeave.RegistryId] = body => Replay.Of(PqLobbyLeave.TryRead(body), packet => packet.Write),
         [PrLobbyLeave.RegistryId] = body => Replay.Of(PrLobbyLeave.TryRead(body), packet => packet.Write),
+        [PcUploadWebImage.RegistryId] = body => Replay.Of(PcUploadWebImage.TryRead(body), packet => packet.Write),
     };
 
     // Codecs for packets no recorded session carries, built from the client's own reader.
@@ -67,6 +68,7 @@ public sealed class ProtocolReplayTests
     private static readonly Dictionary<uint, byte[]> Unrecorded = new()
     {
         [PrFirstPacket.RegistryId] = Written(new PrFirstPacket(0x11, 0x44332211, 0x01)),
+        [PcUploadWebImage.RegistryId] = Written(new PcUploadWebImage(0x44332211, [0x55, 0x66, 0x77])),
     };
 
     [Fact]

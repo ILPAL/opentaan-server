@@ -17,7 +17,7 @@ built, and what comes next. Last updated 2026-11-02.
 | Area | Decision | State |
 |---|---|---|
 | Repository | One repository: game server, admin server, contracts, database, deployment | Done |
-| Game server | .NET 10; projects added one per stage (transport first) | Done: transport, host, connection sessions, and the login and character stages |
+| Game server | .NET 10; projects added one per stage (transport first) | Done: transport, host, connection sessions, and the login, character, and channel and lobby stages |
 | Admin server | Spring Boot 4 on Java 25, built with Maven | Done |
 | Shared contracts | `contracts/`: OpenAPI for the admin API, JSON Schemas for the control channel; the game protocol's reference data is supplied locally, not committed | Partly: OpenAPI done; control-channel schemas not started |
 | Database schema | Owned by `database/migrations`, applied by Flyway; services only validate it | Done |
@@ -61,7 +61,7 @@ What a reviewer should be able to see and run, end to end.
 | Decisions and security | Ten decision records in `docs/adr`; a threat model with each threat's control, test and status; a case study of how correctness is checked; a test that two concurrent decisions leave exactly one |
 | Security scanning | `security` workflow: both images built, scanned with Trivy on every change and weekly, failing on fixable HIGH or CRITICAL findings, with a CycloneDX SBOM kept per image; Dockerfile checks; Dependabot for Maven, NuGet, base images, compose images and actions; every action pinned to a commit hash |
 
-Tests today: game server 303, of which 21 need the reference sessions and skip without them; admin server 61 unit tests and 25 integration tests.
+Tests today: game server 336, of which 21 need the reference sessions and skip without them; admin server 61 unit tests and 25 integration tests.
 
 ## Next
 
@@ -70,10 +70,9 @@ In order. Each item is one pull request unless noted.
 1. **Packet codecs, continued.** `OpenTaan.Protocol`, one stage of the protocol
    at a time, each codec compared byte for byte with the reference sessions before
    it is used. The handshake, the account and login packets, and the character
-   packets (creation, name checks, selection and deletion) are done and served by
-   real sessions. Channel selection and the lobby come next: their packets are done,
-   with the client's data envelope and data tree; serving them is where a real
-   client stops today, at the cash request its channel screen opens with.
+   packets (creation, name checks, selection and deletion), cash, channel selection
+   and entering the lobby are done and served by real sessions. Rooms come next,
+   with the other players in a lobby.
 2. **CodeQL.** Static analysis of the Java and C# code, reported through GitHub
    code scanning.
 3. **Operator portal.** Pages served by the admin server: account lookup, requesting
