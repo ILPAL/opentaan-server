@@ -53,6 +53,13 @@ public readonly struct PacketWriter
         _destination.Advance(sizeof(int));
     }
 
+    /// <summary>Writes a 32-bit IEEE 754 floating-point value.</summary>
+    public void WriteSingle(float value)
+    {
+        BinaryPrimitives.WriteSingleLittleEndian(_destination.GetSpan(sizeof(float)), value);
+        _destination.Advance(sizeof(float));
+    }
+
     /// <summary>Writes an unsigned 64-bit value.</summary>
     public void WriteUInt64(ulong value)
     {

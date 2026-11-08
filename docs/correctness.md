@@ -309,7 +309,8 @@ A recorded answer can also hold packets of later stages; a recorded packet the
 server has no codec for is not expected, and every other one is, in order. One
 answer differs by design: the recordings move to another channel by reconnecting,
 and this server keeps the player on its connection, so that move is checked as
-entered instead. And the lobby's player list is not compared at all: the
+entered instead, and the play time the recording grants on the connection it
+reconnects with is expected ahead of that answer, with no limit. And the lobby's player list is not compared at all: the
 recordings list every lobby as empty and never add or remove anyone, where this
 server lists who is there and tells them of each player who comes or goes. Who
 is listed is checked through real connections instead, player by player and add

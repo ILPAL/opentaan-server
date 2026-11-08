@@ -36,7 +36,8 @@ appear here. So far: the handshake, the account and login packets, the
 character packets for creation, name checks, selection and deletion, and the
 packets for cash, the channel list, channel moves, entering and leaving the
 lobby, the lobby's player list and its changes, the picture the client sends
-of a character, and the reports it sends while it plays the tutorial.
+of a character, the reports it sends while it plays the tutorial, and the
+play time it is allowed.
 
 Some packets carry data in the client's envelope (`DataEnvelope`): a signature, a
 checksum, and contents that may be compressed, scrambled with a key, or both. The
@@ -135,6 +136,21 @@ as one file per character named by its id; a picture of a character the
 connection has not selected is dropped, and one that is not a PNG file is kept
 apart with a `.bin` extension.
 
+## Play time
+
+Some regional builds of the client, the Vietnamese one among them, limit how long
+a player may play. As such a client builds a lobby it checks every character slot,
+and quits, after a notice, for any slot that has played as long as it is allowed;
+it knows neither number until the server says, and both start at 0, so told
+nothing it quits at its first lobby. So every channel move that is entered is
+preceded by the play time: the limit for each account slot, then the played time
+for each selected character, with the client counting it from then on, then a
+reset to 0. It goes ahead of the move's answer because the client builds the
+lobby before it asks to enter it. The limit is `PlayTime:AllowedSeconds`, none by
+default. The client keeps the count and enforces it; this server does not store
+played time yet, so the count starts again at every channel entry. A client
+counting play time shows in chat, from the first hour, how long is left.
+
 ## The tutorial
 
 The client plays the tutorial by itself, before the first lobby, for a character
@@ -192,5 +208,6 @@ variables, for example `GameServer__Port=2181`:
 | `Channels:Server:Name`, `Channels:Server:Type` | `Alpha`, `1` | The group the channels are listed under. The client uses the type only to pick the group it shows first, by level. |
 | `Channels:Server:PublicAddress`, `Channels:Server:PublicPort` | none, `GameServer:Port` | The IPv4 address and port the client is told the channels are at; see above for what is used when none is set. |
 | `Channels:List` | `Channel 1` to `Channel 5`, room for 100 each | Each channel's `Id`, `Name`, `Capacity`, and optionally `Disabled` and `Mode` (`6`, ordinary; arena modes are not served yet). |
+| `PlayTime:AllowedSeconds` | none | How long a player may play, in seconds, as the client is told on entering a channel; none means no limit. Must be above 0: with no time allowed, the client quits at every lobby. |
 | `Portraits:Folder` | none | Where the pictures clients send of their characters are kept. A relative path is taken from the content root. |
 | `Characters:CreatorParts` | `1, 3, 5, 8` | The appearance parts the client's character creator offers; a new character keeps only these. |

@@ -178,6 +178,7 @@ internal static class DeclaredLayout
     {
         bool flag => flag ? 1ul : 0ul,
         int signed => unchecked((uint)signed),
+        float single => BitConverter.SingleToUInt32Bits(single),
         Enum member => Convert.ToUInt64(member, CultureInfo.InvariantCulture),
         _ => Convert.ToUInt64(value, CultureInfo.InvariantCulture),
     };
@@ -210,7 +211,7 @@ internal static class DeclaredLayout
             {
                 "u8" => 1,
                 "u16" => 2,
-                "u32" or "i32" => 4,
+                "u32" or "i32" or "f32" => 4,
                 "u64" => 8,
                 _ => throw new InvalidOperationException($"'{type}' is not read here yet"),
             };

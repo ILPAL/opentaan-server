@@ -8,6 +8,7 @@ using OpenTaan.GameServer.Accounts;
 using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Characters;
 using OpenTaan.GameServer.Lobby;
+using OpenTaan.GameServer.PlayTime;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Transport;
 
@@ -51,7 +52,9 @@ internal static class SessionHarness
         ICharacterStore? characterStore = null,
         CharacterOptions? characterOptions = null,
         ChannelOptions? channelOptions = null,
-        PortraitOptions? portraitOptions = null)
+        PortraitOptions? portraitOptions = null,
+        PlayTimeOptions? playTimeOptions = null,
+        TimeProvider? time = null)
     {
         characterStore ??= new InMemoryCharacterStore();
         var accounts = new AccountHandlers(
@@ -79,7 +82,11 @@ internal static class SessionHarness
         var dispatcher = new PacketDispatcher(
             accounts,
             characters,
-            new ChannelHandlers(channels, lobbies, NullLogger<ChannelHandlers>.Instance),
+            new ChannelHandlers(
+                channels,
+                lobbies,
+                new PlayTimeGrant(Options.Create(playTimeOptions ?? new PlayTimeOptions()), time ?? TimeProvider.System),
+                NullLogger<ChannelHandlers>.Instance),
             new LobbyHandlers(
                 channels,
                 lobbies,

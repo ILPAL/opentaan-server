@@ -71,8 +71,8 @@ In order. Each item is one pull request unless noted.
    at a time, each codec compared byte for byte with the reference sessions before
    it is used. The handshake, the account and login packets, and the character
    packets (creation, name checks, selection and deletion), the tutorial, cash,
-   channel selection and the lobby with the players in it are done and served by
-   real sessions.
+   play time, channel selection and the lobby with the players in it are done and
+   served by real sessions.
    Rooms come next.
 2. **CodeQL.** Static analysis of the Java and C# code, reported through GitHub
    code scanning.

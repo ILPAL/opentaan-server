@@ -24,6 +24,15 @@ public sealed class PacketReaderTests
     }
 
     [Fact]
+    public void ReadsA32BitFloat()
+    {
+        var reader = new PacketReader([0x00, 0x00, 0xC0, 0x3F]);
+
+        Assert.Equal(1.5f, reader.ReadSingle());
+        Assert.Equal(PacketError.None, reader.Error);
+    }
+
+    [Fact]
     public void ReadsASigned32BitValueInTwosComplement()
     {
         var reader = new PacketReader([0x18, 0xFC, 0xFF, 0xFF, 0x04, 0x03, 0x02, 0x01]);

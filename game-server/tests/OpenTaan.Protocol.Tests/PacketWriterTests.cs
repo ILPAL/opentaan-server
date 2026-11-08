@@ -20,6 +20,12 @@ public sealed class PacketWriterTests
     }
 
     [Fact]
+    public void WritesA32BitFloat()
+    {
+        Assert.Equal([0x00, 0x00, 0xC0, 0x3F], Written(writer => writer.WriteSingle(1.5f)));
+    }
+
+    [Fact]
     public void WritesASigned32BitValueInTwosComplement()
     {
         var bytes = Written(writer =>
