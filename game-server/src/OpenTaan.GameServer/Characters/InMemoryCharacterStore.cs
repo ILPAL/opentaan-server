@@ -85,4 +85,19 @@ public sealed class InMemoryCharacterStore : ICharacterStore
             return ValueTask.FromResult(true);
         }
     }
+
+    /// <inheritdoc/>
+    public ValueTask<bool> FinishTutorialAsync(uint characterId, CancellationToken cancellationToken)
+    {
+        lock (_lock)
+        {
+            if (!_characters.TryGetValue(characterId, out var character) || character.HasFinishedTutorial)
+            {
+                return ValueTask.FromResult(false);
+            }
+
+            _characters[characterId] = character with { HasFinishedTutorial = true };
+            return ValueTask.FromResult(true);
+        }
+    }
 }

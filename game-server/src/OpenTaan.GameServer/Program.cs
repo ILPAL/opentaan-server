@@ -20,6 +20,10 @@ builder.Services
     .Validate(o => o.MaxConnections > 0 && o.MaxConnectionsPerAddress > 0, "GameServer connection limits must be positive")
     .Validate(o => o.IdleTimeout > TimeSpan.Zero && o.SendTimeout > TimeSpan.Zero, "GameServer timeouts must be positive")
     .Validate(o => o.SendQueueCapacity > 0, "GameServer:SendQueueCapacity must be positive")
+    .Validate(
+        o => !o.DropUnhandledPackets || builder.Environment.IsDevelopment(),
+        "GameServer:DropUnhandledPackets can be turned on only in the Development environment: " +
+        "with it on, a request this server cannot answer leaves the client waiting forever")
     .ValidateOnStart();
 
 builder.Services

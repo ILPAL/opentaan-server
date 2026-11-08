@@ -46,6 +46,13 @@ public readonly struct PacketWriter
         _destination.Advance(sizeof(uint));
     }
 
+    /// <summary>Writes a signed 32-bit value, in two's complement.</summary>
+    public void WriteInt32(int value)
+    {
+        BinaryPrimitives.WriteInt32LittleEndian(_destination.GetSpan(sizeof(int)), value);
+        _destination.Advance(sizeof(int));
+    }
+
     /// <summary>Writes an unsigned 64-bit value.</summary>
     public void WriteUInt64(ulong value)
     {

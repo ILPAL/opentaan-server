@@ -7,6 +7,7 @@ using OpenTaan.Protocol;
 using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.Connection;
+using OpenTaan.Protocol.GamePlay;
 using OpenTaan.Transport;
 
 namespace OpenTaan.Tests.GameServer;
@@ -30,6 +31,41 @@ public sealed class SessionTests
         await connection.Client.SendAsync(new PqExistCharacter("Somebody"));
 
         // Had either of the first two been answered, that answer would arrive first.
+        Assert.Equal(new PrExistCharacter(false), await connection.Client.ReceiveAsync<PrExistCharacter>(PrExistCharacter.TryRead));
+    }
+
+    [Fact]
+    public async Task TheTutorialsPickupAndGhostReportsAreAcceptedAndNeverAnswered()
+    {
+        await using var connection = await SessionHarness.ConnectAsync(SessionHarness.Services(), Cancel);
+
+        await connection.Client.SendAsync(new PcGamePlayNotifyEatItem(SlotIndex: 0, ItemSlot: 0, ItemId: 1005));
+        await connection.Client.SendAsync(new PcGamePlaySetGhostPos(SlotIndex: 0, X: 150, Y: 200, Direction: 1));
+        await connection.Client.SendAsync(new PqExistCharacter("Somebody"));
+
+        // Had either of the first two been answered, that answer would arrive first.
+        Assert.Equal(new PrExistCharacter(false), await connection.Client.ReceiveAsync<PrExistCharacter>(PrExistCharacter.TryRead));
+    }
+
+    [Fact]
+    public async Task AGameReportItsCodecRefusesStillClosesTheConnection()
+    {
+        await using var connection = await SessionHarness.ConnectAsync(SessionHarness.Services(), Cancel);
+
+        await connection.Client.SendBodyAsync((byte[])[.. Encoded.UInt32(PcGamePlayNotifyEatItem.RegistryId), 0x00]);
+
+        Assert.Equal(CloseReason.MalformedPacket, await connection.ClosedReason());
+    }
+
+    [Fact]
+    public async Task WhenAskedToDropUnhandledPacketsAPacketWithNoHandlerIsDroppedAndTheConnectionKept()
+    {
+        var services = SessionHarness.Services(options: new GameServerOptions { DropUnhandledPackets = true });
+        await using var connection = await SessionHarness.ConnectAsync(services, Cancel);
+
+        await connection.Client.SendBodyAsync(Encoded.UInt32(0x0BADF00D));
+        await connection.Client.SendAsync(new PqExistCharacter("Somebody"));
+
         Assert.Equal(new PrExistCharacter(false), await connection.Client.ReceiveAsync<PrExistCharacter>(PrExistCharacter.TryRead));
     }
 

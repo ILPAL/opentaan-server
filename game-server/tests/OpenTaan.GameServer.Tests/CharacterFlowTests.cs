@@ -275,6 +275,79 @@ public sealed class CharacterFlowTests
         Assert.True(await store.IsNameTakenAsync("Kimi", Cancel));
     }
 
+    [Fact]
+    public async Task AFinishedTutorialIsSkippedAtEverySelectionAfterIt()
+    {
+        var services = SessionHarness.Services(requireRegistration: false);
+        CharacterInfo character;
+
+        await using (var connection = await SessionHarness.ConnectAsync(services, Cancel))
+        {
+            await LogInAsync(connection, "player@example.test");
+            character = await CreateAsync(connection, 0, "Kimi");
+            Assert.Equal([0], (await SelectAsync(connection, character.CharacterId)).TutorialFlags);
+
+            await connection.Client.SendAsync(new PcTutorialFinished(character.CharacterId));
+
+            Assert.Equal([1], (await SelectAsync(connection, character.CharacterId)).TutorialFlags);
+        }
+
+        await using var later = await SessionHarness.ConnectAsync(services, Cancel);
+        await LogInAsync(later, "player@example.test");
+        Assert.Equal([1], (await SelectAsync(later, character.CharacterId)).TutorialFlags);
+    }
+
+    [Fact]
+    public async Task ATutorialReportedTwiceIsNeverAnswered()
+    {
+        await using var connection = await SessionHarness.ConnectAsync(SessionHarness.Services(requireRegistration: false), Cancel);
+        await LogInAsync(connection, "player@example.test");
+        var character = await CreateAsync(connection, 0, "Kimi");
+        await SelectAsync(connection, character.CharacterId);
+
+        await connection.Client.SendAsync(new PcTutorialFinished(character.CharacterId));
+        await connection.Client.SendAsync(new PcTutorialFinished(character.CharacterId));
+
+        // Had either report been answered, that answer would arrive first.
+        Assert.Equal([1], (await SelectAsync(connection, character.CharacterId)).TutorialFlags);
+    }
+
+    [Fact]
+    public async Task ATutorialReportedBeforeAnySelectionIsIgnored()
+    {
+        await using var connection = await SessionHarness.ConnectAsync(SessionHarness.Services(requireRegistration: false), Cancel);
+        await LogInAsync(connection, "player@example.test");
+        var character = await CreateAsync(connection, 0, "Kimi");
+
+        await connection.Client.SendAsync(new PcTutorialFinished(character.CharacterId));
+
+        Assert.Equal([0], (await SelectAsync(connection, character.CharacterId)).TutorialFlags);
+    }
+
+    [Fact]
+    public async Task ATutorialIsRecordedForTheSelectedCharacterNotTheOneTheReportNames()
+    {
+        var services = SessionHarness.Services(requireRegistration: false);
+        await using var owner = await SessionHarness.ConnectAsync(services, Cancel);
+        await using var other = await SessionHarness.ConnectAsync(services, Cancel);
+        await LogInAsync(owner, "owner@example.test");
+        await LogInAsync(other, "other@example.test");
+        var ownersCharacter = await CreateAsync(owner, 0, "Kimi");
+        var othersCharacter = await CreateAsync(other, 0, "Rồng");
+        await SelectAsync(other, othersCharacter.CharacterId);
+
+        await other.Client.SendAsync(new PcTutorialFinished(ownersCharacter.CharacterId));
+
+        Assert.Equal([1], (await SelectAsync(other, othersCharacter.CharacterId)).TutorialFlags);
+        Assert.Equal([0], (await SelectAsync(owner, ownersCharacter.CharacterId)).TutorialFlags);
+    }
+
+    private static async Task<PrSelectCharacter> SelectAsync(Connection connection, params uint[] characterIds)
+    {
+        await connection.Client.SendAsync(new PqSelectCharacter(characterIds));
+        return await connection.Client.ReceiveAsync<PrSelectCharacter>(PrSelectCharacter.TryRead);
+    }
+
     private static async Task<PrUserLoginSucceeded> LogInAsync(Connection connection, params string[] emailAddresses)
     {
         await connection.Client.SendAsync(new PqUserLogin(

@@ -19,6 +19,13 @@ public sealed record Character(uint AccountId, CharacterInfo Info, CharacterAppe
     /// <summary>The character's name.</summary>
     public string Name => Info.Name;
 
+    /// <summary>
+    /// Whether the player reached the end of the tutorial with this character. The
+    /// client keeps no record of it, so this is the only thing that stops the tutorial
+    /// coming back at every selection.
+    /// </summary>
+    public bool HasFinishedTutorial { get; init; }
+
     /// <summary>An account's characters as the client is sent them, each with its appearance in the same position.</summary>
     public static CharacterCatalog CatalogOf(IReadOnlyCollection<Character> characters)
     {

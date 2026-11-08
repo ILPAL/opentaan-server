@@ -87,6 +87,7 @@ internal static class SessionHarness
                 Options.Create(portraitOptions ?? new PortraitOptions()),
                 NullLogger<LobbyHandlers>.Instance),
             names,
+            Options.Create(options),
             NullLogger<PacketDispatcher>.Instance);
 
         return new SessionServices(

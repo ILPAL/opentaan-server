@@ -152,9 +152,7 @@ public sealed partial class CharacterHandlers(
             ItemInventories: Inventories(selected.Count, InventoryKind.Items),
             EquipmentInventories: Inventories(selected.Count, InventoryKind.Equipment),
             BingoInventories: Inventories(selected.Count, InventoryKind.Bingo),
-            // Completed tutorials are not recorded yet, so it is offered; the client
-            // offers it only to a character below level 2.
-            TutorialFlags: [.. selected.Select(_ => (byte)0)],
+            TutorialFlags: [.. selected.Select(character => character.HasFinishedTutorial ? (byte)1 : (byte)0)],
             SlotUnlockFlags: [.. selected.Select(_ => (byte)1)]));
     }
 
@@ -188,6 +186,37 @@ public sealed partial class CharacterHandlers(
         session.ForgetSelection(request.CharacterId);
         var characters = await store.FindByAccountAsync(account.AccountId, cancellationToken).ConfigureAwait(false);
         session.Send(new PrDelCharacter(DeleteCharacterStatus.Deleted, request.AccountSlot, Character.CatalogOf(characters)));
+    }
+
+    /// <summary>Records that the connection's character finished the tutorial. Nothing answers it.</summary>
+    /// <remarks>
+    /// <para>
+    /// The character is the one selected in the first account slot, the only one whose
+    /// tutorial flag the client reads. The id in the packet is ignored: the client can
+    /// send one it selected earlier, on another connection.
+    /// </para>
+    /// <para>
+    /// The client can send this more than once for one tutorial, so a repeat changes
+    /// nothing. Its arrival is no proof that anything was played, so it must never earn
+    /// a reward on its own.
+    /// </para>
+    /// </remarks>
+    public async ValueTask TutorialFinishedAsync(ClientSession session, PcTutorialFinished report, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(report);
+
+        if (session.SelectedCharacterIds.Count == 0)
+        {
+            LogTutorialWithoutSelection(logger, session.Id);
+            return;
+        }
+
+        var characterId = session.SelectedCharacterIds[0];
+        if (await store.FinishTutorialAsync(characterId, cancellationToken).ConfigureAwait(false))
+        {
+            LogTutorialFinished(logger, session.Id, characterId);
+        }
     }
 
     private static bool Holds(ClientSession session, byte slot) => slot < session.Accounts.Count;
@@ -266,4 +295,12 @@ public sealed partial class CharacterHandlers(
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Connection {ConnectionId} deleted character {CharacterId} of account {AccountId}")]
     private static partial void LogDeleted(ILogger logger, long connectionId, uint characterId, uint accountId);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Connection {ConnectionId} finished the tutorial with character {CharacterId}")]
+    private static partial void LogTutorialFinished(ILogger logger, long connectionId, uint characterId);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Connection {ConnectionId} reported a finished tutorial with no character selected; ignored")]
+    private static partial void LogTutorialWithoutSelection(ILogger logger, long connectionId);
 }

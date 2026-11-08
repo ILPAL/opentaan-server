@@ -290,7 +290,11 @@ through the codec in both directions:
   in the same wrong place passes the replay and fails here. Fields are paired
   with the codec's record by position, not by name, so a field can be named for
   what it holds; objects inside lists are read by their own class's declaration,
-  so nested layouts are checked too.
+  so nested layouts are checked too. A few fields are declared only as an object
+  written inline, with no layout of its own, such as a ghost's position; their
+  parts are given once in the check, from the client's own writer, and paired
+  with the codec's next fields. A declared type the check does not know fails it
+  rather than being skipped.
 - **The registry.** Each packet names itself once, in a `[WireClass]` attribute,
   and its id is computed from that name the way the client computes it. The
   computation is checked against every id in the reference table, not only the
