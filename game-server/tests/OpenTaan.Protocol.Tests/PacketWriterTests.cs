@@ -20,6 +20,24 @@ public sealed class PacketWriterTests
     }
 
     [Fact]
+    public void WritesA32BitFloat()
+    {
+        Assert.Equal([0x00, 0x00, 0xC0, 0x3F], Written(writer => writer.WriteSingle(1.5f)));
+    }
+
+    [Fact]
+    public void WritesASigned32BitValueInTwosComplement()
+    {
+        var bytes = Written(writer =>
+        {
+            writer.WriteInt32(-1000);
+            writer.WriteInt32(0x01020304);
+        });
+
+        Assert.Equal([0x18, 0xFC, 0xFF, 0xFF, 0x04, 0x03, 0x02, 0x01], bytes);
+    }
+
+    [Fact]
     public void CountsAUtf16StringInCodeUnitsAndWritesEachLowByteFirst()
     {
         // "é" is one code unit, U+00E9; "𝄞" is two, a surrogate pair.

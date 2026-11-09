@@ -63,7 +63,9 @@ namespace OpenTaan.Tests.Conformance;
 /// One recorded answer is replaced by design: a channel move answered with a reconnect.
 /// This server keeps every channel on the connection the player already has, so it
 /// answers that the player entered the channel, and the participant's recorded steps
-/// after it, which reconnect, are not played.
+/// after it, which reconnect, are not played. The play time the recording grants on
+/// the connection it reconnects with comes ahead of that answer instead, so it is
+/// expected there, with no limit, as this server is set up by default.
 /// </para>
 /// </remarks>
 public sealed class SessionReplayTests
@@ -184,15 +186,15 @@ public sealed class SessionReplayTests
                 var reconnects = false;
                 foreach (var recorded in exchange.Frames.Select(frame => frame.Body()).Where(IsImplemented).Where(body => !IsLobbyPlayerList(body)))
                 {
-                    var actual = await ReceiveComparedAsync(connection);
                     if (IsReconnect(recorded))
                     {
-                        CompareEnteredInstead(failures, where, recorded, actual);
+                        var (grant, answer) = await connection.Client.ReceiveMoveAnswerAsync();
+                        CompareEnteredInstead(failures, where, recorded, grant, answer);
                         reconnects = true;
                     }
                     else
                     {
-                        Compare(failures, where, Adjusted(recorded), actual);
+                        Compare(failures, where, Adjusted(recorded), await ReceiveComparedAsync(connection));
                     }
 
                     compared++;
@@ -303,15 +305,25 @@ public sealed class SessionReplayTests
         && PrChannelMoveTo.TryRead(recorded).Packet is { Result: ChannelMoveResult.Reconnect };
 
     // A move this server answers as entered where the recording reconnects: the same
-    // channel, entered, described.
-    private static void CompareEnteredInstead(List<string> failures, string where, byte[] recorded, byte[] actual)
+    // channel, entered, described, after a grant of play time with no limit.
+    private static void CompareEnteredInstead(
+        List<string> failures,
+        string where,
+        byte[] recorded,
+        PlayTimeGrantReceived? grant,
+        PrChannelMoveTo answer)
     {
         var expected = PrChannelMoveTo.TryRead(recorded).Packet!;
-        if (PrChannelMoveTo.TryRead(actual).Packet is not { Result: ChannelMoveResult.Entered, Channel: { } channel } answer
+        if (answer is not { Result: ChannelMoveResult.Entered, Channel: { } channel }
             || answer.ChannelId != expected.ChannelId
             || channel.ChannelId != expected.ChannelId)
         {
-            failures.Add($"{where}: expected the move to channel {expected.ChannelId} answered as entered, got {Convert.ToHexString(actual)}");
+            failures.Add($"{where}: expected the move to channel {expected.ChannelId} answered as entered, got {answer}");
+        }
+
+        if (grant is null || grant.Limits.Count == 0 || grant.Limits.Any(limit => limit.AllowedSeconds != uint.MaxValue))
+        {
+            failures.Add($"{where}: expected the entered move to grant play time with no limit first");
         }
     }
 

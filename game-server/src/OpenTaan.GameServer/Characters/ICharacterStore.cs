@@ -33,6 +33,12 @@ public interface ICharacterStore
     /// name. Returns whether it was deleted.
     /// </summary>
     ValueTask<bool> DeleteAsync(uint accountId, uint characterId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records that a character finished the tutorial. Returns whether that is news:
+    /// false when it was already recorded, or there is no such character.
+    /// </summary>
+    ValueTask<bool> FinishTutorialAsync(uint characterId, CancellationToken cancellationToken);
 }
 
 /// <summary>How a creation ended.</summary>

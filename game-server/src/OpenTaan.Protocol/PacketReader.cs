@@ -61,6 +61,14 @@ public ref struct PacketReader
     public uint ReadUInt32() =>
         TryTake(sizeof(uint), out var bytes) ? BinaryPrimitives.ReadUInt32LittleEndian(bytes) : default;
 
+    /// <summary>Reads a signed 32-bit value, in two's complement.</summary>
+    public int ReadInt32() =>
+        TryTake(sizeof(int), out var bytes) ? BinaryPrimitives.ReadInt32LittleEndian(bytes) : default;
+
+    /// <summary>Reads a 32-bit IEEE 754 floating-point value.</summary>
+    public float ReadSingle() =>
+        TryTake(sizeof(float), out var bytes) ? BinaryPrimitives.ReadSingleLittleEndian(bytes) : default;
+
     /// <summary>Reads an unsigned 64-bit value.</summary>
     public ulong ReadUInt64() =>
         TryTake(sizeof(ulong), out var bytes) ? BinaryPrimitives.ReadUInt64LittleEndian(bytes) : default;

@@ -6,6 +6,7 @@ using OpenTaan.GameServer.Accounts;
 using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Characters;
 using OpenTaan.GameServer.Lobby;
+using OpenTaan.GameServer.PlayTime;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol.Characters;
 using OpenTaan.Transport;
@@ -20,6 +21,10 @@ builder.Services
     .Validate(o => o.MaxConnections > 0 && o.MaxConnectionsPerAddress > 0, "GameServer connection limits must be positive")
     .Validate(o => o.IdleTimeout > TimeSpan.Zero && o.SendTimeout > TimeSpan.Zero, "GameServer timeouts must be positive")
     .Validate(o => o.SendQueueCapacity > 0, "GameServer:SendQueueCapacity must be positive")
+    .Validate(
+        o => !o.DropUnhandledPackets || builder.Environment.IsDevelopment(),
+        "GameServer:DropUnhandledPackets can be turned on only in the Development environment: " +
+        "with it on, a request this server cannot answer leaves the client waiting forever")
     .ValidateOnStart();
 
 builder.Services
@@ -67,6 +72,15 @@ builder.Services
         ? null
         : Path.GetFullPath(o.Folder, builder.Environment.ContentRootPath));
 
+builder.Services
+    .AddOptions<PlayTimeOptions>()
+    .Bind(builder.Configuration.GetSection(PlayTimeOptions.Section))
+    .Validate(
+        o => o.AllowedSeconds is null or > 0,
+        "PlayTime:AllowedSeconds must be above zero, or left out for no limit: " +
+        "with no time allowed, the client quits at every lobby")
+    .ValidateOnStart();
+
 builder.Services.AddSingleton<IAccountStore>(provider =>
     new InMemoryAccountStore(provider.GetRequiredService<IOptions<AccountOptions>>().Value.Start.Cash));
 builder.Services.AddSingleton<ICharacterStore, InMemoryCharacterStore>();
@@ -75,6 +89,8 @@ builder.Services.AddSingleton<CharacterHandlers>();
 builder.Services.AddSingleton<ChannelHandlers>();
 builder.Services.AddSingleton<LobbyHandlers>();
 builder.Services.AddSingleton<LobbyRoster>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<PlayTimeGrant>();
 builder.Services.AddSingleton<PacketDispatcher>();
 builder.Services.AddSingleton<LoggedInAccounts>();
 

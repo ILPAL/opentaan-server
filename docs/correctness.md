@@ -290,7 +290,11 @@ through the codec in both directions:
   in the same wrong place passes the replay and fails here. Fields are paired
   with the codec's record by position, not by name, so a field can be named for
   what it holds; objects inside lists are read by their own class's declaration,
-  so nested layouts are checked too.
+  so nested layouts are checked too. A few fields are declared only as an object
+  written inline, with no layout of its own, such as a ghost's position; their
+  parts are given once in the check, from the client's own writer, and paired
+  with the codec's next fields. A declared type the check does not know fails it
+  rather than being skipped.
 - **The registry.** Each packet names itself once, in a `[WireClass]` attribute,
   and its id is computed from that name the way the client computes it. The
   computation is checked against every id in the reference table, not only the
@@ -305,7 +309,8 @@ A recorded answer can also hold packets of later stages; a recorded packet the
 server has no codec for is not expected, and every other one is, in order. One
 answer differs by design: the recordings move to another channel by reconnecting,
 and this server keeps the player on its connection, so that move is checked as
-entered instead. And the lobby's player list is not compared at all: the
+entered instead, and the play time the recording grants on the connection it
+reconnects with is expected ahead of that answer, with no limit. And the lobby's player list is not compared at all: the
 recordings list every lobby as empty and never add or remove anyone, where this
 server lists who is there and tells them of each player who comes or goes. Who
 is listed is checked through real connections instead, player by player and add

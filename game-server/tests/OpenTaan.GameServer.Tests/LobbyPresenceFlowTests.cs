@@ -315,7 +315,7 @@ public sealed class LobbyPresenceFlowTests
     private static async Task<ChannelMoveResult> MoveAsync(Connection connection, ushort channelId)
     {
         await connection.Client.SendAsync(new PqChannelMoveTo(false, channelId, 0, 0));
-        return (await connection.Client.ReceiveAsync<PrChannelMoveTo>(PrChannelMoveTo.TryRead)).Result;
+        return (await connection.Client.ReceiveMoveAnswerAsync()).Answer.Result;
     }
 
     // Nothing was sent to the connection that it has not read: the next thing it receives

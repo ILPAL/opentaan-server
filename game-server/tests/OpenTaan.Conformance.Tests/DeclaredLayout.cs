@@ -22,9 +22,22 @@ namespace OpenTaan.Tests.Conformance;
 /// so nested layouts are checked as well. A declared type this does not know fails the
 /// test rather than being skipped, so a new layout cannot go unchecked.
 /// </para>
+/// <para>
+/// A few fields are declared only as an object, with no layout of their own: a value
+/// written inline, with no id. Their layouts are given in <see cref="InlineObjects"/>,
+/// read from the client's own writer, and each of their parts is paired with the next
+/// constructor parameter.
+/// </para>
 /// </remarks>
 internal static class DeclaredLayout
 {
+    // The parts of each inline object, by the wire name of the class that holds it and
+    // the field's name.
+    private static readonly Dictionary<(string Class, string Field), string[]> InlineObjects = new()
+    {
+        [("PcGamePlay_SetGhostPos", "position")] = ["i32", "i32"],
+    };
+
     /// <summary>Every place where <paramref name="decoded"/> disagrees with the declared layout of <paramref name="body"/>.</summary>
     public static IReadOnlyList<string> Mismatches(
         byte[] body,
@@ -83,6 +96,23 @@ internal static class DeclaredLayout
 
             switch (field.Type)
             {
+                case "object":
+                    var parts = InlineObjects.GetValueOrDefault((spec.WireName, field.Name!))
+                        ?? throw new InvalidOperationException($"{path}: '{field.Name}' is an object with no declared layout");
+                    Expect(where, cursor.Number(parts[0]), AsNumber(value), failures);
+                    foreach (var part in parts.Skip(1))
+                    {
+                        if (position == parameters.Count)
+                        {
+                            throw new InvalidOperationException($"{path}: {decoded.GetType().Name} has no parameter for part of '{field.Name}'");
+                        }
+
+                        var (partName, partValue) = parameters[position++];
+                        Expect($"{path}.{partName}", cursor.Number(part), AsNumber(partValue), failures);
+                    }
+
+                    break;
+
                 case "str_u32":
                     Expect(where, cursor.Utf16String(), value as string, failures);
                     break;
@@ -147,6 +177,8 @@ internal static class DeclaredLayout
     private static ulong AsNumber(object? value) => value switch
     {
         bool flag => flag ? 1ul : 0ul,
+        int signed => unchecked((uint)signed),
+        float single => BitConverter.SingleToUInt32Bits(single),
         Enum member => Convert.ToUInt64(member, CultureInfo.InvariantCulture),
         _ => Convert.ToUInt64(value, CultureInfo.InvariantCulture),
     };
@@ -179,7 +211,7 @@ internal static class DeclaredLayout
             {
                 "u8" => 1,
                 "u16" => 2,
-                "u32" or "i32" => 4,
+                "u32" or "i32" or "f32" => 4,
                 "u64" => 8,
                 _ => throw new InvalidOperationException($"'{type}' is not read here yet"),
             };

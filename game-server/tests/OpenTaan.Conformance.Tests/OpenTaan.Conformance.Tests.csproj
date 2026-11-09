@@ -16,6 +16,7 @@
   <ItemGroup>
     <Compile Include="..\OpenTaan.GameServer.Tests\Support\LoopbackClient.cs" Link="Support\LoopbackClient.cs" />
     <Compile Include="..\OpenTaan.GameServer.Tests\Support\SessionHarness.cs" Link="Support\SessionHarness.cs" />
+    <Compile Include="..\OpenTaan.GameServer.Tests\Support\PlayTimeGrants.cs" Link="Support\PlayTimeGrants.cs" />
   </ItemGroup>
 
   <ItemGroup>

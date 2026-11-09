@@ -25,6 +25,20 @@ public sealed class InMemoryCharacterStoreTests
     }
 
     [Fact]
+    public async Task AFinishedTutorialIsNewsOnceAndKeptWithTheCharacter()
+    {
+        var store = new InMemoryCharacterStore();
+        var created = (await store.CreateAsync(1001, "Kimi", Builder(1001, "Kimi"), Cancel)).Character!;
+        Assert.False(created.HasFinishedTutorial);
+
+        Assert.True(await store.FinishTutorialAsync(created.CharacterId, Cancel));
+        Assert.False(await store.FinishTutorialAsync(created.CharacterId, Cancel));
+        Assert.False(await store.FinishTutorialAsync(created.CharacterId + 1, Cancel));
+
+        Assert.Equal(created with { HasFinishedTutorial = true }, Assert.Single(await store.FindByAccountAsync(1001, Cancel)));
+    }
+
+    [Fact]
     public async Task ANameDifferingOnlyInCaseIsTaken()
     {
         var store = new InMemoryCharacterStore();

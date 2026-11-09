@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Microsoft.Extensions.Options;
 using OpenTaan.GameServer.Accounts;
 using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Characters;
@@ -8,6 +9,7 @@ using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Channels;
 using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.Connection;
+using OpenTaan.Protocol.GamePlay;
 using OpenTaan.Protocol.Lobby;
 
 namespace OpenTaan.GameServer.Sessions;
@@ -28,17 +30,21 @@ public delegate ValueTask UndecodedHandler(ClientSession session, CancellationTo
 /// </summary>
 /// <remarks>
 /// The table is the whole policy, and it is written out rather than discovered, so
-/// what the server does with a packet is a decision someone made. Three outcomes:
+/// what the server does with a packet is a decision someone made. The outcomes:
 /// <list type="bullet">
 ///   <item>a packet with a handler is decoded and handled; a body its codec refuses
 ///   closes the connection, because a request that cannot be read cannot be answered;</item>
 ///   <item>a request whose layout is not established, and whose contents are not
 ///   needed, is answered without being decoded;</item>
 ///   <item>a packet the client sends without expecting an answer, and that this
-///   server has no use for yet, is recognised and dropped;</item>
+///   server has no use for yet, is recognised and dropped. Where its layout is known
+///   it is read first, so that a body no real client sends still closes the
+///   connection;</item>
 ///   <item>anything else closes the connection. The client never re-sends a request,
 ///   so one left unanswered stays lost, and some screens stay locked until their
-///   reply arrives. A closed connection is at least something the player sees.</item>
+///   reply arrives. A closed connection is at least something the player sees. In
+///   development, <see cref="GameServerOptions.DropUnhandledPackets"/> logs and drops
+///   it instead, so that one run shows everything a screen sends.</item>
 /// </list>
 /// Beyond the table there is one state rule, applied by the login handler: a
 /// connection logs in once. The client sends several packets in any state, and a
@@ -49,6 +55,7 @@ public sealed partial class PacketDispatcher
 {
     private readonly Dictionary<uint, Route> _routes;
     private readonly PacketNames _names;
+    private readonly bool _dropUnhandled;
     private readonly ILogger<PacketDispatcher> _logger;
 
     public PacketDispatcher(
@@ -57,14 +64,17 @@ public sealed partial class PacketDispatcher
         ChannelHandlers channels,
         LobbyHandlers lobby,
         PacketNames names,
+        IOptions<GameServerOptions> options,
         ILogger<PacketDispatcher> logger)
     {
         ArgumentNullException.ThrowIfNull(accounts);
         ArgumentNullException.ThrowIfNull(characters);
         ArgumentNullException.ThrowIfNull(channels);
         ArgumentNullException.ThrowIfNull(lobby);
+        ArgumentNullException.ThrowIfNull(options);
 
         _names = names;
+        _dropUnhandled = options.Value.DropUnhandledPackets;
         _logger = logger;
         _routes = new Dictionary<uint, Route>
         {
@@ -85,6 +95,13 @@ public sealed partial class PacketDispatcher
             [PqLobbyEnter.RegistryId] = Route.To<PqLobbyEnter>(PqLobbyEnter.TryRead, lobby.EnterAsync),
             [PqLobbyLeave.RegistryId] = Route.To<PqLobbyLeave>(PqLobbyLeave.TryRead, lobby.LeaveAsync),
             [PcUploadWebImage.RegistryId] = Route.To<PcUploadWebImage>(PcUploadWebImage.TryRead, lobby.UploadPortraitAsync),
+            [PcTutorialFinished.RegistryId] = Route.To<PcTutorialFinished>(PcTutorialFinished.TryRead, characters.TutorialFinishedAsync),
+
+            // Reports from a game. Until games are played here, the only game they can
+            // come from is the tutorial, which the client plays alone, so there is
+            // nothing to record.
+            [PcGamePlayNotifyEatItem.RegistryId] = Route.ReadAndDropped<PcGamePlayNotifyEatItem>(PcGamePlayNotifyEatItem.TryRead),
+            [PcGamePlaySetGhostPos.RegistryId] = Route.ReadAndDropped<PcGamePlaySetGhostPos>(PcGamePlaySetGhostPos.TryRead),
         };
     }
 
@@ -111,6 +128,12 @@ public sealed partial class PacketDispatcher
 
         if (!_routes.TryGetValue(registryId, out var route))
         {
+            if (_dropUnhandled)
+            {
+                LogUnhandledDropped(_logger, session.Id, name, body.Length);
+                return ValueTask.CompletedTask;
+            }
+
             LogUnhandled(_logger, session.Id, name);
             session.Close(CloseReason.UnhandledPacket);
             return ValueTask.CompletedTask;
@@ -137,6 +160,9 @@ public sealed partial class PacketDispatcher
             where TPacket : class => new HandledRoute<TPacket>(decode, handle);
 
         public static Route Undecoded(UndecodedHandler handle) => new UndecodedRoute(handle);
+
+        public static Route ReadAndDropped<TPacket>(PacketDecoder<TPacket> decode)
+            where TPacket : class => new HandledRoute<TPacket>(decode, static (_, _, _) => ValueTask.CompletedTask);
 
         public abstract PacketError TryHandle(
             ClientSession session,
@@ -192,6 +218,11 @@ public sealed partial class PacketDispatcher
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Connection {ConnectionId} sent {Packet}, which this server does not handle yet; closing it")]
     private static partial void LogUnhandled(ILogger logger, long connectionId, string packet);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Connection {ConnectionId} sent {Packet}, {Length} bytes, which this server does not handle yet; " +
+                  "dropped it, as GameServer:DropUnhandledPackets asks")]
+    private static partial void LogUnhandledDropped(ILogger logger, long connectionId, string packet, int length);
 
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Connection {ConnectionId} sent {Packet} with a body its codec refused ({Error}); closing it")]

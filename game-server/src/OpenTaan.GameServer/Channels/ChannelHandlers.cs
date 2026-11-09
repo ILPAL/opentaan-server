@@ -1,4 +1,5 @@
 using OpenTaan.GameServer.Lobby;
+using OpenTaan.GameServer.PlayTime;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol.Channels;
 
@@ -9,7 +10,11 @@ namespace OpenTaan.GameServer.Channels;
 /// Every channel is on this server, so a move is answered as entered and the player stays
 /// on its connection. The client then goes to the channel's lobby.
 /// </remarks>
-public sealed partial class ChannelHandlers(ChannelDirectory channels, LobbyRoster lobbies, ILogger<ChannelHandlers> logger)
+public sealed partial class ChannelHandlers(
+    ChannelDirectory channels,
+    LobbyRoster lobbies,
+    PlayTimeGrant playTime,
+    ILogger<ChannelHandlers> logger)
 {
     /// <summary>Sends the channel list, with how full each channel is now.</summary>
     public ValueTask GetChannelListAsync(ClientSession session, PqGetChannelList request, CancellationToken cancellationToken)
@@ -37,6 +42,10 @@ public sealed partial class ChannelHandlers(ChannelDirectory channels, LobbyRost
     /// A move that is entered takes the connection out of the lobby it was in, as the
     /// client goes to the new channel's lobby next. One that is refused leaves it where it
     /// was: the client stays there.
+    /// </para>
+    /// <para>
+    /// An entered move is preceded by the player's play time: a client with a play-time
+    /// limit checks it as it builds the lobby it goes to next.
     /// </para>
     /// </remarks>
     public ValueTask MoveToAsync(ClientSession session, PqChannelMoveTo request, CancellationToken cancellationToken)
@@ -67,6 +76,7 @@ public sealed partial class ChannelHandlers(ChannelDirectory channels, LobbyRost
         {
             lobbies.Leave(session);
             LogEntered(logger, session.Id, request.ChannelId);
+            playTime.SendTo(session);
         }
 
         session.Send(new PrChannelMoveTo(

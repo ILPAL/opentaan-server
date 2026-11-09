@@ -50,4 +50,12 @@ public sealed class GameServerOptions
     /// it. Nothing depends on it being there.
     /// </summary>
     public string? PacketNamesFile { get; set; }
+
+    /// <summary>
+    /// Logs a packet this server has no handler for and drops it, instead of closing the
+    /// connection. For finding out, in one run of a real client, everything a screen
+    /// sends. Allowed only in the Development environment: a request dropped this way is
+    /// never answered, and the client waits for it forever.
+    /// </summary>
+    public bool DropUnhandledPackets { get; set; }
 }

@@ -1,12 +1,14 @@
 using OpenTaan.GameServer.Accounts;
 using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Lobby;
+using OpenTaan.GameServer.PlayTime;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol;
 using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Channels;
 using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.Lobby;
+using OpenTaan.Protocol.PlayTime;
 
 namespace OpenTaan.Tests.GameServer;
 
@@ -73,7 +75,7 @@ public sealed class ChannelAndLobbyFlowTests
         await PlayAsync(connection, "player@example.test", "Kimi");
 
         await connection.Client.SendAsync(new PqChannelMoveTo(Forced: false, ChannelId: 12, Context: 0, ClientVersionType: 0));
-        var answer = await connection.Client.ReceiveAsync<PrChannelMoveTo>(PrChannelMoveTo.TryRead);
+        var (_, answer) = await connection.Client.ReceiveMoveAnswerAsync();
 
         Assert.Equal(
             (ChannelMoveResult.Entered, (ushort)12, new ConnectionAddress(0x077100CB, 2190), 0),
@@ -86,6 +88,45 @@ public sealed class ChannelAndLobbyFlowTests
         Assert.Equal(new PrLobbyEnter(12, LobbyEnterResult.Entered), await connection.Client.ReceiveAsync<PrLobbyEnter>(PrLobbyEnter.TryRead));
     }
 
+    [Fact]
+    public async Task AnEnteredMoveIsPrecededByPlayTimeWithNoLimit()
+    {
+        var now = new DateTimeOffset(2026, 11, 8, 12, 0, 0, TimeSpan.Zero);
+        await using var connection = await SessionHarness.ConnectAsync(Services(time: new FixedTime(now)), Cancel);
+        var character = await PlayAsync(connection, "player@example.test", "Kimi");
+
+        await connection.Client.SendAsync(new PqChannelMoveTo(false, 11, 0, 0));
+        var (grant, answer) = await connection.Client.ReceiveMoveAnswerAsync();
+
+        Assert.Equal(ChannelMoveResult.Entered, answer.Result);
+        Assert.NotNull(grant);
+        Assert.Equal(
+            new PcNotifyPlayableTime(0, (uint)now.ToUnixTimeSeconds(), 0, uint.MaxValue, uint.MaxValue, 0),
+            Assert.Single(grant.Limits));
+        Assert.Equal(new PcPlayableTimeCtrl(character, 0, Counting: true), Assert.Single(grant.Counters));
+    }
+
+    [Fact]
+    public async Task AConfiguredLimitIsGrantedToEveryAccountSlotAndCharacter()
+    {
+        var services = Services(playTime: new PlayTimeOptions { AllowedSeconds = 3600 });
+        await using var connection = await SessionHarness.ConnectAsync(services, Cancel);
+        await LogInAsync(connection, "first@example.test", "second@example.test");
+        var first = await CreateAsync(connection, 0, "Kimi");
+        var second = await CreateAsync(connection, 1, "Rồng");
+        await connection.Client.SendAsync(new PqSelectCharacter([first, second]));
+        await connection.Client.ReceiveAsync<PrSelectCharacter>(PrSelectCharacter.TryRead);
+
+        await connection.Client.SendAsync(new PqChannelMoveTo(false, 11, 0, 0));
+        var (grant, _) = await connection.Client.ReceiveMoveAnswerAsync();
+
+        Assert.NotNull(grant);
+        Assert.Equal(
+            [(0, 0u, 3600u, 3600u), (1, 0u, 3600u, 3600u)],
+            grant.Limits.Select(limit => ((int)limit.SlotIndex, limit.PlayedSeconds, limit.AllowedSeconds, limit.MaxPlaySeconds)));
+        Assert.Equal([first, second], grant.Counters.Select(counter => counter.CharacterId));
+    }
+
     [Theory]
     [InlineData((ushort)13, 0u)]
     [InlineData((ushort)14, 0u)]
@@ -96,9 +137,10 @@ public sealed class ChannelAndLobbyFlowTests
         await PlayAsync(connection, "player@example.test", "Kimi");
 
         await connection.Client.SendAsync(new PqChannelMoveTo(context != 0, channelId, context, 0));
-        var answer = await connection.Client.ReceiveAsync<PrChannelMoveTo>(PrChannelMoveTo.TryRead);
+        var (grant, answer) = await connection.Client.ReceiveMoveAnswerAsync();
 
         Assert.Equal((ChannelMoveResult.ChannelClosed, channelId, (ChannelInfo?)null), (answer.Result, answer.ChannelId, answer.Channel));
+        Assert.Null(grant);
     }
 
     [Fact]
@@ -219,19 +261,25 @@ public sealed class ChannelAndLobbyFlowTests
         }
     }
 
-    private static SessionServices Services(ChannelOptions? channels = null, string? folder = null) =>
+    private static SessionServices Services(
+        ChannelOptions? channels = null,
+        string? folder = null,
+        PlayTimeOptions? playTime = null,
+        TimeProvider? time = null) =>
         SessionHarness.Services(
             requireRegistration: false,
             store: new InMemoryAccountStore(StartingCash),
             channelOptions: channels ?? Channels(),
-            portraitOptions: new PortraitOptions { Folder = folder });
+            portraitOptions: new PortraitOptions { Folder = folder },
+            playTimeOptions: playTime,
+            time: time);
 
     private static Task<Connection> ConnectAsync() => SessionHarness.ConnectAsync(Services(), Cancel);
 
     private static async Task<ChannelMoveResult> MoveAsync(Connection connection, ushort channelId)
     {
         await connection.Client.SendAsync(new PqChannelMoveTo(false, channelId, 0, 0));
-        return (await connection.Client.ReceiveAsync<PrChannelMoveTo>(PrChannelMoveTo.TryRead)).Result;
+        return (await connection.Client.ReceiveMoveAnswerAsync()).Answer.Result;
     }
 
     // Requests are handled one at a time, in order: once a later one is answered, every
@@ -249,6 +297,12 @@ public sealed class ChannelAndLobbyFlowTests
             new ConnectionAddress(0, 0),
             0));
         Assert.IsType<PrUserLoginSucceeded>(await connection.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+    }
+
+    private static async Task<uint> CreateAsync(Connection connection, byte slot, string name)
+    {
+        await connection.Client.SendAsync(new PqNewCharacter(slot, name, new AppearanceSlot[AppearanceSlot.Count]));
+        return Assert.Single((await connection.Client.ReceiveAsync<PrNewCharacter>(PrNewCharacter.TryRead)).Catalog!.Characters).CharacterId;
     }
 
     // Logs in, creates a character and selects it, as the client does before its channel screen.

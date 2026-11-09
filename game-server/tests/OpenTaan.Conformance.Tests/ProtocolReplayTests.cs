@@ -7,8 +7,10 @@ using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Channels;
 using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.Connection;
+using OpenTaan.Protocol.GamePlay;
 using OpenTaan.Protocol.Handshake;
 using OpenTaan.Protocol.Lobby;
+using OpenTaan.Protocol.PlayTime;
 using OpenTaan.Transport;
 
 namespace OpenTaan.Tests.Conformance;
@@ -61,6 +63,12 @@ public sealed class ProtocolReplayTests
         [PrLobbyLeave.RegistryId] = body => Replay.Of(PrLobbyLeave.TryRead(body), packet => packet.Write),
         [PcUploadWebImage.RegistryId] = body => Replay.Of(PcUploadWebImage.TryRead(body), packet => packet.Write),
         [PcLobbyUpdateUserList.RegistryId] = body => Replay.Of(PcLobbyUpdateUserList.TryRead(body), packet => packet.Write),
+        [PcTutorialFinished.RegistryId] = body => Replay.Of(PcTutorialFinished.TryRead(body), packet => packet.Write),
+        [PcGamePlayNotifyEatItem.RegistryId] = body => Replay.Of(PcGamePlayNotifyEatItem.TryRead(body), packet => packet.Write),
+        [PcGamePlaySetGhostPos.RegistryId] = body => Replay.Of(PcGamePlaySetGhostPos.TryRead(body), packet => packet.Write),
+        [PcNotifyPlayableTime.RegistryId] = body => Replay.Of(PcNotifyPlayableTime.TryRead(body), packet => packet.Write),
+        [PcPlayableTimeCtrl.RegistryId] = body => Replay.Of(PcPlayableTimeCtrl.TryRead(body), packet => packet.Write),
+        [PcResetPlayableTime.RegistryId] = body => Replay.Of(PcResetPlayableTime.TryRead(body), packet => packet.Write),
     };
 
     // Codecs for packets no recorded session carries, built from the client's own reader.
@@ -232,6 +240,12 @@ public sealed class ProtocolReplayTests
     private static readonly Dictionary<uint, Func<byte[], object?>> Decoders = new()
     {
         [PcFirstAccept.RegistryId] = body => PcFirstAccept.TryRead(body).Packet,
+        [PcTutorialFinished.RegistryId] = body => PcTutorialFinished.TryRead(body).Packet,
+        [PcGamePlayNotifyEatItem.RegistryId] = body => PcGamePlayNotifyEatItem.TryRead(body).Packet,
+        [PcGamePlaySetGhostPos.RegistryId] = body => PcGamePlaySetGhostPos.TryRead(body).Packet,
+        [PcNotifyPlayableTime.RegistryId] = body => PcNotifyPlayableTime.TryRead(body).Packet,
+        [PcPlayableTimeCtrl.RegistryId] = body => PcPlayableTimeCtrl.TryRead(body).Packet,
+        [PcResetPlayableTime.RegistryId] = body => PcResetPlayableTime.TryRead(body).Packet,
         [PrCheckAccount.RegistryId] = body => PrCheckAccount.TryRead(body).Packet,
         [PrCreateAccount.RegistryId] = body => PrCreateAccount.TryRead(body).Packet,
         [PrExistCharacter.RegistryId] = body => PrExistCharacter.TryRead(body).Packet,
