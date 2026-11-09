@@ -17,6 +17,13 @@ RUN dotnet publish src/OpenTaan.GameServer/OpenTaan.GameServer.csproj \
 
 # ---- runtime ----
 FROM mcr.microsoft.com/dotnet/runtime:10.0 AS runtime
+
+# The base image can lag behind Ubuntu's security fixes; take the patched apt
+# rather than wait for the next upstream rebuild.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends --only-upgrade apt libapt-pkg6.0t64 \
+ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY --from=build /app ./
 

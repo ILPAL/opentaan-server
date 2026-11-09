@@ -22,6 +22,13 @@ RUN ./mvnw -B -q package -DskipTests
 
 # ---- runtime ----
 FROM eclipse-temurin:25-jre AS runtime
+
+# The base image can lag behind Ubuntu's security fixes; take the patched apt
+# rather than wait for the next upstream rebuild.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends --only-upgrade apt libapt-pkg7.0 \
+ && rm -rf /var/lib/apt/lists/*
+
 RUN useradd --system --uid 10001 --no-create-home opentaan
 WORKDIR /app
 COPY --from=build /workspace/admin-server/target/admin-server-*.jar app.jar
