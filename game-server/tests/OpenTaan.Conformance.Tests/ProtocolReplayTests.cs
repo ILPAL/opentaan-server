@@ -11,6 +11,7 @@ using OpenTaan.Protocol.GamePlay;
 using OpenTaan.Protocol.Handshake;
 using OpenTaan.Protocol.Lobby;
 using OpenTaan.Protocol.PlayTime;
+using OpenTaan.Protocol.Rooms;
 using OpenTaan.Transport;
 
 namespace OpenTaan.Tests.Conformance;
@@ -69,7 +70,29 @@ public sealed class ProtocolReplayTests
         [PcNotifyPlayableTime.RegistryId] = body => Replay.Of(PcNotifyPlayableTime.TryRead(body), packet => packet.Write),
         [PcPlayableTimeCtrl.RegistryId] = body => Replay.Of(PcPlayableTimeCtrl.TryRead(body), packet => packet.Write),
         [PcResetPlayableTime.RegistryId] = body => Replay.Of(PcResetPlayableTime.TryRead(body), packet => packet.Write),
+        [PqGameSessionCreate.RegistryId] = body => Replay.Of(PqGameSessionCreate.TryRead(body), packet => packet.Write),
+        [PqGameSessionEnter.RegistryId] = body => Replay.Of(PqGameSessionEnter.TryRead(body), packet => packet.Write),
+        [PqGameSessionQuickJoin.RegistryId] = body => Replay.Of(PqGameSessionQuickJoin.TryRead(body), packet => packet.Write),
+        [PqGameSessionLeave.RegistryId] = body => Replay.Of(PqGameSessionLeave.TryRead(body), packet => packet.Write),
+        [PcGameSessionInit.RegistryId] = body => Replay.Of(PcGameSessionInit.TryRead(body), packet => packet.Write),
+        [PrGameSessionCreateFail.RegistryId] = body => Replay.Of(PrGameSessionCreateFail.TryRead(body), packet => packet.Write),
+        [PrGameSessionEnterFail.RegistryId] = body => Replay.Of(PrGameSessionEnterFail.TryRead(body), packet => packet.Write),
+        [PrGameSessionQuickJoinFail.RegistryId] = body => Replay.Of(PrGameSessionQuickJoinFail.TryRead(body), packet => packet.Write),
+        [PrGameSessionLeave.RegistryId] = body => Replay.Of(PrGameSessionLeave.TryRead(body), packet => packet.Write),
+        [PcGameSessionUpdateSlot.RegistryId] = body => Replay.Of(PcGameSessionUpdateSlot.TryRead(body), packet => packet.Write),
+        [PcGameSessionUpdateOption.RegistryId] = body => Replay.Of(PcGameSessionUpdateOption.TryRead(body), packet => packet.Write),
+        [PcGameSessionReady.RegistryId] = body => Replay.Of(PcGameSessionReady.TryRead(body), packet => packet.Write),
+        [PcLobbyUpdateRoomList.RegistryId] = body => Replay.Of(PcLobbyUpdateRoomList.TryRead(body), packet => packet.Write),
+        [PqLobbyViewRoomSimpleInfo.RegistryId] = body => Replay.Of(PqLobbyViewRoomSimpleInfo.TryRead(body), packet => packet.Write),
+        [PrLobbyViewRoomSimpleInfo.RegistryId] = body => Replay.Of(PrLobbyViewRoomSimpleInfo.TryRead(body), packet => packet.Write),
     };
+
+    // A room and an integrity report from invented values whose bytes differ field to
+    // field, for the bodies below.
+    private static readonly GameSessionInfo InventedRoom = new(
+        0x0A0B, RoomStatus.Playing, 0x03, "Phòng", GameType.TeamGame, GameMode.CaptainItems, ChanceMode.Bonus, 0x05, 0x06, "mk", 0x0C0D);
+
+    private static readonly IntegrityReport InventedIntegrity = new(0x11223344, 0x55667788, 0x99, 0xAABBCCDD, 0x0E0F1011, 0x12131415);
 
     // Codecs for packets no recorded session carries, built from the client's own reader.
     // Each has a body written from invented values, whose bytes differ field to field, so
@@ -79,7 +102,24 @@ public sealed class ProtocolReplayTests
         [PrFirstPacket.RegistryId] = Written(new PrFirstPacket(0x11, 0x44332211, 0x01)),
         [PcUploadWebImage.RegistryId] = Written(new PcUploadWebImage(0x44332211, [0x55, 0x66, 0x77])),
         [PcLobbyUpdateUserList.RegistryId] = Written(PcLobbyUpdateUserList.Removing([0x44332211, 0x88776655])),
+        [PrGameSessionCreateFail.RegistryId] = Written(new PrGameSessionCreateFail(CreateRefusal.Refused)),
+        [PrGameSessionEnterFail.RegistryId] = Written(new PrGameSessionEnterFail(EnterRefusal.WrongPassword)),
+        [PrGameSessionQuickJoinFail.RegistryId] = Written(new PrGameSessionQuickJoinFail()),
+        [PcGameSessionUpdateOption.RegistryId] = Written(new PcGameSessionUpdateOption(new GameSessionOption(0x44332211, 0x88776655))),
+        [PcLobbyUpdateRoomList.RegistryId] = Written(new PcLobbyUpdateRoomList(
+            [GameSessionInfoPack.Listing(InventedRoom), GameSessionInfoPack.Removal(0x1112), GameSessionInfoPack.Listing(InventedRoom with { Password = null })])),
     };
+
+    // Recorded packets in shapes no recording shows, written from invented values so that
+    // the declared layout checks those shapes too: every recorded room list is empty, and
+    // every recorded integrity report is zeros, so no swap inside one could show.
+    private static readonly byte[][] UnrecordedShapes =
+    [
+        Written(new PcLobbyInitRoomList([GameSessionInfoPack.Listing(InventedRoom), GameSessionInfoPack.Listing(InventedRoom with { RoomNumber = 0x1112, Password = null })])),
+        Written(new PqGameSessionCreate(InventedRoom, InventedIntegrity)),
+        Written(new PqGameSessionEnter(0x0A0B, "mk", InventedIntegrity)),
+        Written(new PqGameSessionQuickJoin(PqGameSessionQuickJoin.AnyRoom, InventedIntegrity)),
+    ];
 
     [Fact]
     public void TheComputedIdOfEveryNameInTheRegistryIsTheIdItRecords()
@@ -163,23 +203,22 @@ public sealed class ProtocolReplayTests
     {
         Assert.SkipUnless(WireContract.Available, WireContract.Absence);
 
-        // Every declared layout, nested ones included: a packet's lists hold objects that
-        // are read by their own class's layout.
-        var declared = WireContract.Spec.Classes
-            .Where(spec => spec.Fields.Count > 0)
-            .ToDictionary(spec => spec.RegistryId);
+        // Every class, for the objects a packet holds, which are read by their own class's
+        // layout; the packets checked are those whose own fields are declared.
+        var classes = WireContract.Spec.Classes.ToDictionary(spec => spec.RegistryId);
 
         var failures = new List<string>();
+        var written = Unrecorded.Values.Concat(UnrecordedShapes).Select(body => ("a written body", body));
 
-        foreach (var (origin, body) in Bodies().Concat(Unrecorded.Values.Select(body => ("a written body", body))))
+        foreach (var (origin, body) in Bodies().Concat(written))
         {
             var id = LeadingId(body);
-            if (!Codecs.ContainsKey(id) || !declared.ContainsKey(id))
+            if (!Codecs.ContainsKey(id) || classes.GetValueOrDefault(id)?.Fields.Count is not > 0)
             {
                 continue;
             }
 
-            failures.AddRange(DeclaredLayout.Mismatches(body, Decode(id, body), declared)
+            failures.AddRange(DeclaredLayout.Mismatches(body, Decode(id, body), classes)
                 .Select(mismatch => $"{origin}: {mismatch}"));
         }
 
@@ -257,6 +296,19 @@ public sealed class ProtocolReplayTests
         [PcLobbyInitRoomList.RegistryId] = body => PcLobbyInitRoomList.TryRead(body).Packet,
         [PcLobbyInitUserList.RegistryId] = body => PcLobbyInitUserList.TryRead(body).Packet,
         [PrLobbyLeave.RegistryId] = body => PrLobbyLeave.TryRead(body).Packet,
+        [PqGameSessionCreate.RegistryId] = body => PqGameSessionCreate.TryRead(body).Packet,
+        [PqGameSessionEnter.RegistryId] = body => PqGameSessionEnter.TryRead(body).Packet,
+        [PqGameSessionQuickJoin.RegistryId] = body => PqGameSessionQuickJoin.TryRead(body).Packet,
+        [PcGameSessionInit.RegistryId] = body => PcGameSessionInit.TryRead(body).Packet,
+        [PrGameSessionCreateFail.RegistryId] = body => PrGameSessionCreateFail.TryRead(body).Packet,
+        [PrGameSessionEnterFail.RegistryId] = body => PrGameSessionEnterFail.TryRead(body).Packet,
+        [PrGameSessionQuickJoinFail.RegistryId] = body => PrGameSessionQuickJoinFail.TryRead(body).Packet,
+        [PrGameSessionLeave.RegistryId] = body => PrGameSessionLeave.TryRead(body).Packet,
+        [PcGameSessionUpdateSlot.RegistryId] = body => PcGameSessionUpdateSlot.TryRead(body).Packet,
+        [PcGameSessionUpdateOption.RegistryId] = body => PcGameSessionUpdateOption.TryRead(body).Packet,
+        [PcGameSessionReady.RegistryId] = body => PcGameSessionReady.TryRead(body).Packet,
+        [PcLobbyUpdateRoomList.RegistryId] = body => PcLobbyUpdateRoomList.TryRead(body).Packet,
+        [PrLobbyViewRoomSimpleInfo.RegistryId] = body => PrLobbyViewRoomSimpleInfo.TryRead(body).Packet,
     };
 
     private static object Decode(uint registryId, byte[] body) =>

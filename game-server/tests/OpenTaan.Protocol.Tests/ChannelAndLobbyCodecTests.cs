@@ -169,8 +169,8 @@ public sealed class ChannelAndLobbyCodecTests
     {
         byte[] expected = [.. Encoded.UInt32(PcLobbyInitRoomList.RegistryId), .. Encoded.UInt32(0)];
 
-        Assert.Equal(expected, Encoded.Bytes(new PcLobbyInitRoomList().Write));
-        Assert.Equal(PacketError.Unsupported, PcLobbyInitRoomList.TryRead([.. Encoded.UInt32(PcLobbyInitRoomList.RegistryId), .. Encoded.UInt32(1), .. new byte[32]]).Error);
+        Assert.Equal(expected, Encoded.Bytes(new PcLobbyInitRoomList([]).Write));
+        Assert.Empty(PcLobbyInitRoomList.TryRead(expected).Packet!.Rooms);
     }
 
     [Fact]
