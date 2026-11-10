@@ -334,6 +334,17 @@ with real tokens:
   as every client shows it, and the match is left to decide the map. The first
   plan for this stage had said rooms of teams had no random map at all; the
   client's own map list showed otherwise.
+- **A test that logged in again before the server had let go.** A test of the
+  tutorial closed its connection and logged in again with the same account at
+  once. The server frees an account only once it has finished with the old
+  connection, and refuses a login that comes sooner, since an account is live on
+  one connection at a time. Rooms made that cleanup longer, as a closing
+  connection now leaves its room, lobby and channel first, so a test that had
+  passed since it was written began to fail now and then, and failed the build of
+  `main` twice. With the cleanup slowed on purpose by 50 milliseconds it failed
+  every time. It now waits for the server to finish with the first connection, as
+  the other tests that log in again already did, and with the same slowdown every
+  test passes.
 
 ## The game server: bytes, not types
 
