@@ -9,6 +9,7 @@ using OpenTaan.Protocol.Channels;
 using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.Data;
 using OpenTaan.Protocol.Lobby;
+using OpenTaan.Protocol.Rooms;
 using OpenTaan.Tests.GameServer;
 using OpenTaan.Transport;
 
@@ -26,10 +27,14 @@ namespace OpenTaan.Tests.Conformance;
 /// with this run's seeds, which the transport replay checks separately.
 /// </para>
 /// <para>
+/// What a step sends is compared on the connection it goes to: the answer on the
+/// sender's, and what others are told, such as a slot taken in their room, on theirs.
 /// A participant is followed until it sends a packet this server does not handle yet,
-/// or one whose answer goes to someone else: both belong to later stages, so the
-/// participant's remaining steps are not played. Accounts are shared by everyone in the
-/// session, as they are in the server.
+/// or one whose answer goes to a participant no longer followed: both belong to later
+/// stages, so the participant's remaining steps are not played. One that leaves this
+/// stage while in a room ends the whole session's replay there, since what everyone
+/// else does from then on can depend on what it would have done in the room. Accounts
+/// are shared by everyone in the session, as they are in the server.
 /// </para>
 /// <para>
 /// One kind of step is skipped rather than played: a login the recording refused
@@ -43,21 +48,32 @@ namespace OpenTaan.Tests.Conformance;
 /// in order.
 /// </para>
 /// <para>
-/// The lobby's player list is not compared, in either direction. The recordings list
-/// every lobby as empty and never add or remove a player, where this server lists the
-/// players in it and tells them of each one who comes or goes, to participants whose
-/// steps may be anywhere in the session. Who is listed is checked through real
-/// connections in the game server's own tests.
+/// The lobby's player list, and the changes to its room list, are not compared, in
+/// either direction. The recordings list every lobby's players as empty and never add or
+/// remove a player or change a room, where this server lists the players in a lobby and
+/// tells everyone in it of each player who comes or goes and of each room that opens,
+/// fills or closes, to participants whose steps may be anywhere in the session. These are
+/// checked through real connections in the game server's own tests. The room list a
+/// lobby is entered with is compared: every recorded one is empty, as no room exists yet.
 /// </para>
 /// <para>
-/// Two kinds of recorded value are adjusted before comparing, and only those. A new
-/// character's appearance carries the account's gender, where the recordings carry 0, a
-/// placeholder of the server they were recorded from; the client draws a character's
-/// default parts by that gender. And the channel list carries no level range, where the
-/// recordings carry one that the server they were recorded from never applied: their
-/// new characters enter channels below its minimum. This server advertises only what it
-/// applies. Each recorded answer is decoded, those values set, and the answer encoded
-/// again, so every other byte is still compared as recorded.
+/// A few kinds of recorded value are adjusted before comparing, and only those:
+/// <list type="bullet">
+///   <item>A character's appearance carries its account's gender, where the recordings
+///   carry 0, a placeholder of the server they were recorded from; the client draws a
+///   character's default parts by that gender. So does every new character's, and every
+///   character's in a room's slots, which the recordings carry the same way.</item>
+///   <item>The channel list carries no level range, where the recordings carry one that
+///   the server they were recorded from never applied: their new characters enter
+///   channels below its minimum. This server advertises only what it applies.</item>
+///   <item>A room's reply carries empty team names, where the recordings carry
+///   placeholders. The client reads them only in arena channels.</item>
+///   <item>In a mission room, the reply to a player entering carries the mission's
+///   difficulty, as the reply to its creator does. The recordings carry the player's slot
+///   there, so a player entering was shown a difficulty the room did not have.</item>
+/// </list>
+/// Each recorded answer is decoded, those values set, and the answer encoded again, so
+/// every other byte is still compared as recorded.
 /// </para>
 /// <para>
 /// One recorded answer is replaced by design: a channel move answered with a reconnect.
@@ -100,6 +116,14 @@ public sealed class SessionReplayTests
            select RegistryIds.Of(wireClass.Name),
     ];
 
+    // What the replay does not compare; see the remarks.
+    private static readonly HashSet<uint> NotCompared =
+    [
+        PcLobbyInitUserList.RegistryId,
+        PcLobbyUpdateUserList.RegistryId,
+        PcLobbyUpdateRoomList.RegistryId,
+    ];
+
     [Fact]
     public async Task EveryParticipantIsAnsweredAsRecordedUntilItLeavesThisStage()
     {
@@ -128,6 +152,7 @@ public sealed class SessionReplayTests
             channelOptions: RecordedChannelOptions(session));
 
         var connections = new Dictionary<string, Connection>(StringComparer.Ordinal);
+        var recordedValues = new RecordedValues();
         var compared = 0;
 
         try
@@ -170,9 +195,18 @@ public sealed class SessionReplayTests
                 }
 
                 var body = Convert.FromHexString(inbound);
-                if (!services.Dispatcher.Routes(BinaryPrimitives.ReadUInt32LittleEndian(body))
-                    || exchange.Frames.Any(frame => frame.To != participant))
+                var expected = exchange.Frames
+                    .Select(frame => (To: frame.To ?? participant, Body: frame.Body()))
+                    .Where(frame => IsImplemented(frame.Body) && !NotCompared.Contains(RegistryIdOf(frame.Body)))
+                    .ToArray();
+
+                if (!services.Dispatcher.Routes(RegistryIdOf(body)) || expected.Any(frame => !connections.ContainsKey(frame.To)))
                 {
+                    if (services.Rooms.RoomOf(connection.Session) is not null)
+                    {
+                        break;
+                    }
+
                     await Retire(connections, participant);
                     continue;
                 }
@@ -184,9 +218,10 @@ public sealed class SessionReplayTests
 
                 await connection.Client.SendBodyAsync(body);
                 var reconnects = false;
-                foreach (var recorded in exchange.Frames.Select(frame => frame.Body()).Where(IsImplemented).Where(body => !IsLobbyPlayerList(body)))
+                foreach (var (to, recorded) in expected)
                 {
-                    if (IsReconnect(recorded))
+                    recordedValues.Learn(body, recorded);
+                    if (to == participant && IsReconnect(recorded))
                     {
                         var (grant, answer) = await connection.Client.ReceiveMoveAnswerAsync();
                         CompareEnteredInstead(failures, where, recorded, grant, answer);
@@ -194,7 +229,7 @@ public sealed class SessionReplayTests
                     }
                     else
                     {
-                        Compare(failures, where, Adjusted(recorded), await ReceiveComparedAsync(connection));
+                        Compare(failures, where, recordedValues.Adjusted(recorded), await ReceiveComparedAsync(connections[to]));
                     }
 
                     compared++;
@@ -247,51 +282,21 @@ public sealed class SessionReplayTests
         ],
     };
 
-    private static bool IsImplemented(byte[] body) => Implemented.Contains(BinaryPrimitives.ReadUInt32LittleEndian(body));
+    private static uint RegistryIdOf(byte[] body) => BinaryPrimitives.ReadUInt32LittleEndian(body);
 
-    private static bool IsLobbyPlayerList(byte[] body) =>
-        BinaryPrimitives.ReadUInt32LittleEndian(body) is var id
-        && (id == PcLobbyInitUserList.RegistryId || id == PcLobbyUpdateUserList.RegistryId);
+    private static bool IsImplemented(byte[] body) => Implemented.Contains(RegistryIdOf(body));
 
-    // The participant's next body that the replay compares, past any lobby player list.
+    // The participant's next body that the replay compares, past any it does not.
     private static async Task<byte[]> ReceiveComparedAsync(Connection connection)
     {
         while (true)
         {
             var body = await connection.Client.ReceiveBodyAsync();
-            if (!IsLobbyPlayerList(body))
+            if (!NotCompared.Contains(RegistryIdOf(body)))
             {
                 return body;
             }
         }
-    }
-
-    // The recorded answer with the adjustments the remarks above describe.
-    private static byte[] Adjusted(byte[] recorded)
-    {
-        var adjusted = new ArrayBufferWriter<byte>();
-        switch (BinaryPrimitives.ReadUInt32LittleEndian(recorded))
-        {
-            case var id when id == PrNewCharacter.RegistryId
-                             && PrNewCharacter.TryRead(recorded).Packet is { Catalog: { } catalog } answer:
-                // Each new character's appearance gets its account's gender, which the
-                // character's own description carries.
-                var appearances = catalog.Appearances
-                    .Select((appearance, position) => appearance with { Gender = catalog.Characters[position].Gender })
-                    .ToArray();
-                (answer with { Catalog = new CharacterCatalog(catalog.Characters, appearances) }).Write(adjusted);
-                break;
-
-            case var id when id == PrGetChannelList.RegistryId
-                             && PrGetChannelList.TryRead(recorded).Packet is { } list:
-                new PrGetChannelList(WithoutLevelRanges(list.Channels)).Write(adjusted);
-                break;
-
-            default:
-                return recorded;
-        }
-
-        return adjusted.WrittenSpan.ToArray();
     }
 
     private static DataNode WithoutLevelRanges(DataNode node) => node with
@@ -301,7 +306,7 @@ public sealed class SessionReplayTests
     };
 
     private static bool IsReconnect(byte[] recorded) =>
-        BinaryPrimitives.ReadUInt32LittleEndian(recorded) == PrChannelMoveTo.RegistryId
+        RegistryIdOf(recorded) == PrChannelMoveTo.RegistryId
         && PrChannelMoveTo.TryRead(recorded).Packet is { Result: ChannelMoveResult.Reconnect };
 
     // A move this server answers as entered where the recording reconnects: the same
@@ -344,6 +349,122 @@ public sealed class SessionReplayTests
         if (connections.Remove(participant, out var connection))
         {
             await connection.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// What one session's recordings say about its characters and rooms, learned as it is
+    /// played, and the adjustments the remarks above describe.
+    /// </summary>
+    private sealed class RecordedValues
+    {
+        private readonly Dictionary<uint, Gender> _genders = [];
+        private readonly Dictionary<ushort, byte> _missionDifficulties = [];
+
+        /// <summary>Learns from <paramref name="recorded"/>, sent in answer to <paramref name="request"/>.</summary>
+        public void Learn(byte[] request, byte[] recorded)
+        {
+            switch (RegistryIdOf(recorded))
+            {
+                case var id when id == PrNewCharacter.RegistryId
+                                 && PrNewCharacter.TryRead(recorded).Packet is { Catalog: { } catalog }:
+                    LearnGenders(catalog);
+                    break;
+
+                case var id when id == PrUserLogin.RegistryId
+                                 && PrUserLogin.TryRead(recorded).Packet is PrUserLoginSucceeded login:
+                    foreach (var catalog in login.Catalogs)
+                    {
+                        LearnGenders(catalog);
+                    }
+
+                    break;
+
+                // The reply to a room's creator carries the difficulty its room starts with.
+                case var id when id == PcGameSessionInit.RegistryId
+                                 && RegistryIdOf(request) == PqGameSessionCreate.RegistryId
+                                 && PcGameSessionInit.TryRead(recorded).Packet is { Room.GameType: GameType.Mission } reply:
+                    _missionDifficulties[reply.Room.RoomNumber] = reply.Difficulty;
+                    break;
+            }
+        }
+
+        /// <summary><paramref name="recorded"/>, with the adjustments the remarks above describe.</summary>
+        public byte[] Adjusted(byte[] recorded)
+        {
+            var adjusted = new ArrayBufferWriter<byte>();
+            switch (RegistryIdOf(recorded))
+            {
+                case var id when id == PrNewCharacter.RegistryId
+                                 && PrNewCharacter.TryRead(recorded).Packet is { Catalog: { } catalog } answer:
+                    // Each new character's appearance gets its account's gender, which the
+                    // character's own description carries.
+                    var appearances = catalog.Appearances
+                        .Select((appearance, position) => appearance with { Gender = catalog.Characters[position].Gender })
+                        .ToArray();
+                    (answer with { Catalog = new CharacterCatalog(catalog.Characters, appearances) }).Write(adjusted);
+                    break;
+
+                case var id when id == PrGetChannelList.RegistryId
+                                 && PrGetChannelList.TryRead(recorded).Packet is { } list:
+                    new PrGetChannelList(WithoutLevelRanges(list.Channels)).Write(adjusted);
+                    break;
+
+                case var id when id == PcGameSessionInit.RegistryId
+                                 && PcGameSessionInit.TryRead(recorded).Packet is { } reply:
+                    var difficulty = reply.Room.GameType == GameType.Mission
+                                     && _missionDifficulties.TryGetValue(reply.Room.RoomNumber, out var missionDifficulty)
+                        ? missionDifficulty
+                        : reply.Difficulty;
+                    new PcGameSessionInit(
+                        reply.Room,
+                        reply.Option,
+                        [.. reply.Slots.Select(WithGender)],
+                        difficulty,
+                        TeamOneName: string.Empty,
+                        TeamTwoName: string.Empty).Write(adjusted);
+                    break;
+
+                case var id when id == PcGameSessionUpdateSlot.RegistryId
+                                 && PcGameSessionUpdateSlot.TryRead(recorded).Packet is { } update:
+                    new PcGameSessionUpdateSlot(update.Change, WithGender(update.Slot), update.TeamName).Write(adjusted);
+                    break;
+
+                default:
+                    return recorded;
+            }
+
+            return adjusted.WrittenSpan.ToArray();
+        }
+
+        private void LearnGenders(CharacterCatalog catalog)
+        {
+            foreach (var character in catalog.Characters)
+            {
+                _genders[character.CharacterId] = character.Gender;
+            }
+        }
+
+        // The slot, its character's appearance carrying the character's gender.
+        private GameSlotInfo WithGender(GameSlotInfo slot)
+        {
+            if (slot.Occupant is not { } occupant || !_genders.TryGetValue(occupant.CharacterId, out var gender))
+            {
+                return slot;
+            }
+
+            return new GameSlotInfo(
+                slot.SlotIndex,
+                slot.Status,
+                new SlotOccupant(
+                    occupant.PlayerId,
+                    occupant.CharacterId,
+                    occupant.Name,
+                    occupant.GuildName,
+                    occupant.Level,
+                    occupant.Team,
+                    occupant.Appearance with { Gender = gender },
+                    occupant.WeaponId));
         }
     }
 }

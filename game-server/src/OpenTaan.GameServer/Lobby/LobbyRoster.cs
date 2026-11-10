@@ -76,6 +76,17 @@ public sealed class LobbyRoster
         }
     }
 
+    /// <summary>Sends <paramref name="packet"/> to everyone in the lobby of <paramref name="channelId"/>.</summary>
+    public void Tell(ushort channelId, IPacket packet)
+    {
+        ArgumentNullException.ThrowIfNull(packet);
+
+        lock (_lock)
+        {
+            SendToLobbyLocked(channelId, packet);
+        }
+    }
+
     /// <summary>
     /// The list a player entering a lobby with <paramref name="characters"/> in it is sent:
     /// one list, and when that would not fit a frame, as many adds after it as the rest needs.

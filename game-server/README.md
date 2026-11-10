@@ -139,15 +139,57 @@ it went. The client adds a player for every add and removes one for every remova
 without checking what it shows, so each player is added once and removed once,
 and listing a lobby, adding a player and telling the others are one step under
 one lock. A lobby too large for one frame is listed in as many frames as it
-needs. Rooms come with the room stage, so the room list is empty. Cash is the account's, and starts at `Accounts:Start:Cash`; a cash
-request for a slot the connection does not hold is answered for slot 0, as the
-character requests are.
+needs. The lobby also lists its channel's rooms; see the next section.
+
+Cash is the account's, and starts at `Accounts:Start:Cash`; a cash request for a
+slot the connection does not hold is answered for slot 0, as the character
+requests are.
 
 On entering the lobby the client sends a PNG picture of each selected character.
 It is kept only when `Portraits:Folder` is set (Development sets `portraits`),
 as one file per character named by its id; a picture of a character the
 connection has not selected is dropped, and one that is not a PNG file is kept
 apart with a `.bin` extension.
+
+## Rooms
+
+From its channel's lobby a player creates a room, enters one, has one picked for
+it, or leaves; a room belongs to one channel. Every room has eight slots on two
+teams, the left two columns of the client's room screen against the right two. A
+connection plays one character per account it logged in with, one or two, and its
+characters always sit together on one team. Every slot they take carries the one
+player id the connection's login was answered with, since the client tells its own
+slots, and the host's, by that id.
+
+- **Creating:** the request is checked as the client's own create dialog checks it
+  (a name, a password when one is asked for, a game mode the room's type allows),
+  and the server sets the rest: the status, the player counts and the map. The host
+  takes the first slots of the first team. A mission room keeps the second team's
+  slots closed, since that side of a mission is played by the server. A channel
+  holds at most `Rooms:MaxPerChannel` rooms. Room numbers rise from 1 and a freed
+  one is not given to the next room at once.
+- **Entering:** the player sits on the team with fewer characters when all of its
+  characters fit there, otherwise on the other team. When neither team can take
+  them all, it is refused: as full when the room has fewer free slots than it has
+  characters, and for lack of a slot when they are free but split between the
+  teams. A wrong password, a room in another channel, and a player already in a
+  room are refused with the client's own reasons.
+- **Quick join:** the fullest waiting room in the channel that has no password,
+  plays no mission and can seat all of the player's characters together, and of
+  those the lowest numbered.
+- **Leaving:** leaving, or the connection closing for any reason, frees the
+  player's slots, and everyone left is told. When the host goes, the player in the
+  lowest slot hosts, and the room is told that player is not ready before it is told
+  who hosts. The last player out closes the room. A lobby entry or channel move
+  from a room leaves the room first.
+
+The client sends none of the four requests while one is unanswered, so every one
+is answered exactly once, refusals included. The lobby is listed its rooms on
+entry, never with their passwords, and is told of every room that opens, changes
+or closes. One lock covers every room, so two players cannot both take a room's
+last slot, and a player entering a lobby as a room opens sees it exactly once.
+What players do in a room, such as getting ready, changing team or expelling a
+player, comes next, and matches after that.
 
 ## Play time
 
@@ -199,9 +241,10 @@ dotnet run --project src/OpenTaan.GameServer
 
 This runs in the Development environment, where any login creates the account
 it names (`Accounts:RequireRegistration` is off). A real client can log in,
-create and select a character, pick a channel and enter its lobby; rooms are the
-next stage. The server refuses to start with registration off in any other
-environment. Accounts and characters live in memory until the database stage.
+create and select a character, pick a channel, enter its lobby, and create,
+enter and leave rooms; what players do in a room is the next stage. The server
+refuses to start with registration off in any other environment. Accounts,
+characters and rooms live in memory until the database stage.
 
 Settings live in `appsettings.json` and can be overridden with environment
 variables, for example `GameServer__Port=2181`:
@@ -222,5 +265,7 @@ variables, for example `GameServer__Port=2181`:
 | `Channels:Server:PublicAddress`, `Channels:Server:PublicPort` | none, `GameServer:Port` | The IPv4 address and port the client is told the channels are at; see above for what is used when none is set. |
 | `Channels:List` | `Channel 1` to `Channel 5`, room for 100 each | Each channel's `Id`, `Name`, `Capacity`, and optionally `Disabled` and `Mode` (`6`, ordinary; arena modes are not served yet). |
 | `PlayTime:AllowedSeconds` | none | How long a player may play, in seconds, as the client is told on entering a channel; none means no limit. Must be above 0: with no time allowed, the client quits at every lobby. |
+| `Rooms:MaxPerChannel` | `500` | Rooms one channel may hold at once; a request to create one more is refused. |
+| `Rooms:MaxNameLength` | `128` | The longest room name, in UTF-16 code units, a request to create a room may carry. At most 1000, so every room reply fits a frame. |
 | `Portraits:Folder` | none | Where the pictures clients send of their characters are kept. A relative path is taken from the content root. |
 | `Characters:CreatorParts` | `1, 3, 5, 8` | The appearance parts the client's character creator offers; a new character keeps only these. |

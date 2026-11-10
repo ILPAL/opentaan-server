@@ -74,6 +74,17 @@ public sealed partial class ClientSession
     /// <summary>Whether this connection has logged in.</summary>
     public bool IsLoggedIn => Accounts.Count > 0;
 
+    /// <summary>
+    /// The id the client knows this connection's player by, or 0 before login: the first
+    /// account's, which the login is answered with.
+    /// </summary>
+    /// <remarks>
+    /// The client keeps the one id its login was answered with, whichever slots it plays,
+    /// and tells its own slots in a room, and the host's, by it. So the login answer and
+    /// every slot this connection holds carry this same value, never each account's own.
+    /// </remarks>
+    public uint PlayerId => IsLoggedIn ? Accounts[0].LocalPlayerId : 0;
+
     /// <summary>The characters this connection plays, one per account in slot order. Empty until selected.</summary>
     public IReadOnlyList<uint> SelectedCharacterIds { get; private set; } = [];
 
@@ -193,10 +204,20 @@ public sealed partial class ClientSession
             // does not catch arrives here without one, and it leaves as a server error.
             Close(CloseReason.ServerError);
 
-            // The read loop awaits every handler, so no login, channel move or lobby entry can still be under way here.
-            _services.LoggedIn.Release(this, Accounts);
+            // Off the thread that closed this connection, which can be another connection's,
+            // telling a room or a lobby under its lock: a send that finds the queue full
+            // closes the connection from there, and leaving the room in the middle of that
+            // would change the room it is telling.
+            await Task.Yield();
+
+            // The read loop awaits every handler, so no login, channel move, lobby entry or
+            // room request of this connection can still be under way here. The accounts go
+            // last, so they can log in again only once this connection is out of every room
+            // and lobby.
+            _services.Rooms.Leave(this);
             _services.Lobbies.Leave(this);
             _services.Channels.Leave(this);
+            _services.LoggedIn.Release(this, Accounts);
 
             await writing.ConfigureAwait(false);
             await _stream.DisposeAsync().ConfigureAwait(false);

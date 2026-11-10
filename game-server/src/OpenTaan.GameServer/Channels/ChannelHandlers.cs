@@ -1,5 +1,6 @@
 using OpenTaan.GameServer.Lobby;
 using OpenTaan.GameServer.PlayTime;
+using OpenTaan.GameServer.Rooms;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol.Channels;
 
@@ -13,6 +14,7 @@ namespace OpenTaan.GameServer.Channels;
 public sealed partial class ChannelHandlers(
     ChannelDirectory channels,
     LobbyRoster lobbies,
+    RoomDirectory rooms,
     PlayTimeGrant playTime,
     ILogger<ChannelHandlers> logger)
 {
@@ -40,8 +42,9 @@ public sealed partial class ChannelHandlers(
     /// </para>
     /// <para>
     /// A move that is entered takes the connection out of the lobby it was in, as the
-    /// client goes to the new channel's lobby next. One that is refused leaves it where it
-    /// was: the client stays there.
+    /// client goes to the new channel's lobby next, and out of any room it is in: a room
+    /// belongs to one channel, and the client moves only from its lobby. One that is
+    /// refused leaves it where it was: the client stays there.
     /// </para>
     /// <para>
     /// An entered move is preceded by the player's play time: a client with a play-time
@@ -74,6 +77,7 @@ public sealed partial class ChannelHandlers(
 
         if (result == ChannelMoveResult.Entered)
         {
+            rooms.Leave(session);
             lobbies.Leave(session);
             LogEntered(logger, session.Id, request.ChannelId);
             playTime.SendTo(session);

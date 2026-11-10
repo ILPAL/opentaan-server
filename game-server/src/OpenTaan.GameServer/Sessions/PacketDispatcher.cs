@@ -4,6 +4,7 @@ using OpenTaan.GameServer.Accounts;
 using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Characters;
 using OpenTaan.GameServer.Lobby;
+using OpenTaan.GameServer.Rooms;
 using OpenTaan.Protocol;
 using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Channels;
@@ -11,6 +12,7 @@ using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.Connection;
 using OpenTaan.Protocol.GamePlay;
 using OpenTaan.Protocol.Lobby;
+using OpenTaan.Protocol.Rooms;
 
 namespace OpenTaan.GameServer.Sessions;
 
@@ -63,6 +65,7 @@ public sealed partial class PacketDispatcher
         CharacterHandlers characters,
         ChannelHandlers channels,
         LobbyHandlers lobby,
+        RoomHandlers rooms,
         PacketNames names,
         IOptions<GameServerOptions> options,
         ILogger<PacketDispatcher> logger)
@@ -71,6 +74,7 @@ public sealed partial class PacketDispatcher
         ArgumentNullException.ThrowIfNull(characters);
         ArgumentNullException.ThrowIfNull(channels);
         ArgumentNullException.ThrowIfNull(lobby);
+        ArgumentNullException.ThrowIfNull(rooms);
         ArgumentNullException.ThrowIfNull(options);
 
         _names = names;
@@ -95,6 +99,11 @@ public sealed partial class PacketDispatcher
             [PqLobbyEnter.RegistryId] = Route.To<PqLobbyEnter>(PqLobbyEnter.TryRead, lobby.EnterAsync),
             [PqLobbyLeave.RegistryId] = Route.To<PqLobbyLeave>(PqLobbyLeave.TryRead, lobby.LeaveAsync),
             [PcUploadWebImage.RegistryId] = Route.To<PcUploadWebImage>(PcUploadWebImage.TryRead, lobby.UploadPortraitAsync),
+            [PqLobbyViewRoomSimpleInfo.RegistryId] = Route.To<PqLobbyViewRoomSimpleInfo>(PqLobbyViewRoomSimpleInfo.TryRead, rooms.RoomInfoAsync),
+            [PqGameSessionCreate.RegistryId] = Route.To<PqGameSessionCreate>(PqGameSessionCreate.TryRead, rooms.CreateAsync),
+            [PqGameSessionEnter.RegistryId] = Route.To<PqGameSessionEnter>(PqGameSessionEnter.TryRead, rooms.EnterAsync),
+            [PqGameSessionQuickJoin.RegistryId] = Route.To<PqGameSessionQuickJoin>(PqGameSessionQuickJoin.TryRead, rooms.QuickJoinAsync),
+            [PqGameSessionLeave.RegistryId] = Route.To<PqGameSessionLeave>(PqGameSessionLeave.TryRead, rooms.LeaveAsync),
             [PcTutorialFinished.RegistryId] = Route.To<PcTutorialFinished>(PcTutorialFinished.TryRead, characters.TutorialFinishedAsync),
 
             // Reports from a game. Until games are played here, the only game they can

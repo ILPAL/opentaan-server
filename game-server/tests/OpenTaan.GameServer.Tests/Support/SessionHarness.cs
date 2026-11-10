@@ -9,6 +9,7 @@ using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Characters;
 using OpenTaan.GameServer.Lobby;
 using OpenTaan.GameServer.PlayTime;
+using OpenTaan.GameServer.Rooms;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Transport;
 
@@ -54,7 +55,8 @@ internal static class SessionHarness
         ChannelOptions? channelOptions = null,
         PortraitOptions? portraitOptions = null,
         PlayTimeOptions? playTimeOptions = null,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        RoomOptions? roomOptions = null)
     {
         characterStore ??= new InMemoryCharacterStore();
         var accounts = new AccountHandlers(
@@ -77,6 +79,8 @@ internal static class SessionHarness
             () => IPAddress.Loopback);
         var channels = new ChannelDirectory(channelOptions, address);
         var lobbies = new LobbyRoster();
+        var roomSettings = Options.Create(roomOptions ?? new RoomOptions());
+        var rooms = new RoomDirectory(lobbies, roomSettings, NullLogger<RoomDirectory>.Instance);
 
         var names = new PacketNames();
         var dispatcher = new PacketDispatcher(
@@ -85,14 +89,17 @@ internal static class SessionHarness
             new ChannelHandlers(
                 channels,
                 lobbies,
+                rooms,
                 new PlayTimeGrant(Options.Create(playTimeOptions ?? new PlayTimeOptions()), time ?? TimeProvider.System),
                 NullLogger<ChannelHandlers>.Instance),
             new LobbyHandlers(
                 channels,
                 lobbies,
+                rooms,
                 characterStore,
                 Options.Create(portraitOptions ?? new PortraitOptions()),
                 NullLogger<LobbyHandlers>.Instance),
+            new RoomHandlers(rooms, channels, characterStore, roomSettings, NullLogger<RoomHandlers>.Instance),
             names,
             Options.Create(options),
             NullLogger<PacketDispatcher>.Instance);
@@ -105,6 +112,7 @@ internal static class SessionHarness
             new LoggedInAccounts(),
             channels,
             lobbies,
+            rooms,
             NullLogger<ClientSession>.Instance);
     }
 
