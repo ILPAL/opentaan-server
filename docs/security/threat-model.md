@@ -2,7 +2,7 @@
 
 What OpenTaan protects, from whom, and how. Each threat names the control that
 addresses it and where that control is tested, or says plainly that it is
-open. Last reviewed 2026-11-02. Review again when a new entry point is added
+open. Last reviewed 2026-11-10. Review again when a new entry point is added
 (the game server transport, the control channel, the operator portal) or
 before any deployment beyond a local machine.
 
@@ -10,7 +10,7 @@ before any deployment beyond a local machine.
 
 The stack in `docker-compose.yml`: the admin server, Keycloak, PostgreSQL,
 Flyway and the game server, plus the CI that builds them. The game server
-serves the login, character, channel and lobby stages; its threats are listed
+serves the login, character, tutorial, channel and lobby stages, and rooms up to the start of a match; its threats are listed
 with the controls in place and those planned for the stages still to come. A production
 deployment (TLS termination, networks, backups, monitoring) is not designed
 yet and is out of scope, except where the local setup would be unsafe to copy.
@@ -136,8 +136,9 @@ does not exist yet; the control comes with it).
 | T-G15 | A development setting reaches production and leaves clients waiting: with unhandled packets dropped instead of refused, a request this server cannot answer is never answered | The server refuses to start with the setting on outside Development, as it does with registration off (T-G8) | Mitigated: the start-up check; the drop itself is tested in `SessionTests` |
 | T-G16 | A modified client creates rooms without end, filling the server's memory and the room list every player in the lobby is sent | A connection is in one room at a time; a channel holds at most `Rooms:MaxPerChannel` rooms, checked and taken in one step so that rooms created at once cannot pass it; a room's name is bounded by `Rooms:MaxNameLength`; the connection limits (T-G2) bound who can create; a room list too large for one frame is sent in frames that fit | Mitigated: `RoomFlowTests`, `RoomRaceTests`, `RoomRulesTests`; no limit on how often one connection creates and leaves, which waits for the per-connection packet limit (T-G2) |
 | T-G17 | A room's password is read or got round, through the room list every player in a lobby is sent | The lobby is told only whether a room has a password, never what it is; only a player who entered with it is sent it, in the room it is sent; a request to enter is compared with it in constant time; quick join never picks a room with a password, as its request carries none; the view of a room shows only who is in it | Partly: `RoomFlowTests`; no limit on wrong guesses, which waits for the per-connection packet limit (T-G2) |
-| T-G18 | A crafted request acts on someone else's place in a room: takes a chosen slot, seats another player's character, or makes another player leave | Room requests name no slot and no player: the server seats a connection's own selected characters in slots it chooses, and a leave takes out the connection that sent it, whatever room number it names; a connection is in one room at a time, and a request to create or enter one from a room is refused. The report on its own code that the client adds to each room request is not checked, and nothing is decided by it | Mitigated for entering and leaving: `RoomFlowTests`, `TwoAccountRoomTests`; what players do in a room (getting ready, teams, weapons, options, closing slots, expelling a player) comes with checks of its own |
+| T-G18 | A crafted request acts on someone else's place in a room: takes a chosen slot, seats another player's character, makes another player leave, or changes the room in its host's stead | Room requests to enter or leave name no slot and no player: the server seats a connection's own selected characters in slots it chooses, and a leave takes out the connection that sent it, whatever room number it names; a connection is in one room at a time, and a request to create or enter one from a room is refused. In a room, a request counts only from a connection in it while it waits for its match: a player readies, changes team and picks weapons only for its own characters, and only the host changes the room's options, opens and closes slots, and sends a player out; a slot is opened or closed only while empty, since the client sets a slot's status without checking what it holds; a team change moves all of a connection's characters or none; an expulsion never takes the host's own characters. Anything else is dropped. The report on its own code that the client adds to each room request is not checked, and nothing is decided by it | Mitigated: `RoomFlowTests`, `TwoAccountRoomTests`, `RoomActionFlowTests`, `RoomRaceTests`, `RoomRulesTests` |
 | T-G19 | A player who is gone keeps a seat, so the room can never start and its host is never replaced | A connection that closes, for any reason including the idle timeout, leaves its room before anything else is released, and the room is told; when the host goes, the player in the lowest slot hosts; a lobby entry or channel move from a room leaves the room first; a member that stops reading is closed once its send queue is full, and leaves its room like any other | Mitigated: `RoomFlowTests`, `TwoAccountRoomTests`, `RoomRaceTests` |
+| T-G20 | A modified host picks a map, or a player a weapon, that the client never offers, so that every player's client is sent something it cannot draw or play | In a room of teams the host's map must be one the client's own map list lets a host pick in the channel's mode, its random picks included (`Rooms:MapsByChannelMode`), and every mode in use needs such a list or the server does not start; a refused change is answered with the room as it is. A mission room's host picks a mission, and every player a weapon, from the client's own files, which this server does not read yet: both are kept as sent | Partly: maps in rooms of teams by `RoomActionFlowTests`, `RoomRulesTests`, `RoomSettingsTests`; missions and weapons are not checked until the server reads the client's data |
 
 ### Supply chain and CI
 
@@ -162,3 +163,6 @@ does not exist yet; the control comes with it).
 7. **T-G12:** no throttle on name checks, so character names can be listed.
 8. **T-A3, T-A5 and T-S4:** local-only settings that need changing before any
    shared deployment.
+9. **T-G20:** missions and weapons are kept as the client sends them, so a
+   modified client can send its room one that the other players' clients do not
+   have, until the server reads the client's own data.

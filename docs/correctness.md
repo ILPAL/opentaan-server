@@ -85,6 +85,17 @@ The expensive bugs happen when two requests arrive at the same moment.
 - A member of a room stops reading while others come and go. Once its send queue
   is full it is closed and leaves the room, and the room is told it left exactly
   once.
+- A host sends a player out of a room as that player leaves on its own, twenty
+  times over. The player's slot is freed once and the player is answered once,
+  and the expulsion reaches both of them or, when the leave came first, neither.
+- A host changes a room's options as a player enters it, twenty times over. The
+  player is shown the new options exactly once: in the room it is sent, or as a
+  change after it.
+
+Each race passes whichever way it goes, so a pass only means something if both
+ways come up. Counted once over sixty rounds of each, both did: the expulsion
+came first 56 times and the leave 4, and the new options were in the room sent
+55 times and came as a change 5 times.
 
 The trigger's comment says that a writer under `REPEATABLE READ` fails rather
 than forking the chain. That claim was tested by hand with two sessions before
@@ -302,6 +313,27 @@ with real tokens:
   nothing more on its way, could finish before that player was told, and pass
   over a change it should have counted. The player is now sent the room last, so
   once it has its answer everyone else has been told, for tests and players alike.
+- **A test that read one player before another had acted.** The first version of
+  the race between a host's options and a player entering read everything the
+  entering player had been sent, then the host's. Two connections are not ordered
+  with each other, so the entering player could be answered before the host's
+  change had even been handled, and the test failed on a correct server. It now
+  waits for the host's own answer first: by then the change has been handled, and
+  anything it sent the entering player is queued ahead of that player's next
+  answer.
+- **A recorded answer a real client ignores.** The recorded expulsion carries the
+  expelled character's id. The client looks for the slots by the player's id,
+  which is a different number, so a real client sent that message does not react
+  to it, and the player sent out is never told. This server sends the player's id.
+  The replay stops before that step, so the flow tests check it, and a planted
+  expulsion carrying the character's id fails them.
+- **A random pick the client cannot play.** The client's map list offers four
+  random picks beside its maps, and sends the one the host picks as it is.
+  Nothing in the client turns a random pick into a map, and a real client told to
+  start a match on one shows a black screen. So a room keeps the pick as picked,
+  as every client shows it, and the match is left to decide the map. The first
+  plan for this stage had said rooms of teams had no random map at all; the
+  client's own map list showed otherwise.
 
 ## The game server: bytes, not types
 
@@ -361,7 +393,10 @@ step sends is compared on the connection it goes to, so when a guest enters a
 room, the slot its host is told of is checked on the host's connection. A
 participant is followed until it sends something that belongs to a later stage,
 and one that does so while in a room ends the whole session's replay there: what
-everyone else does next can depend on what it would have done in the room.
+everyone else does next can depend on what it would have done in the room. So the
+recorded rooms are played through a guest getting ready, the host's options, a
+slot closed, a player entering, a team change, a weapon and a quick join, and end
+where a match would start or a captain be chosen, both of which come with matches.
 A recorded answer can also hold packets of later stages; a recorded packet the
 server has no codec for is not expected, and every other one is, in order. One
 answer differs by design: the recordings move to another channel by reconnecting,

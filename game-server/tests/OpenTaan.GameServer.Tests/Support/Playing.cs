@@ -226,9 +226,10 @@ internal static class Playing
 
     /// <summary>
     /// Slot <paramref name="slot"/> holding the player's character at
-    /// <paramref name="position"/>, as a room is sent it: not ready, with the default weapon.
+    /// <paramref name="position"/>, as a room is sent it: by default not ready, with the
+    /// default weapon.
     /// </summary>
-    public static GameSlotInfo Seat(Player player, byte slot, int position = 0) => GameSlotInfo.Taken(
+    public static GameSlotInfo Seat(Player player, byte slot, int position = 0, bool ready = false, ushort weaponId = 0) => GameSlotInfo.Taken(
         slot,
         new SlotOccupant(
             player.PlayerId,
@@ -238,8 +239,8 @@ internal static class Playing
             player.Characters[position].Level,
             Seating.TeamOf(slot),
             player.Appearances[position],
-            WeaponId: 0),
-        ready: false);
+            weaponId),
+        ready);
 
     /// <summary>A room's eight slots: those given, the closed ones, and every other one open.</summary>
     public static IReadOnlyList<GameSlotInfo> Slots(IEnumerable<GameSlotInfo> taken, params byte[] closed)

@@ -7,7 +7,10 @@ using OpenTaan.Protocol.Rooms;
 
 namespace OpenTaan.GameServer.Rooms;
 
-/// <summary>Creating, entering, quick-joining and leaving rooms, and the lobby's view of who is in one.</summary>
+/// <summary>
+/// Creating, entering, quick-joining and leaving rooms, what players do in one, and the
+/// lobby's view of who is in one.
+/// </summary>
 /// <remarks>
 /// <para>
 /// The client holds one lock for all four room requests: it sends none of them while one
@@ -16,6 +19,12 @@ namespace OpenTaan.GameServer.Rooms;
 /// as a failing handler always does, which the player sees, rather than leaving room
 /// buttons that never work again. The view of a room has a lock of its own, and is always
 /// answered too.
+/// </para>
+/// <para>
+/// In a room, the client waits on nothing it asks for but the host's options: the room is
+/// told of each change, the player asking included. So a request to act in a room that
+/// the room's rules do not allow is dropped, and only logged, apart from the host's
+/// options, which are always answered; see <see cref="RoomDirectory.ChangeOptions"/>.
 /// </para>
 /// <para>
 /// A connection needs selected characters and a channel to be in a room. The client asks
@@ -128,6 +137,76 @@ public sealed partial class RoomHandlers(
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>Makes a guest's characters ready to start, or no longer; see <see cref="RoomDirectory.Ready"/>.</summary>
+    public ValueTask ReadyAsync(ClientSession session, PqGameSessionReady request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(request);
+
+        LogUnless(session, nameof(PqGameSessionReady), rooms.Ready(session, request.IsReady));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Moves a player's characters to the other team; see <see cref="RoomDirectory.ChangeTeam"/>.</summary>
+    public ValueTask ChangeTeamAsync(ClientSession session, PqGameSessionChangeTeam request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(request);
+
+        LogUnless(session, nameof(PqGameSessionChangeTeam), rooms.ChangeTeam(session, request.Team));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Gives one of a player's characters a weapon for the match; see <see cref="RoomDirectory.ChangeWeapon"/>.</summary>
+    public ValueTask ChangeWeaponAsync(ClientSession session, PqGameSessionChangeWeapon request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(request);
+
+        LogUnless(session, nameof(PqGameSessionChangeWeapon), rooms.ChangeWeapon(session, request.CharacterId, request.WeaponId));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Changes a room's options as its host asks, with the maps of a room of teams those the
+    /// client lists in the connection's channel; see <see cref="RoomDirectory.ChangeOptions"/>.
+    /// </summary>
+    /// <remarks>
+    /// A connection in a room is in that room's channel: moving to another channel leaves
+    /// the room first.
+    /// </remarks>
+    public ValueTask ChangeOptionsAsync(ClientSession session, PqGameSessionChangeGameOption request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var maps = channels.ChannelOf(session) is { } channelId && channels.ModeOf(channelId) is { } mode
+            ? options.Value.MapsFor(mode)
+            : [];
+        LogUnless(session, nameof(PqGameSessionChangeGameOption), rooms.ChangeOptions(session, request, maps));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Opens or closes an empty slot as a room's host asks; see <see cref="RoomDirectory.OpenOrCloseSlot"/>.</summary>
+    public ValueTask OpenOrCloseSlotAsync(ClientSession session, PqGameSessionOpenCloseSlot request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(request);
+
+        LogUnless(session, nameof(PqGameSessionOpenCloseSlot), rooms.OpenOrCloseSlot(session, request.SlotIndex, request.Open));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Sends a player out of a room as its host asks; see <see cref="RoomDirectory.Expel"/>.</summary>
+    public ValueTask ExpelAsync(ClientSession session, PqGameSessionUserExpel request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(request);
+
+        LogUnless(session, nameof(PqGameSessionUserExpel), rooms.Expel(session, request.CharacterId));
+        return ValueTask.CompletedTask;
+    }
+
     /// <summary>Lists the characters in a room of the connection's channel, or says it is gone.</summary>
     public ValueTask RoomInfoAsync(ClientSession session, PqLobbyViewRoomSimpleInfo request, CancellationToken cancellationToken)
     {
@@ -156,8 +235,20 @@ public sealed partial class RoomHandlers(
             : null;
     }
 
+    // Logs why a request to act in a room changed nothing, when it did not.
+    private void LogUnless(ClientSession session, string packet, string? reason)
+    {
+        if (reason is not null)
+        {
+            LogChangedNothing(logger, session.Id, packet, reason);
+        }
+    }
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Connection {ConnectionId} could not create a room: {Reason}")]
     private static partial void LogCreateRefused(ILogger logger, long connectionId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Connection {ConnectionId} sent {Packet}, which changed nothing: {Reason}")]
+    private static partial void LogChangedNothing(ILogger logger, long connectionId, string packet, string reason);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Connection {ConnectionId} could not enter room {RoomNumber}: {Refusal}")]
     private static partial void LogEnterRefused(ILogger logger, long connectionId, ushort roomNumber, EnterRefusal refusal);

@@ -81,6 +81,7 @@ builder.Services
         o => o.MaxNameLength is > 0 and <= RoomOptions.LongestNameAllowed,
         $"Rooms:MaxNameLength must be between 1 and {RoomOptions.LongestNameAllowed}, so that every room reply fits a frame")
     .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<RoomOptions>, RoomMapsValidation>();
 
 builder.Services
     .AddOptions<PlayTimeOptions>()

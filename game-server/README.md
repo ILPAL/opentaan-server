@@ -39,15 +39,20 @@ lobby, the lobby's player list and its changes, the picture the client sends
 of a character, the reports it sends while it plays the tutorial, the play time
 it is allowed, and the room packets: creating, entering, quick-joining and
 leaving a room, the room as a player is sent it, with its slots and its host,
-the changes a room is told of, and the lobby's room list and the players in a
-room.
+the changes a room is told of, the lobby's room list and the players in a room,
+and what players do in a room: being ready, changing team and weapon, the
+host's options, opening and closing slots, and expelling a player.
 
 A room travels two ways: as a record, which the client sends to create a room
 and is sent with each room it enters, and field by field in the lobby's room
 list, where a mask names the fields present and they come in an order of their
 own. Every room has eight slots, sent all together and in order, because the
 client finds some of them by their place in the list; a slot index or a team the
-client would use as an index without checking can be neither read nor written.
+client would use as an index without checking can be neither read nor written,
+and the same holds for the slots a team change moves and a slot opened or closed.
+A request the server answers even when it refuses it, the host's options, is read
+whatever values it carries, so that a refusal is answered rather than closing the
+connection.
 Each request to create, enter or quick-join a room ends with the client's report
 on its own code, which is read and kept but not checked: checking it needs data
 from the client's own files.
@@ -188,8 +193,42 @@ is answered exactly once, refusals included. The lobby is listed its rooms on
 entry, never with their passwords, and is told of every room that opens, changes
 or closes. One lock covers every room, so two players cannot both take a room's
 last slot, and a player entering a lobby as a room opens sees it exactly once.
-What players do in a room, such as getting ready, changing team or expelling a
-player, comes next, and matches after that.
+
+### In a room
+
+While a room waits for its match, its players act on it, and everyone in the room
+is told of each change, the player acting included. The client waits for an answer
+to none of these requests but the host's options, so a request the rules below do
+not allow is dropped, and logged. Each change is one step under the rooms' lock, so
+everyone is told the same changes in the same order, and a player entering at that
+moment sees each change exactly once: in the room it is sent, or after it.
+
+- **Ready:** a guest is ready to start, or no longer, with all of its characters.
+  The host starts the match instead, so it is never ready.
+- **Team:** a player moves to the other team when that team has an open slot for
+  each of its characters, taking the lowest ones; not in a mission room, whose
+  players are all on one side, and not while ready.
+- **Weapon:** a player picks the weapon each of its own characters takes into the
+  match. Any weapon is kept as the client sends it, its random pick included: the
+  weapons come from the client's own files, and the match decides what a random
+  pick becomes.
+- **Options:** the host changes the room's rules, chances and map, or a mission's
+  difficulty, within what the client's options dialog offers: in a room of teams a
+  map the client lists for the channel's mode (`Rooms:MapsByChannelMode`), its
+  random picks included, which stay as picked until the match decides them; in a
+  mission room any mission, at a difficulty from 0 to 2. The host's dialog waits
+  for an answer, so a refused change is answered too, with the room as it is, to
+  the host alone. The lobby is told of every change.
+- **Slots:** the host closes an empty slot to players entering, or opens it again.
+  Entering and quick join pass closed slots over, and the lobby's maximum for the
+  room follows them. A mission room's other side stays closed.
+- **Expel:** the host sends a player out. Everyone in the room, that player
+  included, is told the player's id, by which each client finds its slots, and the
+  player then leaves as it would on its own, all of its characters at once. Nothing
+  stops it coming back.
+
+The slots keep every change, so a player entering later is shown who is ready, on
+which team, with which weapon. Matches come next.
 
 ## Play time
 
@@ -241,8 +280,9 @@ dotnet run --project src/OpenTaan.GameServer
 
 This runs in the Development environment, where any login creates the account
 it names (`Accounts:RequireRegistration` is off). A real client can log in,
-create and select a character, pick a channel, enter its lobby, and create,
-enter and leave rooms; what players do in a room is the next stage. The server
+create and select a character, pick a channel, enter its lobby, create, enter and
+leave rooms, and do everything a waiting room offers but start the match; matches
+are the next stage. The server
 refuses to start with registration off in any other environment. Accounts,
 characters and rooms live in memory until the database stage.
 
@@ -267,5 +307,6 @@ variables, for example `GameServer__Port=2181`:
 | `PlayTime:AllowedSeconds` | none | How long a player may play, in seconds, as the client is told on entering a channel; none means no limit. Must be above 0: with no time allowed, the client quits at every lobby. |
 | `Rooms:MaxPerChannel` | `500` | Rooms one channel may hold at once; a request to create one more is refused. |
 | `Rooms:MaxNameLength` | `128` | The longest room name, in UTF-16 code units, a request to create a room may carry. At most 1000, so every room reply fits a frame. |
+| `Rooms:MapsByChannelMode` | mode `6`: maps `1` to `21` and the random picks `200` to `203` | The maps the host of a room of teams may pick, by the mode of the room's channel: those the client's own map list offers in that mode. Every mode `Channels:List` uses needs a list, or the server refuses to start. |
 | `Portraits:Folder` | none | Where the pictures clients send of their characters are kept. A relative path is taken from the content root. |
 | `Characters:CreatorParts` | `1, 3, 5, 8` | The appearance parts the client's character creator offers; a new character keeps only these. |

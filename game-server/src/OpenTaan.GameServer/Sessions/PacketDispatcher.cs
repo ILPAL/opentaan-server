@@ -104,6 +104,12 @@ public sealed partial class PacketDispatcher
             [PqGameSessionEnter.RegistryId] = Route.To<PqGameSessionEnter>(PqGameSessionEnter.TryRead, rooms.EnterAsync),
             [PqGameSessionQuickJoin.RegistryId] = Route.To<PqGameSessionQuickJoin>(PqGameSessionQuickJoin.TryRead, rooms.QuickJoinAsync),
             [PqGameSessionLeave.RegistryId] = Route.To<PqGameSessionLeave>(PqGameSessionLeave.TryRead, rooms.LeaveAsync),
+            [PqGameSessionReady.RegistryId] = Route.To<PqGameSessionReady>(PqGameSessionReady.TryRead, rooms.ReadyAsync),
+            [PqGameSessionChangeTeam.RegistryId] = Route.To<PqGameSessionChangeTeam>(PqGameSessionChangeTeam.TryRead, rooms.ChangeTeamAsync),
+            [PqGameSessionChangeWeapon.RegistryId] = Route.To<PqGameSessionChangeWeapon>(PqGameSessionChangeWeapon.TryRead, rooms.ChangeWeaponAsync),
+            [PqGameSessionChangeGameOption.RegistryId] = Route.To<PqGameSessionChangeGameOption>(PqGameSessionChangeGameOption.TryRead, rooms.ChangeOptionsAsync),
+            [PqGameSessionOpenCloseSlot.RegistryId] = Route.To<PqGameSessionOpenCloseSlot>(PqGameSessionOpenCloseSlot.TryRead, rooms.OpenOrCloseSlotAsync),
+            [PqGameSessionUserExpel.RegistryId] = Route.To<PqGameSessionUserExpel>(PqGameSessionUserExpel.TryRead, rooms.ExpelAsync),
             [PcTutorialFinished.RegistryId] = Route.To<PcTutorialFinished>(PcTutorialFinished.TryRead, characters.TutorialFinishedAsync),
 
             // Reports from a game. Until games are played here, the only game they can

@@ -43,6 +43,17 @@ internal static class SessionHarness
         List = [.. Enumerable.Range(1, 5).Select(id => new ChannelSettings { Id = (ushort)id, Name = $"Channel {id}", Capacity = 100 })],
     };
 
+    /// <summary>The room settings the server ships with, as <c>appsettings.json</c> sets them.</summary>
+    public static RoomOptions ShippedRoomOptions() => new()
+    {
+        MaxPerChannel = 500,
+        MaxNameLength = 128,
+        MapsByChannelMode = new Dictionary<byte, IReadOnlyList<ushort>>
+        {
+            [ChannelSettings.NormalMode] = [.. Enumerable.Range(1, 21).Select(map => (ushort)map), 200, 201, 202, 203],
+        },
+    };
+
     /// <summary>What sessions share, with stores and settings a test may choose.</summary>
     public static SessionServices Services(
         bool requireRegistration = true,
@@ -79,7 +90,7 @@ internal static class SessionHarness
             () => IPAddress.Loopback);
         var channels = new ChannelDirectory(channelOptions, address);
         var lobbies = new LobbyRoster();
-        var roomSettings = Options.Create(roomOptions ?? new RoomOptions());
+        var roomSettings = Options.Create(roomOptions ?? ShippedRoomOptions());
         var rooms = new RoomDirectory(lobbies, roomSettings, NullLogger<RoomDirectory>.Instance);
 
         var names = new PacketNames();

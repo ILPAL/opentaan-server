@@ -45,6 +45,9 @@ public enum RoomCreation
 /// </remarks>
 public sealed partial class RoomDirectory(LobbyRoster lobbies, IOptions<RoomOptions> options, ILogger<RoomDirectory> logger)
 {
+    // Why a request to act in a room is dropped when the connection is in none that waits.
+    private const string NotWaiting = "it is in no room waiting for a match";
+
     private static readonly int EmptyListSize = SizeOf(new PcLobbyInitRoomList([]));
     private static readonly int EmptyUpdateSize = SizeOf(new PcLobbyUpdateRoomList([]));
 
@@ -204,37 +207,280 @@ public sealed partial class RoomDirectory(LobbyRoster lobbies, IOptions<RoomOpti
 
         lock (_lock)
         {
-            if (!_roomOf.Remove(session, out var room))
+            return LeaveLocked(session);
+        }
+    }
+
+    /// <summary>
+    /// Makes a guest's characters ready to start, or no longer ready, and tells everyone in
+    /// its room, the guest included.
+    /// </summary>
+    /// <remarks>
+    /// All of the connection's characters change together, as the client shows them. The
+    /// host has no Ready button, since it starts the match, so a request from it is dropped.
+    /// The slots keep the change, so a player entering later is shown it.
+    /// </remarks>
+    /// <returns>Null once done; otherwise why the request was dropped, for the log.</returns>
+    public string? Ready(ClientSession session, bool ready)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        lock (_lock)
+        {
+            if (WaitingRoomLocked(session) is not { } room)
             {
-                return false;
+                return NotWaiting;
             }
 
-            var wasHost = room.Host.Session == session;
-            var freed = room.Vacate(session);
-
-            if (room.IsEmpty)
+            if (room.IsHost(session))
             {
-                _rooms.Remove(room.Number);
-                lobbies.Tell(room.ChannelId, new PcLobbyUpdateRoomList([GameSessionInfoPack.Removal(room.Number)]));
-                LogClosed(logger, room.Number, room.ChannelId);
-                return true;
+                return "the host starts the match instead";
             }
 
-            foreach (var slot in freed)
+            room.SetReady(session, ready);
+            SendToRoomLocked(room, new PcGameSessionReady(room.MemberOf(session)!.PlayerId, ready));
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Moves a player's characters to the other team, together, into its lowest open slots,
+    /// and tells everyone in the room, the player included.
+    /// </summary>
+    /// <remarks>
+    /// The players of a mission room are all on one side, and a ready player stays where it
+    /// is: the client asks for neither. The other team needs an open slot for each of the
+    /// player's characters, so that a connection's characters are never split, which the
+    /// client could not show. The characters keep their weapons.
+    /// </remarks>
+    /// <returns>Null once done; otherwise why the request was dropped, for the log.</returns>
+    public string? ChangeTeam(ClientSession session, byte team)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        lock (_lock)
+        {
+            if (WaitingRoomLocked(session) is not { } room)
             {
-                SendToRoomLocked(room, new PcGameSessionUpdateSlot(SlotChange.Vacated, room.SlotInfo(slot), TeamName: string.Empty));
+                return NotWaiting;
             }
 
-            if (wasHost)
+            if (room.IsMission)
             {
-                var host = room.HandOver();
-                SendToRoomLocked(room, new PcGameSessionReady(host.PlayerId, IsReady: false));
-                SendToRoomLocked(room, new PcGameSessionUpdateOption(room.Option()));
-                LogHandedOver(logger, room.Number, host.Session.Id);
+                return "a mission room's players are all on one side";
             }
 
+            if (room.IsReady(session))
+            {
+                return "a ready player stays on its team";
+            }
+
+            var from = room.SlotsOf(session);
+            if (team is not (1 or 2) || team == Seating.TeamOf(from[0]))
+            {
+                return $"team {team} is not the other team";
+            }
+
+            var open = room.OpenSlotsOn(team);
+            if (open.Count < from.Count)
+            {
+                return $"team {team} has {open.Count} open slots for {from.Count} characters";
+            }
+
+            IReadOnlyList<byte> to = [.. open.Take(from.Count)];
+            room.Move(from, to);
+            SendToRoomLocked(room, PcGameSessionChangeTeam.Moving(room.MemberOf(session)!.PlayerId, team, from, to));
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Gives one of a player's characters the weapon the player picked for it, and tells
+    /// everyone in the room, the player included.
+    /// </summary>
+    /// <remarks>
+    /// The weapon is kept as it is: the weapons the client offers come from its own files,
+    /// which this server does not read, and its random pick is decided when the match
+    /// starts. The slot keeps the weapon, so a player entering later is shown it. Only the
+    /// player's own characters are its to arm.
+    /// </remarks>
+    /// <returns>Null once done; otherwise why the request was dropped, for the log.</returns>
+    public string? ChangeWeapon(ClientSession session, uint characterId, ushort weaponId)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        lock (_lock)
+        {
+            if (WaitingRoomLocked(session) is not { } room)
+            {
+                return NotWaiting;
+            }
+
+            if (room.SlotOf(characterId) is not { } slot || room.MemberIn(slot).Session != session)
+            {
+                return $"character {characterId} is not one of the player's own in its room";
+            }
+
+            room.Arm(slot, weaponId);
+            SendToRoomLocked(room, new PcGameSessionChangeWeapon(characterId, weaponId));
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Gives a room the options its host asks for, when <see cref="RoomRules.OptionsProblem"/>
+    /// allows them, and answers the host either way.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The host's options dialog stays locked until it hears back, so the host is always
+    /// answered: with the new options, which everyone in the room is sent and the lobby
+    /// told, or with the room's options as they are, sent to the host alone. A request from
+    /// anyone else is dropped, since only the host has the dialog.
+    /// </para>
+    /// <para>
+    /// The difficulty is kept only in a mission room. Elsewhere it means nothing, and the
+    /// room is sent back what the request carried.
+    /// </para>
+    /// </remarks>
+    /// <param name="session">The connection asking.</param>
+    /// <param name="requested">The options asked for.</param>
+    /// <param name="maps">The maps a host may pick in a room of teams in the room's channel.</param>
+    /// <returns>Null once done; otherwise why the request was refused or dropped, for the log.</returns>
+    public string? ChangeOptions(ClientSession session, PqGameSessionChangeGameOption requested, IReadOnlyCollection<ushort> maps)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(requested);
+        ArgumentNullException.ThrowIfNull(maps);
+
+        lock (_lock)
+        {
+            if (WaitingRoomLocked(session) is not { } room)
+            {
+                return NotWaiting;
+            }
+
+            if (!room.IsHost(session))
+            {
+                return "only the host changes the room's options";
+            }
+
+            if (RoomRules.OptionsProblem(room.GameType, requested, maps) is { } problem)
+            {
+                session.Send(room.Options(room.Difficulty));
+                return problem;
+            }
+
+            room.SetOptions(requested.GameMode, requested.ChanceMode, requested.MapId, requested.Difficulty);
+            SendToRoomLocked(room, room.Options(room.IsMission ? room.Difficulty : requested.Difficulty));
             lobbies.Tell(room.ChannelId, new PcLobbyUpdateRoomList([room.Listing()]));
-            return true;
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Opens an empty slot of a room to players entering, or closes it, as its host asks,
+    /// and tells everyone in the room and the lobby, whose maximum for the room changes.
+    /// </summary>
+    /// <remarks>
+    /// Only an empty slot changes: the client sets a slot's status without checking what it
+    /// holds, so closing a taken one would wipe its character off every screen. The mission's
+    /// own side of a mission room stays closed, and a request that would change nothing is
+    /// dropped, as is one from anyone but the host.
+    /// </remarks>
+    /// <returns>Null once done; otherwise why the request was dropped, for the log.</returns>
+    public string? OpenOrCloseSlot(ClientSession session, byte slot, bool open)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        lock (_lock)
+        {
+            if (WaitingRoomLocked(session) is not { } room)
+            {
+                return NotWaiting;
+            }
+
+            if (!room.IsHost(session))
+            {
+                return "only the host opens and closes slots";
+            }
+
+            if (slot >= GameSlotInfo.SlotCount)
+            {
+                return $"slot {slot} is not one of the room's";
+            }
+
+            if (room.IsMissionSide(slot))
+            {
+                return $"slot {slot} is on the mission's own side";
+            }
+
+            var use = room.Uses()[slot];
+            if (use == SlotUse.Taken)
+            {
+                return $"slot {slot} holds a character";
+            }
+
+            if (use == (open ? SlotUse.Open : SlotUse.Closed))
+            {
+                return $"slot {slot} is {use} already";
+            }
+
+            room.SetClosed(slot, closed: !open);
+            SendToRoomLocked(room, new PcGameSessionOpenCloseSlot(open, slot));
+            lobbies.Tell(room.ChannelId, new PcLobbyUpdateRoomList([room.Listing()]));
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Sends a player out of a room, as its host asks: everyone in the room is told, that
+    /// player included, and the player then leaves the room as it would on its own.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The host names a character, and the room is told whose it is: the client finds its own
+    /// slots by the player's id. All of that player's characters go. Its client asks to leave
+    /// as soon as it is told, and that request, which then finds it in no room, is answered
+    /// as left.
+    /// </para>
+    /// <para>
+    /// A character no slot holds is dropped, as is one of the host's own: the host leaves by
+    /// itself. Nothing stops the player coming back.
+    /// </para>
+    /// </remarks>
+    /// <returns>Null once done; otherwise why the request was dropped, for the log.</returns>
+    public string? Expel(ClientSession session, uint characterId)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        lock (_lock)
+        {
+            if (WaitingRoomLocked(session) is not { } room)
+            {
+                return NotWaiting;
+            }
+
+            if (!room.IsHost(session))
+            {
+                return "only the host sends players out";
+            }
+
+            if (room.SlotOf(characterId) is not { } slot)
+            {
+                return $"no slot holds character {characterId}";
+            }
+
+            var target = room.MemberIn(slot);
+            if (target.Session == session)
+            {
+                return $"character {characterId} is the host's own";
+            }
+
+            SendToRoomLocked(room, new PcGameSessionUserExpel(target.PlayerId));
+            LeaveLocked(target.Session);
+            LogExpelled(logger, room.Number, session.Id, target.Session.Id);
+            return null;
         }
     }
 
@@ -316,6 +562,48 @@ public sealed partial class RoomDirectory(LobbyRoster lobbies, IOptions<RoomOpti
         return packets;
     }
 
+    // Takes the connection out of its room, if it is in one, and tells everyone left in it
+    // and the lobby; see Leave.
+    private bool LeaveLocked(ClientSession session)
+    {
+        if (!_roomOf.Remove(session, out var room))
+        {
+            return false;
+        }
+
+        var wasHost = room.IsHost(session);
+        var freed = room.Vacate(session);
+
+        if (room.IsEmpty)
+        {
+            _rooms.Remove(room.Number);
+            lobbies.Tell(room.ChannelId, new PcLobbyUpdateRoomList([GameSessionInfoPack.Removal(room.Number)]));
+            LogClosed(logger, room.Number, room.ChannelId);
+            return true;
+        }
+
+        foreach (var slot in freed)
+        {
+            SendToRoomLocked(room, new PcGameSessionUpdateSlot(SlotChange.Vacated, room.SlotInfo(slot), TeamName: string.Empty));
+        }
+
+        if (wasHost)
+        {
+            var host = room.HandOver();
+            SendToRoomLocked(room, new PcGameSessionReady(host.PlayerId, IsReady: false));
+            SendToRoomLocked(room, new PcGameSessionUpdateOption(room.Option()));
+            LogHandedOver(logger, room.Number, host.Session.Id);
+        }
+
+        lobbies.Tell(room.ChannelId, new PcLobbyUpdateRoomList([room.Listing()]));
+        return true;
+    }
+
+    // The room the connection is in, while it waits for a match: the only time a player
+    // acts on it from inside.
+    private Room? WaitingRoomLocked(ClientSession session) =>
+        _roomOf.TryGetValue(session, out var room) && room.Status == RoomStatus.Waiting ? room : null;
+
     // Seats the member, takes it off its lobby's player list, tells everyone else in the
     // room and then the lobby, and sends the member the room. The member leaves the lobby
     // before the lobby is told, so it is not sent the change that puts it in the room. It
@@ -371,4 +659,8 @@ public sealed partial class RoomDirectory(LobbyRoster lobbies, IOptions<RoomOpti
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Room {RoomNumber} is now hosted by connection {ConnectionId}")]
     private static partial void LogHandedOver(ILogger logger, ushort roomNumber, long connectionId);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Room {RoomNumber}: its host, connection {HostConnectionId}, sent connection {ConnectionId} out")]
+    private static partial void LogExpelled(ILogger logger, ushort roomNumber, long hostConnectionId, long connectionId);
 }

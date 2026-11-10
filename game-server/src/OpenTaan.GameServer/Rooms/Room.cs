@@ -69,16 +69,19 @@ internal sealed class Room
     public GameType GameType { get; }
 
     /// <summary>The rules its match is played by.</summary>
-    public GameMode GameMode { get; }
+    public GameMode GameMode { get; private set; }
 
     /// <summary>The chances its match gives.</summary>
-    public ChanceMode ChanceMode { get; }
+    public ChanceMode ChanceMode { get; private set; }
 
-    /// <summary>The map its match is played on.</summary>
-    public ushort MapId { get; }
+    /// <summary>
+    /// The map its match is played on, or a mission's own number in a mission room. A
+    /// random pick is kept as it is, so the room shows it; the match decides the map.
+    /// </summary>
+    public ushort MapId { get; private set; }
 
-    /// <summary>A mission's difficulty: 0, the easiest, until the host changes it.</summary>
-    public byte Difficulty { get; }
+    /// <summary>A mission's difficulty: 0, the easiest, until the host changes it. Always 0 outside a mission room.</summary>
+    public byte Difficulty { get; private set; }
 
     /// <summary>Where the room stands: waiting, until matches are played.</summary>
     public RoomStatus Status => RoomStatus.Waiting;
@@ -104,6 +107,95 @@ internal sealed class Room
 
     /// <summary>What each slot holds, by index.</summary>
     public IReadOnlyList<SlotUse> Uses() => [.. Enumerable.Range(0, _seats.Length).Select(UseOf)];
+
+    /// <summary>Whether <paramref name="session"/> hosts the room.</summary>
+    public bool IsHost(ClientSession session) => Host.Session == session;
+
+    /// <summary>The connection <paramref name="session"/> as the room holds it, or null when it is not in the room.</summary>
+    public RoomMember? MemberOf(ClientSession session) =>
+        _seats.OfType<TakenSlot>().FirstOrDefault(seat => seat.Member.Session == session)?.Member;
+
+    /// <summary>The slots <paramref name="session"/> holds, in rising order: none when it is not in the room.</summary>
+    public IReadOnlyList<byte> SlotsOf(ClientSession session) =>
+        [.. Enumerable.Range(0, _seats.Length).Where(slot => _seats[slot]?.Member.Session == session).Select(slot => (byte)slot)];
+
+    /// <summary>The open slots of team <paramref name="team"/>, in rising order.</summary>
+    public IReadOnlyList<byte> OpenSlotsOn(byte team) =>
+        [.. Enumerable.Range(0, _seats.Length).Where(slot => Seating.TeamOf(slot) == team && UseOf(slot) == SlotUse.Open).Select(slot => (byte)slot)];
+
+    /// <summary>The slot holding character <paramref name="characterId"/>, or null when no slot does.</summary>
+    public byte? SlotOf(uint characterId) =>
+        Array.FindIndex(_seats, seat => seat?.Character.CharacterId == characterId) is var slot and >= 0 ? (byte)slot : null;
+
+    /// <summary>The connection whose character is in slot <paramref name="slot"/>, which must hold one.</summary>
+    public RoomMember MemberIn(byte slot) =>
+        _seats[slot]?.Member ?? throw new InvalidOperationException($"Slot {slot} holds no character.");
+
+    /// <summary>Whether <paramref name="session"/>'s characters are ready to start. They always are together.</summary>
+    public bool IsReady(ClientSession session) => _seats.Any(seat => seat?.Member.Session == session && seat.IsReady);
+
+    /// <summary>Makes every character <paramref name="session"/> plays ready to start, or not.</summary>
+    public void SetReady(ClientSession session, bool ready)
+    {
+        foreach (var seat in _seats.OfType<TakenSlot>().Where(seat => seat.Member.Session == session))
+        {
+            seat.IsReady = ready;
+        }
+    }
+
+    /// <summary>
+    /// Moves the character in each slot of <paramref name="from"/> to the slot at the same
+    /// place in <paramref name="to"/>. The characters keep their weapons and whether they
+    /// are ready.
+    /// </summary>
+    public void Move(IReadOnlyList<byte> from, IReadOnlyList<byte> to)
+    {
+        if (from.Count != to.Count || from.Any(slot => UseOf(slot) != SlotUse.Taken) || to.Any(slot => UseOf(slot) != SlotUse.Open))
+        {
+            throw new InvalidOperationException("Each character moves from its slot to an open one.");
+        }
+
+        var moving = from.Select(slot => _seats[slot]!).ToArray();
+        foreach (var slot in from)
+        {
+            _seats[slot] = null;
+        }
+
+        for (var position = 0; position < to.Count; position++)
+        {
+            _seats[to[position]] = moving[position];
+        }
+    }
+
+    /// <summary>Gives the character in slot <paramref name="slot"/>, which must hold one, weapon <paramref name="weaponId"/> for the match.</summary>
+    public void Arm(byte slot, ushort weaponId) =>
+        (_seats[slot] ?? throw new InvalidOperationException($"Slot {slot} holds no character.")).WeaponId = weaponId;
+
+    /// <summary>Whether slot <paramref name="slot"/> belongs to the mission's own side, closed for good.</summary>
+    public bool IsMissionSide(int slot) => IsMission && Seating.TeamOf(slot) == 2;
+
+    /// <summary>Closes slot <paramref name="slot"/> to players entering, or opens it. It must hold no character.</summary>
+    public void SetClosed(byte slot, bool closed)
+    {
+        if (_seats[slot] is not null || IsMissionSide(slot))
+        {
+            throw new InvalidOperationException($"Slot {slot} holds a character, or the mission's side.");
+        }
+
+        _closed[slot] = closed;
+    }
+
+    /// <summary>Sets the rules the room's match is played by, its chances, its map, and a mission's difficulty.</summary>
+    public void SetOptions(GameMode gameMode, ChanceMode chanceMode, ushort mapId, byte difficulty)
+    {
+        GameMode = gameMode;
+        ChanceMode = chanceMode;
+        MapId = mapId;
+        Difficulty = IsMission ? difficulty : (byte)0;
+    }
+
+    /// <summary>The room's options as everyone in it is told them, with <paramref name="difficulty"/> as the difficulty.</summary>
+    public PcGameSessionChangeGameOption Options(byte difficulty) => new(MapId, GameMode, ChanceMode, difficulty);
 
     /// <summary>Seats <paramref name="member"/>'s characters, in order, in <paramref name="slots"/>.</summary>
     public void Seat(RoomMember member, IReadOnlyList<byte> slots)
@@ -218,8 +310,7 @@ internal sealed class Room
         Password: password,
         MapId: MapId);
 
-    // The character in a slot. Its weapon is the default one until the player picks
-    // another for the match.
+    // The character in a slot, with the weapon its player picked for the match.
     private static SlotOccupant Occupant(int slot, TakenSlot seat) => new(
         seat.Member.PlayerId,
         seat.Character.CharacterId,
@@ -228,7 +319,7 @@ internal sealed class Room
         seat.Character.Info.Level,
         Seating.TeamOf(slot),
         seat.Character.Appearance,
-        WeaponId: 0);
+        seat.WeaponId);
 
     private sealed class TakenSlot(RoomMember member, Character character)
     {
@@ -237,5 +328,9 @@ internal sealed class Room
         public Character Character { get; } = character;
 
         public bool IsReady { get; set; }
+
+        // The default weapon, 0, until the player picks another. Any the client offers is
+        // kept as it is, its random pick included: the match decides what that becomes.
+        public ushort WeaponId { get; set; }
     }
 }

@@ -149,6 +149,9 @@ public sealed class ChannelDirectory
         }
     }
 
+    /// <summary>The mode of channel <paramref name="channelId"/>, or null when no channel has that id.</summary>
+    public byte? ModeOf(ushort channelId) => Find(channelId)?.Mode;
+
     /// <summary>The channel <paramref name="session"/> is in, or null.</summary>
     public ushort? ChannelOf(ClientSession session)
     {
