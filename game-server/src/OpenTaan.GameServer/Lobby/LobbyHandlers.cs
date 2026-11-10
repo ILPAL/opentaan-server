@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Characters;
+using OpenTaan.GameServer.Rooms;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.Lobby;
@@ -9,23 +10,31 @@ namespace OpenTaan.GameServer.Lobby;
 
 /// <summary>Entering and leaving a channel's lobby, and the character pictures the client sends from it.</summary>
 /// <remarks>
-/// Who is in each lobby is kept by <see cref="LobbyRoster"/>. The rooms in a lobby arrive
-/// with the room stage: until then the room list is empty.
+/// Who is in each lobby is kept by <see cref="LobbyRoster"/>, and the rooms each lobby
+/// lists by <see cref="RoomDirectory"/>.
 /// </remarks>
 public sealed partial class LobbyHandlers(
     ChannelDirectory channels,
     LobbyRoster lobbies,
+    RoomDirectory rooms,
     ICharacterStore characters,
     IOptions<PortraitOptions> portraits,
     ILogger<LobbyHandlers> logger)
 {
     private static ReadOnlySpan<byte> PngSignature => [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A];
 
-    /// <summary>Enters the lobby of the connection's channel, and lists the players in it.</summary>
+    /// <summary>Enters the lobby of the connection's channel, and lists its rooms and the players in it.</summary>
     /// <remarks>
+    /// <para>
     /// A connection that has not moved to a channel enters the first one, as long as it
     /// could have moved there. An entry before characters are selected is refused: the
     /// client then goes back to its channel screen rather than waiting.
+    /// </para>
+    /// <para>
+    /// A client coming back to its lobby from a room says it left the room first. A
+    /// connection still in a room is taken out of it here, so no room keeps a slot for a
+    /// player who is no longer there.
+    /// </para>
     /// </remarks>
     public async ValueTask EnterAsync(ClientSession session, PqLobbyEnter request, CancellationToken cancellationToken)
     {
@@ -39,6 +48,11 @@ public sealed partial class LobbyHandlers(
             return;
         }
 
+        if (rooms.Leave(session))
+        {
+            LogEntryFromRoom(logger, session.Id);
+        }
+
         var channelId = channels.ChannelOf(session) ?? channels.FirstChannelId;
         var join = channels.TryJoin(session, channelId);
         if (join != ChannelJoin.Joined)
@@ -48,17 +62,20 @@ public sealed partial class LobbyHandlers(
             return;
         }
 
-        var playing = await SelectedCharactersAsync(session, cancellationToken).ConfigureAwait(false);
+        var playing = await SelectedCharacters.ReadAsync(characters, session, cancellationToken).ConfigureAwait(false);
 
         session.Send(new PrLobbyEnter(channelId, LobbyEnterResult.Entered));
-        session.Send(new PcLobbyInitRoomList([]));
-        lobbies.Enter(session, channelId, playing);
+        rooms.EnterLobby(session, channelId, playing);
     }
 
     /// <summary>
     /// Leaves the lobby, which everyone left in it is told. Always answered, in a lobby or
     /// not: until it is, the client cannot enter a lobby again.
     /// </summary>
+    /// <remarks>
+    /// The client also says it is leaving its lobby once it has been sent a room it
+    /// entered, so a connection in a room stays there.
+    /// </remarks>
     public ValueTask LeaveAsync(ClientSession session, PqLobbyLeave request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -111,25 +128,13 @@ public sealed partial class LobbyHandlers(
         LogPortraitKept(logger, session.Id, upload.CharacterId, image.Length, path);
     }
 
-    // The characters the connection plays, each read from the account in its slot.
-    private async ValueTask<IReadOnlyList<Character>> SelectedCharactersAsync(ClientSession session, CancellationToken cancellationToken)
-    {
-        var playing = new List<Character>(session.SelectedCharacterIds.Count);
-        for (var slot = 0; slot < session.SelectedCharacterIds.Count; slot++)
-        {
-            var owned = await characters.FindByAccountAsync(session.Accounts[slot].AccountId, cancellationToken).ConfigureAwait(false);
-            if (owned.FirstOrDefault(character => character.CharacterId == session.SelectedCharacterIds[slot]) is { } character)
-            {
-                playing.Add(character);
-            }
-        }
-
-        return playing;
-    }
-
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Connection {ConnectionId} asked to enter a lobby before selecting characters; refused")]
     private static partial void LogEntryBeforeSelection(ILogger logger, long connectionId);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Connection {ConnectionId} entered a lobby without leaving its room first; took it out of the room")]
+    private static partial void LogEntryFromRoom(ILogger logger, long connectionId);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Connection {ConnectionId} could not enter the lobby of channel {ChannelId}: {Join}")]

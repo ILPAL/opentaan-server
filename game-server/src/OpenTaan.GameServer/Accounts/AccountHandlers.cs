@@ -152,7 +152,7 @@ public sealed partial class AccountHandlers(
         LogLoggedIn(logger, session.Id, accounts.Count);
 
         session.Send(new PrUserLoginSucceeded(
-            LocalPlayerId: accounts[0].LocalPlayerId,
+            LocalPlayerId: session.PlayerId,
             Field24: 0,
             Accounts: [.. accounts.Select(account =>
                 new AccountInfo(account.AccountId, TypeOf(account), 0, 0, account.Gender))],

@@ -17,7 +17,7 @@ built, and what comes next. Last updated 2026-11-10.
 | Area | Decision | State |
 |---|---|---|
 | Repository | One repository: game server, admin server, contracts, database, deployment | Done |
-| Game server | .NET 10; projects added one per stage (transport first) | Done: transport, host, connection sessions, and the login, character, tutorial, and channel and lobby stages |
+| Game server | .NET 10; projects added one per stage (transport first) | Done: transport, host, connection sessions, and the login, character, tutorial, and channel and lobby stages, and creating, entering and leaving rooms |
 | Admin server | Spring Boot 4 on Java 25, built with Maven | Done |
 | Shared contracts | `contracts/`: OpenAPI for the admin API, JSON Schemas for the control channel; the game protocol's reference data is supplied locally, not committed | Partly: OpenAPI done; control-channel schemas not started |
 | Database schema | Owned by `database/migrations`, applied by Flyway; services only validate it | Done |
@@ -51,7 +51,7 @@ What a reviewer should be able to see and run, end to end.
 |---|---|
 | Repository setup | `.gitignore`, `.gitattributes`, `.editorconfig` |
 | Database | `V1` initial schema (11 tables); `V2` economy adjustments and the outbox, with the approval rules as constraints; `V3` the audit trail |
-| Game server | .NET 10 solution: transport framing and the packet cipher, handshake keys that can never switch encryption off, codecs for the handshake, the account and login packets, the character packets, the channel and lobby packets and the room packets, a session per connection with connection limits, idle and send timeouts, account check, creation and login with accounts in memory, one live connection per account, character naming, creation, selection and deletion with characters in memory and one character per account, the reference sessions replayed through the codecs and played against real connections, architecture rules |
+| Game server | .NET 10 solution: transport framing and the packet cipher, handshake keys that can never switch encryption off, codecs for the handshake, the account and login packets, the character packets, the channel and lobby packets and the room packets, a session per connection with connection limits, idle and send timeouts, account check, creation and login with accounts in memory, one live connection per account, character naming, creation, selection and deletion with characters in memory and one character per account, rooms created, entered, quick-joined and left in each channel's lobby, with mission rooms and connections playing two accounts, the reference sessions replayed through the codecs and played against real connections, architecture rules |
 | Admin server | Contract-first API, Keycloak token validation, role-to-permission mapping, read-only account data, problem-details errors |
 | Local stack | docker-compose with PostgreSQL 18, Flyway, Keycloak and both servers; secrets as files; operator script with no committed credentials |
 | CI | `game-server`, `admin-server` and `stack` workflows; the stack job signs operators in, takes an adjustment through four-eyes approval and checks the audit trail it left |
@@ -61,7 +61,7 @@ What a reviewer should be able to see and run, end to end.
 | Decisions and security | Ten decision records in `docs/adr`; a threat model with each threat's control, test and status; a case study of how correctness is checked; a test that two concurrent decisions leave exactly one |
 | Security scanning | `security` workflow: both images built, scanned with Trivy on every change and weekly, failing on fixable HIGH or CRITICAL findings, with a CycloneDX SBOM kept per image; Dockerfile checks; Dependabot for Maven, NuGet, base images, compose images and actions; every action pinned to a commit hash |
 
-Tests today: game server 417, of which 21 need the reference sessions and skip without them; admin server 61 unit tests and 25 integration tests.
+Tests today: game server 517, of which 21 need the reference sessions and skip without them; admin server 61 unit tests and 25 integration tests.
 
 ## Next
 
@@ -71,11 +71,11 @@ In order. Each item is one pull request unless noted.
    at a time, each codec compared byte for byte with the reference sessions before
    it is used. The handshake, the account and login packets, and the character
    packets (creation, name checks, selection and deletion), the tutorial, cash,
-   play time, channel selection and the lobby with the players in it are done and
-   served by real sessions. The room packets are read and written: creating,
-   entering, quick-joining and leaving a room, the room with its slots and its
-   host, the changes a room is told of, and the lobby's room list and the players
-   in a room. Serving them comes next, then what players do in a room.
+   play time, channel selection, the lobby with the players and rooms in it, and
+   creating, entering, quick-joining and leaving rooms are done and served by real
+   sessions. What players do in a room comes next: getting ready, changing team or
+   weapon, the room's options, opening and closing slots, and expelling a player.
+   Then matches, missions first.
 2. **CodeQL.** Static analysis of the Java and C# code, reported through GitHub
    code scanning.
 3. **Operator portal.** Pages served by the admin server: account lookup, requesting

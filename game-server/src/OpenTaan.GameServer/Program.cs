@@ -7,6 +7,7 @@ using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Characters;
 using OpenTaan.GameServer.Lobby;
 using OpenTaan.GameServer.PlayTime;
+using OpenTaan.GameServer.Rooms;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol.Characters;
 using OpenTaan.Transport;
@@ -73,6 +74,15 @@ builder.Services
         : Path.GetFullPath(o.Folder, builder.Environment.ContentRootPath));
 
 builder.Services
+    .AddOptions<RoomOptions>()
+    .Bind(builder.Configuration.GetSection(RoomOptions.Section))
+    .Validate(o => o.MaxPerChannel > 0, "Rooms:MaxPerChannel must be positive")
+    .Validate(
+        o => o.MaxNameLength is > 0 and <= RoomOptions.LongestNameAllowed,
+        $"Rooms:MaxNameLength must be between 1 and {RoomOptions.LongestNameAllowed}, so that every room reply fits a frame")
+    .ValidateOnStart();
+
+builder.Services
     .AddOptions<PlayTimeOptions>()
     .Bind(builder.Configuration.GetSection(PlayTimeOptions.Section))
     .Validate(
@@ -89,6 +99,8 @@ builder.Services.AddSingleton<CharacterHandlers>();
 builder.Services.AddSingleton<ChannelHandlers>();
 builder.Services.AddSingleton<LobbyHandlers>();
 builder.Services.AddSingleton<LobbyRoster>();
+builder.Services.AddSingleton<RoomDirectory>();
+builder.Services.AddSingleton<RoomHandlers>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<PlayTimeGrant>();
 builder.Services.AddSingleton<PacketDispatcher>();
@@ -131,6 +143,7 @@ builder.Services.AddSingleton(provider => new SessionServices(
     provider.GetRequiredService<LoggedInAccounts>(),
     provider.GetRequiredService<ChannelDirectory>(),
     provider.GetRequiredService<LobbyRoster>(),
+    provider.GetRequiredService<RoomDirectory>(),
     provider.GetRequiredService<ILogger<ClientSession>>()));
 
 builder.Services.AddHostedService<GameListener>();
