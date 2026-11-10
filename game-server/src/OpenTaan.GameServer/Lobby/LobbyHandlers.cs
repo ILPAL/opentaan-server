@@ -51,7 +51,7 @@ public sealed partial class LobbyHandlers(
         var playing = await SelectedCharactersAsync(session, cancellationToken).ConfigureAwait(false);
 
         session.Send(new PrLobbyEnter(channelId, LobbyEnterResult.Entered));
-        session.Send(new PcLobbyInitRoomList());
+        session.Send(new PcLobbyInitRoomList([]));
         lobbies.Enter(session, channelId, playing);
     }
 

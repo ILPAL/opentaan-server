@@ -36,8 +36,21 @@ appear here. So far: the handshake, the account and login packets, the
 character packets for creation, name checks, selection and deletion, and the
 packets for cash, the channel list, channel moves, entering and leaving the
 lobby, the lobby's player list and its changes, the picture the client sends
-of a character, the reports it sends while it plays the tutorial, and the
-play time it is allowed.
+of a character, the reports it sends while it plays the tutorial, the play time
+it is allowed, and the room packets: creating, entering, quick-joining and
+leaving a room, the room as a player is sent it, with its slots and its host,
+the changes a room is told of, and the lobby's room list and the players in a
+room.
+
+A room travels two ways: as a record, which the client sends to create a room
+and is sent with each room it enters, and field by field in the lobby's room
+list, where a mask names the fields present and they come in an order of their
+own. Every room has eight slots, sent all together and in order, because the
+client finds some of them by their place in the list; a slot index or a team the
+client would use as an index without checking can be neither read nor written.
+Each request to create, enter or quick-join a room ends with the client's report
+on its own code, which is read and kept but not checked: checking it needs data
+from the client's own files.
 
 Some packets carry data in the client's envelope (`DataEnvelope`): a signature, a
 checksum, and contents that may be compressed, scrambled with a key, or both. The

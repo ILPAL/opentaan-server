@@ -259,6 +259,19 @@ with real tokens:
   timeouts failed, one of them an existing heartbeat test. The failures
   were in other tests; the cause was the new one. Its contenders now run on
   threads of their own.
+- **Recorded values that cannot show a swap.** Every recorded request to create,
+  enter or quick-join a room ends with the client's report on its own code, and
+  every one of those reports is zeros. A planted codec that read two of the
+  report's fields in each other's place, and wrote them back the same way, passed
+  the replay and the declared layout; only the unit tests caught it. The layout is
+  now also checked on those requests written from invented values, and the same
+  plant fails it.
+- **A comparison that could never succeed.** A character's appearance holds its
+  sixteen parts as a list, and a record compares a list by reference, so an
+  appearance read from bytes never equalled the one it was written from. Tests
+  had compared appearances field by field around it. A room's slot holds an
+  appearance and its tests compare whole slots, so the appearance now compares
+  its parts one by one.
 
 ## The game server: bytes, not types
 
@@ -289,12 +302,22 @@ through the codec in both directions:
   field, with what the codec read. A codec that reads and writes the same field
   in the same wrong place passes the replay and fails here. Fields are paired
   with the codec's record by position, not by name, so a field can be named for
-  what it holds; objects inside lists are read by their own class's declaration,
-  so nested layouts are checked too. A few fields are declared only as an object
-  written inline, with no layout of its own, such as a ghost's position; their
-  parts are given once in the check, from the client's own writer, and paired
-  with the codec's next fields. A declared type the check does not know fails it
-  rather than being skipped.
+  what it holds; objects are read by their own class's declaration, whether they
+  sit in a list or in a field of their own, so nested layouts are checked too. A
+  few fields are declared only as an object written inline, with no layout of its
+  own, such as a ghost's position, or only as bytes the reference data computes,
+  such as the report the client makes on its own code at the end of a room
+  request; their parts are given once in the check, from the client's own writer,
+  and paired with the codec's next fields. Some classes have no usable
+  declaration at all, because which fields they carry depends on their own
+  values: a room record ends at a status of 0, a room's slot carries a character
+  only when it is taken, and an entry of the lobby's room list carries the fields
+  its mask names, in an order of its own. Those are read by layouts given once in
+  the check, from the client's own reader and apart from the codecs, and each part
+  is compared with the codec's field of the same name. Packets no recording
+  carries, and shapes no recording shows, such as a room list with rooms in it,
+  are written from invented values and checked the same way. A declared type the
+  check does not know fails it rather than being skipped.
 - **The registry.** Each packet names itself once, in a `[WireClass]` attribute,
   and its id is computed from that name the way the client computes it. The
   computation is checked against every id in the reference table, not only the

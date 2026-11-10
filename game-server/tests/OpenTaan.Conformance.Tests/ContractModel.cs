@@ -17,8 +17,11 @@ public sealed record ClassSpec(
     int? FixedSize,
     IReadOnlyList<FieldSpec> Fields);
 
-/// <summary>One field of a packet class.</summary>
-public sealed record FieldSpec(string Type, int? Bytes, string? Name, string Source);
+/// <summary>
+/// One field of a packet class. A computed field has an <see cref="Expr"/> naming what the
+/// reference data computes it from, such as <c>encode(server_connection_info)</c>.
+/// </summary>
+public sealed record FieldSpec(string Type, int? Bytes, string? Name, string Source, string? Expr);
 
 /// <summary>The registry id of every packet class.</summary>
 public sealed record RegistryTable(int Count, IReadOnlyDictionary<string, uint> Ids);
