@@ -82,6 +82,17 @@ public sealed class ProtocolReplayTests
         [PcGameSessionUpdateSlot.RegistryId] = body => Replay.Of(PcGameSessionUpdateSlot.TryRead(body), packet => packet.Write),
         [PcGameSessionUpdateOption.RegistryId] = body => Replay.Of(PcGameSessionUpdateOption.TryRead(body), packet => packet.Write),
         [PcGameSessionReady.RegistryId] = body => Replay.Of(PcGameSessionReady.TryRead(body), packet => packet.Write),
+        [PqGameSessionReady.RegistryId] = body => Replay.Of(PqGameSessionReady.TryRead(body), packet => packet.Write),
+        [PqGameSessionChangeTeam.RegistryId] = body => Replay.Of(PqGameSessionChangeTeam.TryRead(body), packet => packet.Write),
+        [PcGameSessionChangeTeam.RegistryId] = body => Replay.Of(PcGameSessionChangeTeam.TryRead(body), packet => packet.Write),
+        [PqGameSessionChangeWeapon.RegistryId] = body => Replay.Of(PqGameSessionChangeWeapon.TryRead(body), packet => packet.Write),
+        [PcGameSessionChangeWeapon.RegistryId] = body => Replay.Of(PcGameSessionChangeWeapon.TryRead(body), packet => packet.Write),
+        [PqGameSessionChangeGameOption.RegistryId] = body => Replay.Of(PqGameSessionChangeGameOption.TryRead(body), packet => packet.Write),
+        [PcGameSessionChangeGameOption.RegistryId] = body => Replay.Of(PcGameSessionChangeGameOption.TryRead(body), packet => packet.Write),
+        [PqGameSessionOpenCloseSlot.RegistryId] = body => Replay.Of(PqGameSessionOpenCloseSlot.TryRead(body), packet => packet.Write),
+        [PcGameSessionOpenCloseSlot.RegistryId] = body => Replay.Of(PcGameSessionOpenCloseSlot.TryRead(body), packet => packet.Write),
+        [PqGameSessionUserExpel.RegistryId] = body => Replay.Of(PqGameSessionUserExpel.TryRead(body), packet => packet.Write),
+        [PcGameSessionUserExpel.RegistryId] = body => Replay.Of(PcGameSessionUserExpel.TryRead(body), packet => packet.Write),
         [PcLobbyUpdateRoomList.RegistryId] = body => Replay.Of(PcLobbyUpdateRoomList.TryRead(body), packet => packet.Write),
         [PqLobbyViewRoomSimpleInfo.RegistryId] = body => Replay.Of(PqLobbyViewRoomSimpleInfo.TryRead(body), packet => packet.Write),
         [PrLobbyViewRoomSimpleInfo.RegistryId] = body => Replay.Of(PrLobbyViewRoomSimpleInfo.TryRead(body), packet => packet.Write),
@@ -111,14 +122,16 @@ public sealed class ProtocolReplayTests
     };
 
     // Recorded packets in shapes no recording shows, written from invented values so that
-    // the declared layout checks those shapes too: every recorded room list is empty, and
-    // every recorded integrity report is zeros, so no swap inside one could show.
+    // the declared layout checks those shapes too: every recorded room list is empty, every
+    // recorded integrity report is zeros, and every recorded team change moves one
+    // character, so no swap inside one could show.
     private static readonly byte[][] UnrecordedShapes =
     [
         Written(new PcLobbyInitRoomList([GameSessionInfoPack.Listing(InventedRoom), GameSessionInfoPack.Listing(InventedRoom with { RoomNumber = 0x1112, Password = null })])),
         Written(new PqGameSessionCreate(InventedRoom, InventedIntegrity)),
         Written(new PqGameSessionEnter(0x0A0B, "mk", InventedIntegrity)),
         Written(new PqGameSessionQuickJoin(PqGameSessionQuickJoin.AnyRoom, InventedIntegrity)),
+        Written(new PcGameSessionChangeTeam(0x44332211, 2, 0, 1, 6, 7)),
     ];
 
     [Fact]
@@ -307,6 +320,12 @@ public sealed class ProtocolReplayTests
         [PcGameSessionUpdateSlot.RegistryId] = body => PcGameSessionUpdateSlot.TryRead(body).Packet,
         [PcGameSessionUpdateOption.RegistryId] = body => PcGameSessionUpdateOption.TryRead(body).Packet,
         [PcGameSessionReady.RegistryId] = body => PcGameSessionReady.TryRead(body).Packet,
+        [PqGameSessionUserExpel.RegistryId] = body => PqGameSessionUserExpel.TryRead(body).Packet,
+        [PcGameSessionChangeTeam.RegistryId] = body => PcGameSessionChangeTeam.TryRead(body).Packet,
+        [PcGameSessionChangeWeapon.RegistryId] = body => PcGameSessionChangeWeapon.TryRead(body).Packet,
+        [PcGameSessionChangeGameOption.RegistryId] = body => PcGameSessionChangeGameOption.TryRead(body).Packet,
+        [PcGameSessionOpenCloseSlot.RegistryId] = body => PcGameSessionOpenCloseSlot.TryRead(body).Packet,
+        [PcGameSessionUserExpel.RegistryId] = body => PcGameSessionUserExpel.TryRead(body).Packet,
         [PcLobbyUpdateRoomList.RegistryId] = body => PcLobbyUpdateRoomList.TryRead(body).Packet,
         [PrLobbyViewRoomSimpleInfo.RegistryId] = body => PrLobbyViewRoomSimpleInfo.TryRead(body).Packet,
     };

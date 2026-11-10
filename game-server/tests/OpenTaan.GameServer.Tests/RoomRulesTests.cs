@@ -3,9 +3,26 @@ using OpenTaan.Protocol.Rooms;
 
 namespace OpenTaan.Tests.GameServer;
 
-/// <summary>What a request to create a room must hold. Every value is invented.</summary>
+/// <summary>What a request to create a room must hold, and what its host may change it to. Every value is invented.</summary>
 public sealed class RoomRulesTests
 {
+    // The maps a host may pick in a room of teams, for these tests.
+    private static readonly IReadOnlyList<ushort> Maps = [3, 4, 5, 200, 201];
+
+    /// <summary>A host's request each options rule refuses, with the kind of room it is made in, by what is wrong with it.</summary>
+    internal static readonly IReadOnlyDictionary<string, (GameType Room, PqGameSessionChangeGameOption Request)> RefusedOptions =
+        new Dictionary<string, (GameType, PqGameSessionChangeGameOption)>
+        {
+            ["a game mode that does not exist"] = (GameType.TeamGame, new(4, (GameMode)4, ChanceMode.Basic, 0xFF)),
+            ["a chance mode that does not exist"] = (GameType.TeamGame, new(4, GameMode.Items, (ChanceMode)3, 0xFF)),
+            ["a map the client does not list"] = (GameType.TeamGame, new(6, GameMode.Items, ChanceMode.Basic, 0xFF)),
+            ["no map"] = (GameType.TeamGame, new(0, GameMode.Items, ChanceMode.Basic, 0xFF)),
+            ["a captain mode in a mission room"] = (GameType.Mission, new(0, GameMode.CaptainItems, ChanceMode.Basic, 0)),
+            ["a difficulty past the hardest"] = (GameType.Mission, new(0, GameMode.Items, ChanceMode.Basic, RoomRules.HardestDifficulty + 1)),
+        };
+
+    public static TheoryData<string> RefusedOptionRequests => [.. RefusedOptions.Keys];
+
     /// <summary>A request each rule refuses, by what is wrong with it.</summary>
     internal static readonly IReadOnlyDictionary<string, GameSessionInfo> Refused = new Dictionary<string, GameSessionInfo>
     {
@@ -63,4 +80,53 @@ public sealed class RoomRulesTests
     [MemberData(nameof(RefusedRequests))]
     public void EachRuleRefusesWhatBreaksIt(string request) =>
         Assert.NotNull(RoomRules.Problem(Refused[request], new RoomOptions()));
+
+    [Fact]
+    public void ARoomOfTeamsTakesEveryModeAndChanceOnEveryMapTheClientLists()
+    {
+        foreach (var map in Maps)
+        {
+            foreach (var mode in Enum.GetValues<GameMode>())
+            {
+                foreach (var chance in Enum.GetValues<ChanceMode>())
+                {
+                    Assert.Null(RoomRules.OptionsProblem(GameType.TeamGame, new PqGameSessionChangeGameOption(map, mode, chance, 0xFF), Maps));
+                }
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(0x00)]
+    [InlineData(0x07)]
+    [InlineData(0xFE)]
+    [InlineData(0xFF)]
+    public void ARoomOfTeamsLeavesTheDifficultyUnchecked(byte difficulty) =>
+        Assert.Null(RoomRules.OptionsProblem(GameType.TeamGame, new PqGameSessionChangeGameOption(3, GameMode.Items, ChanceMode.Bonus, difficulty), Maps));
+
+    [Fact]
+    public void AMissionRoomTakesAnyMissionAtEachDifficultyTheClientOffers()
+    {
+        // A mission's number is not a map of the list, which covers rooms of teams alone.
+        foreach (var mission in new ushort[] { 0, 6, 0xFFFF })
+        {
+            for (var difficulty = 0; difficulty <= RoomRules.HardestDifficulty; difficulty++)
+            {
+                Assert.Null(RoomRules.OptionsProblem(GameType.Mission, new PqGameSessionChangeGameOption(mission, GameMode.Items, ChanceMode.Basic, (byte)difficulty), Maps));
+            }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(RefusedOptionRequests))]
+    public void EachOptionsRuleRefusesWhatBreaksIt(string request)
+    {
+        var (room, refused) = RefusedOptions[request];
+
+        Assert.NotNull(RoomRules.OptionsProblem(room, refused, Maps));
+    }
+
+    [Fact]
+    public void WithNoMapsListedARoomOfTeamsTakesNoMap() =>
+        Assert.NotNull(RoomRules.OptionsProblem(GameType.TeamGame, new PqGameSessionChangeGameOption(3, GameMode.Items, ChanceMode.Basic, 0xFF), []));
 }

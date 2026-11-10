@@ -176,6 +176,67 @@ public sealed class RoomRaceTests
         Assert.Equal(host.CharacterIds[0], Assert.Single(occupants).Value);
     }
 
+    [Fact]
+    public async Task AnExpulsionRacingThePlayersOwnLeaveFreesItsSlotOnceAndAnswersItOnce()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            var services = Services();
+            await using var host = await ArriveAsync(services, ChannelId, "Kimi");
+            await using var guest = await ArriveAsync(services, ChannelId, "Rồng");
+            var number = (await CreatedAsync(host)).Room.RoomNumber;
+            await SeatedAsync(guest, number, host);
+
+            await Task.WhenAll(
+                host.SendAsync(new PqGameSessionUserExpel(guest.CharacterIds[0])),
+                guest.SendAsync(new PqGameSessionLeave(number, Reason: 0)));
+
+            // Whichever came first, the guest is answered once, last, and the host is told
+            // of the freed slot once. The expulsion reaches both, or, when the leave came
+            // first, neither.
+            var toGuest = (await UntilQuietAsync(guest)).Select(IdOf).ToArray();
+            var toHost = (await UntilQuietAsync(host)).Select(IdOf).ToArray();
+            Assert.Equal(PrGameSessionLeave.RegistryId, toGuest[^1]);
+            Assert.Single(toGuest, id => id == PrGameSessionLeave.RegistryId);
+            Assert.Single(toHost, id => id == PcGameSessionUpdateSlot.RegistryId);
+            var expelled = toGuest.Contains(PcGameSessionUserExpel.RegistryId);
+            Assert.Equal(expelled ? [PcGameSessionUserExpel.RegistryId, PrGameSessionLeave.RegistryId] : [PrGameSessionLeave.RegistryId], toGuest);
+            Assert.Equal(expelled ? [PcGameSessionUserExpel.RegistryId, PcGameSessionUpdateSlot.RegistryId] : [PcGameSessionUpdateSlot.RegistryId], toHost);
+            Assert.Null(services.Rooms.RoomOf(guest.Connection.Session));
+        }
+    }
+
+    [Fact]
+    public async Task APlayerEnteringAsTheHostChangesTheOptionsIsShownTheNewOnesExactlyOnce()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            var services = Services();
+            await using var host = await ArriveAsync(services, ChannelId, "Kimi");
+            await using var newcomer = await ArriveAsync(services, ChannelId, "Rồng");
+            var number = (await CreatedAsync(host)).Room.RoomNumber;
+
+            await Task.WhenAll(
+                host.SendAsync(new PqGameSessionChangeGameOption(7, GameMode.NoItems, ChanceMode.Basic, 0xFF)),
+                EnterAsync(newcomer, number));
+
+            // Once the host is answered, its change has been handled, and anything it sent the
+            // newcomer is queued ahead of what the newcomer is answered next. The new options
+            // are in the room the newcomer is sent, or come as a change after it: never both,
+            // never neither.
+            await UntilQuietAsync(host);
+            var bodies = await UntilQuietAsync(newcomer);
+            var room = Read(PcGameSessionInit.TryRead, bodies[0]).Room;
+            var changes = bodies.Skip(1).Select(body => Read(PcGameSessionChangeGameOption.TryRead, body)).ToArray();
+            var shown = (room.MapId == 7 ? 1 : 0) + changes.Count(change => change.MapId == 7);
+            Assert.Equal(1, shown);
+            Assert.Equal(room.MapId == 7 ? GameMode.NoItems : GameMode.Items, room.GameMode);
+            Assert.All(changes, change => Assert.Equal(new PcGameSessionChangeGameOption(7, GameMode.NoItems, ChanceMode.Basic, 0xFF), change));
+        }
+    }
+
+    private static uint IdOf(byte[] body) => BinaryPrimitives.ReadUInt32LittleEndian(body);
+
     private static async Task<object> AnswerAsync(Player player)
     {
         var body = await player.Client.ReceiveBodyAsync();
