@@ -290,6 +290,10 @@ public sealed class CharacterFlowTests
             await connection.Client.SendAsync(new PcTutorialFinished(character.CharacterId));
 
             Assert.Equal([1], (await SelectAsync(connection, character.CharacterId)).TutorialFlags);
+
+            // The account can log in again only once the server has finished with this connection.
+            await connection.Client.DisposeAsync();
+            Assert.Equal(CloseReason.PeerClosed, await connection.ClosedReason());
         }
 
         await using var later = await SessionHarness.ConnectAsync(services, Cancel);
