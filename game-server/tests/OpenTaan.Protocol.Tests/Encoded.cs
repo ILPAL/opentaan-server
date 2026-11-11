@@ -56,4 +56,8 @@ internal static class Encoded
 
     /// <summary>A string as it appears in a body: a 32-bit count of UTF-16 code units, then the units.</summary>
     public static byte[] Utf16(string value) => [.. UInt32((uint)value.Length), .. System.Text.Encoding.Unicode.GetBytes(value)];
+
+    /// <summary>How a step of a shot starts in a body: the id of its kind, then the fields every step has.</summary>
+    public static byte[] StepHead(uint registryId, byte slot, byte type, uint tick, uint duration) =>
+        [.. UInt32(registryId), slot, type, .. UInt32(tick), .. UInt32(duration)];
 }

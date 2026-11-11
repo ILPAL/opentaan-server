@@ -416,6 +416,25 @@ with real tokens:
   every time. It now waits for the server to finish with the first connection, as
   the other tests that log in again already did, and with the same slowdown every
   test passes.
+- **Items that must come back to their sender.** A shot, a pass and a fall go to
+  every other client and never back. The recorded sessions send an item used back
+  to its sender as well, and the client's own code shows why: it sends an item
+  used, spent, thrown away, caught or given as a bonus, and acts on it only when the
+  server's copy comes back. Passed only to the others, an item would never reach
+  its own user's screen. Each now goes to everyone, its sender included, and where
+  an item went goes back to its sender alone; a planted version that leaves the
+  sender out fails the tests.
+- **A turn count that never moved.** A real client showed a mission level's turn count
+  stuck at the first turn: the start of every turn carries the count the client shows,
+  and every one carried 0. It now carries how many shots the level's players have
+  fired, which every level starts again from none. A planted version that counts every
+  turn, passes included, and one that never starts again, both fail the tests.
+- **A ghost moved after its player left.** The start of every turn moves each ghost
+  on its way until its client reports it there. A player who leaves takes its ghost
+  off every field, but the ghost's target stayed behind, so every turn after would
+  have moved a ghost no client had. The client skips a ghost it does not have, so
+  nothing broke; the server now forgets a ghost with its player, and a planted
+  version that keeps it fails the tests.
 
 ## The game server: bytes, not types
 
@@ -470,7 +489,8 @@ through the codec in both directions:
   carries, and shapes no recording shows, such as a room list with rooms in it, a
   turn that moves a ghost, or a shot with a step of every kind, where the recorded
   shots hold none or only item boxes, are written from invented values and checked
-  the same way. A declared type the check does not know fails it rather than being
+  the same way. So are the item packets: every recorded one is for slot 0 with most
+  of its values 0, where a swap of two fields would read the same. A declared type the check does not know fails it rather than being
   skipped.
 - **The registry.** Each packet names itself once, in a `[WireClass]` attribute,
   and its id is computed from that name the way the client computes it. The

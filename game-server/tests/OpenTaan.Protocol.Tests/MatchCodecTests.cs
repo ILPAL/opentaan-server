@@ -206,7 +206,7 @@ public sealed class MatchCodecTests
     }
 
     [Fact]
-    public void ATurnStartIsTheSlotTheTurnsValuesTheThreeListsTheDropQualityThenTheRound()
+    public void ATurnStartIsTheSlotTheTurnsValuesTheThreeListsTheDropQualityThenTheTurnCount()
     {
         var turn = new PcGamePlayTurnStart(
             TurnSlot: 0x01,
@@ -219,7 +219,7 @@ public sealed class MatchCodecTests
             HpUpdates: [new HpUpdate(0x03, 0x22, -0x23242526), new HpUpdate(0x05, 0x27, 0x28292A2B)],
             DropQuality: 0x2C2D2E2F,
             DropQualityByTeam: [0x30313233, 0x34353637, 0x38393A3B],
-            MissionRound: 0x3C3D);
+            MissionTurnCount: 0x3C3D);
 
         byte[] expected =
         [

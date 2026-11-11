@@ -69,7 +69,7 @@ public sealed class MatchRaceTests
 
             await Task.WhenAll(FinishedAsync(0, host), FinishedAsync(0, guest));
 
-            await TurnPassedAsync(0, 1, host, guest);
+            await TurnPassedAsync(0, 1, turnCount: 1, host, guest);
             await QuietAsync(host, guest);
         }
     }
@@ -114,7 +114,7 @@ public sealed class MatchRaceTests
             // In either order the guest's leave is told first, since the turn waits for it.
             Assert.Equal(new PcGamePlayLeaveUser(1), await host.ReceiveAsync<PcGamePlayLeaveUser>(PcGamePlayLeaveUser.TryRead));
             Assert.NotNull(await host.ReceiveAsync<PcGameSessionUpdateSlot>(PcGameSessionUpdateSlot.TryRead));
-            await TurnPassedAsync(0, 0, host);
+            await TurnPassedAsync(0, 0, turnCount: 1, host);
             await QuietAsync(host, guest);
         }
     }

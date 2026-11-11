@@ -101,11 +101,47 @@ public sealed class RoomSettingsTests
         Assert.Equal(
             (TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(25), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(25)),
             (shipped.LevelReadyWait, shipped.TurnWait, shipped.ShotWait, shipped.LongestShot, shipped.ResultWait));
-        Assert.Null(shipped.WaitsProblem());
+        Assert.Null(shipped.Problem());
         var harness = SessionHarness.ShippedMatchOptions();
         Assert.Equal(
             (shipped.LevelReadyWait, shipped.TurnWait, shipped.ShotWait, shipped.LongestShot, shipped.ResultWait),
             (harness.LevelReadyWait, harness.TurnWait, harness.ShotWait, harness.LongestShot, harness.ResultWait));
+    }
+
+    [Fact]
+    public void TheShippedMatchSettingsLetOneItemBoxDropATurnOfDropQualityTwenty()
+    {
+        var shipped = Shipped().GetSection(MatchOptions.Section).Get<MatchOptions>()!;
+
+        Assert.Equal((1, 20u), (shipped.ItemBoxesPerTurn, shipped.ItemDropQuality));
+        var harness = SessionHarness.ShippedMatchOptions();
+        Assert.Equal((shipped.ItemBoxesPerTurn, shipped.ItemDropQuality), (harness.ItemBoxesPerTurn, harness.ItemDropQuality));
+    }
+
+    [Theory]
+    [InlineData(101u)]
+    [InlineData(uint.MaxValue)]
+    public void ADropQualityAboveTheHighestTheClientKnowsIsRefusedNamingIt(uint quality)
+    {
+        var options = SessionHarness.ShippedMatchOptions();
+        options.ItemDropQuality = quality;
+
+        var result = new MatchOptionsValidation().Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains("Matches:ItemDropQuality", result.FailureMessage, StringComparison.Ordinal);
+        Assert.Contains("0 to 100", result.FailureMessage, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(0u)]
+    [InlineData(MatchOptions.MaxDropQuality)]
+    public void EveryDropQualityTheClientKnowsIsAccepted(uint quality)
+    {
+        var options = SessionHarness.ShippedMatchOptions();
+        options.ItemDropQuality = quality;
+
+        Assert.True(new MatchOptionsValidation().Validate(null, options).Succeeded);
     }
 
     [Theory]
@@ -116,7 +152,7 @@ public sealed class RoomSettingsTests
         var options = SessionHarness.ShippedMatchOptions();
         options.TurnWait = TimeSpan.FromMilliseconds(milliseconds);
 
-        var result = new MatchWaitsValidation().Validate(null, options);
+        var result = new MatchOptionsValidation().Validate(null, options);
 
         Assert.True(result.Failed);
         Assert.Contains("Matches:TurnWait", result.FailureMessage, StringComparison.Ordinal);
@@ -129,7 +165,7 @@ public sealed class RoomSettingsTests
         var options = SessionHarness.ShippedMatchOptions();
         options.TurnWait = MatchRules.ClientTurnLength + TimeSpan.FromMilliseconds(1);
 
-        Assert.True(new MatchWaitsValidation().Validate(null, options).Succeeded);
+        Assert.True(new MatchOptionsValidation().Validate(null, options).Succeeded);
     }
 
     [Fact]
@@ -138,7 +174,7 @@ public sealed class RoomSettingsTests
         var options = SessionHarness.ShippedMatchOptions();
         options.ShotWait = TimeSpan.Zero;
 
-        Assert.True(new MatchWaitsValidation().Validate(null, options).Failed);
+        Assert.True(new MatchOptionsValidation().Validate(null, options).Failed);
     }
 
     private static IConfiguration Shipped() => new ConfigurationBuilder()

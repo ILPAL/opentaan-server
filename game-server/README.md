@@ -44,8 +44,10 @@ what players do in a room: being ready, changing team and weapon, the host's
 options, opening and closing slots, and expelling a player, and a mission's match:
 starting it, how each character starts, loading it, its levels, its turns (a shot
 and every kind of step in it, a shot played back, the end and start of a turn, a
-pass, a walk, a place, a fall and a ghost), giving up, a player leaving it, its end
-and the result screen's cards.
+pass, a walk, a place, a fall and a ghost), its items and ghosts (an item used, the
+items a shot spent, an item thrown away, an item in use taken off, a box caught, a
+bonus, and where a ghost is sent), giving up, a player leaving it, its end and the
+result screen's cards.
 
 A room travels two ways: as a record, which the client sends to create a room
 and is sent with each room it enters, and field by field in the lobby's room
@@ -67,6 +69,13 @@ a body the codec cannot read is refused rather than passed on to clients that wo
 read it unchecked. A shot's slots are read as they come, since a mission's enemies
 sit in slots of 100 and more; every packet that names a player's character refuses
 a slot outside the room.
+
+The item packets are passed on unchanged too, so they are read in full and written
+back as they came. A box caught and a bonus each carry the catch as a step of the
+catching kind, and the end of a turn, a box caught and a bonus read a change to a
+team's gauge the same way. The client looks up a team's item lists by the team an
+item packet names without checking it, so that team is one of the three team
+numbers, or 0xFF where the client skips a team it is not given.
 
 A match's result and its result screen's cards always carry eight entries, one for
 each slot, because the client reads eight of each without checking how many came.
@@ -257,14 +266,11 @@ turn. The clients play the game: the shooter's client works a shot out and plays
 it, every other client plays it back from what it sends, and each client walks and
 places its own characters and reports their deaths. The server keeps the turns:
 whose turn it is, what the turn's character may do, when the turn ends and who has
-the next, and when the match is over. What a client tells of its own characters goes
-to every other client in the match as it came, and never back to its sender: a
-client sends on any shot, pass or fall it is given that names one of its own slots,
-so a copy back would come round again. Items and ghosts moving come next, then
-matches between teams and missions whose enemies fight back. Until then most of what
-a client sends for an item or a ghost is not handled: in development it is logged
-and dropped, and anywhere else it closes the connection, so a mission is played
-without items.
+the next, and when the match is over. What a client tells of how its own characters
+play goes to every other client in the match as it came, and never back to its
+sender: a client sends on any shot, pass or fall it is given that names one of its
+own slots, so a copy back would come round again. Items go the other way, as below.
+Matches between teams and missions whose enemies fight back come next.
 
 - **Starting:** the host starts once every guest is ready; a host alone may start.
   Everyone in the room is told how each character starts, and only the characters,
@@ -305,7 +311,10 @@ without items.
   for its player after a turn of 15.9 seconds; a turn with neither a shot nor a pass
   within `Matches:TurnWait` is passed by the server, for a client that has stopped
   answering. A turn ends with the end of the turn, then the start of the next
-  character's, both to everyone.
+  character's, both to everyone. In a mission, the start of every turn also carries
+  the level's turn count, which the client shows against the level's turn limit: it
+  goes up by one with every shot a player fires, a pass adds nothing, and every level
+  starts again from none.
 - **Deaths:** a character that dies in a shot is reported by its own client as it
   plays the shot back, before it reports the shot played back; one that falls while
   walking is reported by its own client, and the fall goes to the others. Everyone
@@ -313,6 +322,26 @@ without items.
   standing: once loaded, walking, placed or passing. A turn whose character is out
   of the match passes on at once, but during a shot nothing is decided until every
   client has played it back, since the shot may kill more.
+- **Items:** the clients decide every item, for now. The start of every turn tells
+  them how many item boxes the turn's shot may drop, `Matches:ItemBoxesPerTurn`, and
+  how good the items are, `Matches:ItemDropQuality`; the shooter's client places the
+  boxes along its missiles' paths, and the client that catches one, or whose
+  character is given a bonus at the end of its turn, draws the item. A box a missile
+  catches is a step of its shot; a box a ghost catches is sent on its own. A client
+  acts on an item used, the items a shot spent, an item thrown away or taken off, a
+  box its ghost caught and a bonus only when the server's copy comes back, and gives
+  no item of its own accord, so each goes to everyone in the match, its sender
+  included, as it came. Where an item went goes back to its sender alone, as in the
+  recorded sessions. Each is passed on only for one of the sender's own characters,
+  the only ones the client sends them for, whoever has the turn and during a shot
+  too, since a step of a shot can have a client use an item as it plays the shot
+  back. Deciding items on the server comes later, as its own step.
+- **Ghosts:** the player of a dead character may send its ghost somewhere, which goes
+  to everyone in the match, its sender included. The start of every turn after that
+  moves the ghost from where its client last reported it to where it was sent, until
+  its client reports it there; where a ghost stopped goes to everyone else. Only a
+  client's own dead character has a ghost to send or report. A player who leaves
+  takes its ghost off every field, and no turn moves it again.
 - **Giving up and leaving:** the client lets a player give up once a match has run
   for two minutes, for all of its characters at once; the player stays and sees
   the match end. A player leaving, or its connection closing, is taken off everyone
@@ -361,8 +390,8 @@ counting play time shows in chat, from the first hour, how long is left.
 The client plays the tutorial by itself, before the first lobby, for a character
 below level 2 whose selection says it has not finished it. It waits on nothing
 from the server, but it still reports some of what happens: an item picked up,
-where its ghost stopped, and the tutorial's end. The first two belong to a
-match's items and ghosts, which are not played here yet, so they are read and dropped. The last is recorded
+where its ghost stopped, and the tutorial's end. The first two are a match's
+reports, and from a client in no match they change nothing and are logged. The last is recorded
 against the character selected in the connection's first slot, never the one the
 report names, which the client fills with the first character it selected since
 it started. The client keeps no record of its own, so this record is all that
@@ -394,8 +423,8 @@ it names (`Accounts:RequireRegistration` is off). A real client can log in,
 create and select a character, pick a channel, enter its lobby, create, enter and
 leave rooms, do everything a waiting room offers, start a mission and play it turn
 by turn: walk, shoot, pass, die, see each level begin, clear the mission or lose it,
-give up or leave, and see its result screen and pick a card. Items and ghosts moving
-are the next stage. The server
+catch, use and throw away items, send its ghost about, give up or leave, and see its
+result screen and pick a card. Matches between teams are the next stage. The server
 refuses to start with registration off in any other environment. Accounts,
 characters and rooms live in memory until the database stage.
 
@@ -427,5 +456,7 @@ variables, for example `GameServer__Port=2181`:
 | `Matches:ShotWait` | `00:00:05` | How long a shot waits, once the first client has played it back, for every other client to finish it. |
 | `Matches:LongestShot` | `00:01:00` | How long a shot may wait in all, from its arrival, in case no client reports it played back. |
 | `Matches:ResultWait` | `00:00:25` | How long after a match's end its room waits for every player's result card before it waits for players again. |
+| `Matches:ItemBoxesPerTurn` | `1` | How many item boxes each turn's shot may drop, as the start of the turn tells every client; the shooter's client places them. `0` lets none drop. |
+| `Matches:ItemDropQuality` | `20` | How good the items the clients draw are, from `0` to `100`, as the start of every turn tells them: higher makes the rarer items likelier. Above `100` the server refuses to start, since the client would hold it to `100`. |
 | `Portraits:Folder` | none | Where the pictures clients send of their characters are kept. A relative path is taken from the content root. |
 | `Characters:CreatorParts` | `1, 3, 5, 8` | The appearance parts the client's character creator offers; a new character keeps only these. |

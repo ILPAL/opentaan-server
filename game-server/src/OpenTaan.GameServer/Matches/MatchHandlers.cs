@@ -135,6 +135,96 @@ public sealed partial class MatchHandlers(RoomDirectory rooms, ILogger<MatchHand
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>Passes an item used on; see <see cref="RoomDirectory.UseItem"/>.</summary>
+    public ValueTask UseItemAsync(ClientSession session, PcGamePlayUseItem use, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(use);
+
+        LogUnless(session, nameof(PcGamePlayUseItem), rooms.UseItem(session, use));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Passes the items a shot spent on; see <see cref="RoomDirectory.SpendItem"/>.</summary>
+    public ValueTask SpendItemAsync(ClientSession session, PcGamePlaySpendItem spend, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(spend);
+
+        LogUnless(session, nameof(PcGamePlaySpendItem), rooms.SpendItem(session, spend));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Passes an item thrown away on; see <see cref="RoomDirectory.ForsakeItem"/>.</summary>
+    public ValueTask ForsakeItemAsync(ClientSession session, PcGamePlayForsakeItem forsake, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(forsake);
+
+        LogUnless(session, nameof(PcGamePlayForsakeItem), rooms.ForsakeItem(session, forsake));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Passes an item in use taken off on; see <see cref="RoomDirectory.ForsakeActiveItem"/>.</summary>
+    public ValueTask ForsakeActiveItemAsync(ClientSession session, PcGamePlayForsakeActiveItem forsake, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(forsake);
+
+        LogUnless(session, nameof(PcGamePlayForsakeActiveItem), rooms.ForsakeActiveItem(session, forsake));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Passes a box a ghost caught on; see <see cref="RoomDirectory.EatItemBox"/>.</summary>
+    public ValueTask EatItemBoxAsync(ClientSession session, PcGamePlayEatItemBox caught, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(caught);
+
+        LogUnless(session, nameof(PcGamePlayEatItemBox), rooms.EatItemBox(session, caught));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Passes a bonus item on; see <see cref="RoomDirectory.EatBonusItem"/>.</summary>
+    public ValueTask EatBonusItemAsync(ClientSession session, PcGamePlayEatBonusItem bonus, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(bonus);
+
+        LogUnless(session, nameof(PcGamePlayEatBonusItem), rooms.EatBonusItem(session, bonus));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Sends where an item went back to its sender; see <see cref="RoomDirectory.NotifyEatItem"/>.</summary>
+    public ValueTask NotifyEatItemAsync(ClientSession session, PcGamePlayNotifyEatItem notify, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(notify);
+
+        LogUnless(session, nameof(PcGamePlayNotifyEatItem), rooms.NotifyEatItem(session, notify));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Records and passes on a ghost's target; see <see cref="RoomDirectory.AimGhost"/>.</summary>
+    public ValueTask SetGhostTargetAsync(ClientSession session, PcGamePlaySetGhostTarget aim, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(aim);
+
+        LogUnless(session, nameof(PcGamePlaySetGhostTarget), rooms.AimGhost(session, aim));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Records and passes on where a ghost stopped; see <see cref="RoomDirectory.PlaceGhost"/>.</summary>
+    public ValueTask SetGhostPosAsync(ClientSession session, PcGamePlaySetGhostPos place, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(place);
+
+        LogUnless(session, nameof(PcGamePlaySetGhostPos), rooms.PlaceGhost(session, place));
+        return ValueTask.CompletedTask;
+    }
+
     /// <summary>Picks one of the cards left for a player whose time ran out; see <see cref="RoomDirectory.PickCard"/>.</summary>
     public ValueTask RandSelectAsync(ClientSession session, PqResultRandSelect request, CancellationToken cancellationToken)
     {

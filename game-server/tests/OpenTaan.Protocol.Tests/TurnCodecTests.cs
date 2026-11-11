@@ -163,7 +163,7 @@ public sealed class TurnCodecTests
     public void ATurnEndsFlagIsZeroOrOneAndWhatItFlagsIsAGaugeChange()
     {
         byte[] badFlag = [.. Encoded.UInt32(PcGamePlayTurnEnd.RegistryId), 0x02, .. Encoded.UInt32(0), 0x02, .. TeamGaugeBytes()];
-        byte[] notAGauge = [.. Encoded.UInt32(PcGamePlayTurnEnd.RegistryId), 0x02, .. Encoded.UInt32(0), 0x01, .. CommonBytes(GameScenarioCommand.RegistryId, 0x05, 0x08, 0x06070809, 0x0A0B0C0D)];
+        byte[] notAGauge = [.. Encoded.UInt32(PcGamePlayTurnEnd.RegistryId), 0x02, .. Encoded.UInt32(0), 0x01, .. Encoded.StepHead(GameScenarioCommand.RegistryId, 0x05, 0x08, 0x06070809, 0x0A0B0C0D)];
 
         Assert.Equal(PacketError.UnexpectedValue, PcGamePlayTurnEnd.TryRead(badFlag).Error);
         Assert.Equal(PacketError.UnexpectedValue, PcGamePlayTurnEnd.TryRead(notAGauge).Error);
@@ -272,17 +272,17 @@ public sealed class TurnCodecTests
         0x03,
         0x04,
         .. Encoded.UInt32(5),
-        .. CommonBytes(GameScenarioCommand.RegistryId, 0x05, 0x08, 0x06070809, 0x0A0B0C0D),
-        .. CommonBytes(GameScenarioCommandNormal.RegistryId, 0x11, 0x0E, 0x12131415, 0x16171819),
+        .. Encoded.StepHead(GameScenarioCommand.RegistryId, 0x05, 0x08, 0x06070809, 0x0A0B0C0D),
+        .. Encoded.StepHead(GameScenarioCommandNormal.RegistryId, 0x11, 0x0E, 0x12131415, 0x16171819),
         .. Encoded.UInt32(0x1A1B1C1D),
         .. Encoded.UInt32(0x1E1F2021),
-        .. CommonBytes(GameScenarioCommandWeapon.RegistryId, 0x21, 0x02, 0x22232425, 0x26272829),
+        .. Encoded.StepHead(GameScenarioCommandWeapon.RegistryId, 0x21, 0x02, 0x22232425, 0x26272829),
         .. FlightBytes(0x2A, 0x2B, 0x2C2D2E2F, -0x30313233, 0x34353637, 1.5f, 0x38),
-        .. CommonBytes(GameScenarioCommandGuided.RegistryId, 0x41, 0x02, 0x42434445, 0x46474849),
+        .. Encoded.StepHead(GameScenarioCommandGuided.RegistryId, 0x41, 0x02, 0x42434445, 0x46474849),
         .. FlightBytes(0x4A, 0x4B, 0x4C4D4E4F, 0x50515253, 0x54555657, -0.25f, 0x58),
         .. Encoded.Int32(0x595A5B5C),
         .. Encoded.Int32(-0x5D5E5F60),
-        .. CommonBytes(GameScenarioCommandFire.RegistryId, 0x61, 0x00, 0x62636465, 0x66676869),
+        .. Encoded.StepHead(GameScenarioCommandFire.RegistryId, 0x61, 0x00, 0x62636465, 0x66676869),
         .. FlightBytes(0x6A, 0x6B, 0x6C6D6E6F, 0x70717273, 0x74757677, 2f, 0x78),
         .. Encoded.UInt16(0x797A),
         0x7B,
@@ -296,21 +296,21 @@ public sealed class TurnCodecTests
         .. Encoded.UInt16(0x1112),
         .. Encoded.UInt16(0x1314),
         .. Encoded.UInt32(5),
-        .. CommonBytes(GameScenarioCommandDamage.RegistryId, 0x64, 0x04, 0x11121314, 0x15161718),
+        .. Encoded.StepHead(GameScenarioCommandDamage.RegistryId, 0x64, 0x04, 0x11121314, 0x15161718),
         .. Encoded.UInt32(0x191A1B1C),
         .. Encoded.UInt32(0x1D1E1F20),
         .. Encoded.UInt16(0x2122),
         .. Encoded.UInt16(0x2324),
-        .. CommonBytes(GameScenarioCommandMakeItemBox.RegistryId, 0x02, 0x0A, 0x25262728, 0x292A2B2C),
+        .. Encoded.StepHead(GameScenarioCommandMakeItemBox.RegistryId, 0x02, 0x0A, 0x25262728, 0x292A2B2C),
         .. Encoded.UInt64(0x2D2E2F3031323334),
         .. Encoded.Int32(-0x35363738),
         .. Encoded.Int32(0x393A3B3C),
-        .. CommonBytes(GameScenarioCommandEatItemBox.RegistryId, 0x03, 0x0B, 0x3D3E3F40, 0x41424344),
+        .. Encoded.StepHead(GameScenarioCommandEatItemBox.RegistryId, 0x03, 0x0B, 0x3D3E3F40, 0x41424344),
         .. Encoded.UInt64(0x4546474849505152),
         .. Encoded.UInt16(0x5354),
         .. Encoded.UInt32(0x55565758),
         .. TeamGaugeBytes(),
-        .. CommonBytes(GameScenarioCommandUseBonusGameItem.RegistryId, 0x05, 0x0F, 0x66676869, 0x6A6B6C6D),
+        .. Encoded.StepHead(GameScenarioCommandUseBonusGameItem.RegistryId, 0x05, 0x0F, 0x66676869, 0x6A6B6C6D),
         .. Encoded.UInt16(0x6E6F),
         .. Encoded.UInt16(0x1516),
         .. Encoded.UInt32(0x1718191A),
@@ -322,15 +322,11 @@ public sealed class TurnCodecTests
 
     private static byte[] TeamGaugeBytes() =>
     [
-        .. CommonBytes(GameScenarioCommandTeamGauge.RegistryId, 0x04, 0x0C, 0x595A5B5C, 0x5D5E5F60),
+        .. Encoded.StepHead(GameScenarioCommandTeamGauge.RegistryId, 0x04, 0x0C, 0x595A5B5C, 0x5D5E5F60),
         0x61,
         .. Encoded.UInt16(0x6263),
         .. Encoded.UInt16(0x6465),
     ];
-
-    // The id of a step's kind, then the fields every step has.
-    private static byte[] CommonBytes(uint registryId, byte slot, byte type, uint tick, uint duration) =>
-        [.. Encoded.UInt32(registryId), slot, type, .. Encoded.UInt32(tick), .. Encoded.UInt32(duration)];
 
     // The fields of a missile's flight.
     private static byte[] FlightBytes(byte missile, byte missileType, int impactX, int impactY, uint fireStart, float multiplier, byte special) =>

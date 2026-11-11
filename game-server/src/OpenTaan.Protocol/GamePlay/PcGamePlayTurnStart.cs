@@ -26,7 +26,7 @@ namespace OpenTaan.Protocol.GamePlay;
 /// <param name="HpUpdates">Changes to characters' health.</param>
 /// <param name="DropQuality">How good the items the turn drops are, before each team's share.</param>
 /// <param name="DropQualityByTeam">What each team adds to <see cref="DropQuality"/>, by team number from 0: always <see cref="TeamCount"/> entries.</param>
-/// <param name="MissionRound">In a mission, the round of the level the turn belongs to; read only there.</param>
+/// <param name="MissionTurnCount">In a mission, the level's turn count, which the client shows against the level's turn limit; read only there.</param>
 [WireClass("PcGamePlay_TurnStart")]
 public sealed record PcGamePlayTurnStart(
     byte TurnSlot,
@@ -39,7 +39,7 @@ public sealed record PcGamePlayTurnStart(
     IReadOnlyList<HpUpdate> HpUpdates,
     uint DropQuality,
     IReadOnlyList<uint> DropQualityByTeam,
-    ushort MissionRound) : IPacket
+    ushort MissionTurnCount) : IPacket
 {
     /// <summary>How many entries <see cref="DropQualityByTeam"/> has: one for each team number from 0.</summary>
     public const int TeamCount = 3;
@@ -86,7 +86,7 @@ public sealed record PcGamePlayTurnStart(
             dropQualityByTeam[team] = reader.ReadUInt32();
         }
 
-        var missionRound = reader.ReadUInt16();
+        var missionTurnCount = reader.ReadUInt16();
         if (turnSlot >= GameSlotInfo.SlotCount)
         {
             reader.Fail(PacketError.UnexpectedValue);
@@ -104,7 +104,7 @@ public sealed record PcGamePlayTurnStart(
             hpUpdates,
             dropQuality,
             dropQualityByTeam,
-            missionRound));
+            missionTurnCount));
     }
 
     /// <summary>Writes the body.</summary>
@@ -126,7 +126,7 @@ public sealed record PcGamePlayTurnStart(
             writer.WriteUInt32(share);
         }
 
-        writer.WriteUInt16(MissionRound);
+        writer.WriteUInt16(MissionTurnCount);
     }
 
     /// <summary>Whether both start the same turn: every field equal, and every list equal in order.</summary>
@@ -142,7 +142,7 @@ public sealed record PcGamePlayTurnStart(
         && HpUpdates.SequenceEqual(other.HpUpdates)
         && DropQuality == other.DropQuality
         && DropQualityByTeam.SequenceEqual(other.DropQualityByTeam)
-        && MissionRound == other.MissionRound;
+        && MissionTurnCount == other.MissionTurnCount;
 
     /// <summary>A hash of the fields and every entry, consistent with <see cref="Equals(PcGamePlayTurnStart)"/>.</summary>
     public override int GetHashCode()
@@ -158,7 +158,7 @@ public sealed record PcGamePlayTurnStart(
         AddAll(ref hash, HpUpdates);
         hash.Add(DropQuality);
         AddAll(ref hash, DropQualityByTeam);
-        hash.Add(MissionRound);
+        hash.Add(MissionTurnCount);
         return hash.ToHashCode();
     }
 

@@ -10,7 +10,7 @@ before any deployment beyond a local machine.
 
 The stack in `docker-compose.yml`: the admin server, Keycloak, PostgreSQL,
 Flyway and the game server, plus the CI that builds them. The game server
-serves the login, character, tutorial, channel and lobby stages, rooms, and a mission's match from its start to its result screen, turn by turn, its items aside; its threats are listed
+serves the login, character, tutorial, channel and lobby stages, rooms, and a mission's match from its start to its result screen, turn by turn, with its items and ghosts as the clients decide them; its threats are listed
 with the controls in place and those planned for the stages still to come. A production
 deployment (TLS termination, networks, backups, monitoring) is not designed
 yet and is out of scope, except where the local setup would be unsafe to copy.
@@ -146,7 +146,9 @@ does not exist yet; the control comes with it).
 | T-G25 | A modified client acts out of turn: it shoots, passes or walks for a character whose turn it is not, or for another player's, so every other client plays a shot no turn was given to | A shot, a pass, a walk or a place is taken only for the character whose turn it is, from the client that plays it, and a shot once in a turn; a death only for the client's own character, once; anything else is dropped and logged | Mitigated: `TurnFlowTests` |
 | T-G26 | A modified client sends a malformed shot, which every other client would read without checking it | Every shot is read in full before it goes anywhere: every step of every kind the client makes, every count checked against the bytes left, nothing left over; a body the codec refuses closes the sender's connection, and a shot goes on exactly as it came | Partly: `TurnCodecTests`, `ProtocolReplayTests`; a well-formed shot is the shooter's client's own work, its hits, deaths and kills, which the server cannot check |
 | T-G27 | A client that stops answering holds up every turn: a turn waits for a shot or a pass that never comes, or a shot for a report that never comes | Every wait is bounded: `Matches:TurnWait`, after which the server passes the turn, longer than the client's own turn so it never cuts one short; `Matches:ShotWait` once the first client has played a shot back, and `Matches:LongestShot` in all; a player who leaves or whose connection closes is no longer waited for, and a turn of theirs passes on | Mitigated: `TurnFlowTests` (on a manual clock), `MatchRaceTests` |
-| T-G28 | A shot, a pass or a fall sent back to its sender comes round again for ever: the client sends on any it is given that names one of its own characters | Those go to every other client in the match and never back to their sender | Mitigated: `TurnFlowTests` |
+| T-G28 | A shot, a pass or a fall sent back to its sender comes round again for ever: the client sends on any it is given that names one of its own characters | Those go to every other client in the match and never back to their sender. Items are the other way round: a client acts on an item only in the server's copy and sends none on, so each goes to everyone, its sender included | Mitigated: `TurnFlowTests`, `ItemFlowTests` |
+| T-G29 | A modified client gives its characters any item it likes, catches boxes no shot dropped, or draws only the rarest items | The clients decide items for now, each drawing the items its own characters catch; the server passes an item packet on only for one of the sender's own characters, only while a match runs, and as it came. Items last only as long as their match and earn nothing | Accepted for now: `ItemFlowTests`; deciding items on the server is a later step |
+| T-G30 | A crafted item or ghost packet crashes every client it reaches: the client looks characters up by its slot, and a team's item lists by its team, without checking either | Every item and ghost packet refuses a slot outside the room, and a team other than one of the three team numbers or, where the client skips a team, 0xFF; a body the codec refuses closes its sender's connection and goes nowhere. A ghost is sent off or reported only by its own client, once its character is dead | Mitigated: `ItemCodecTests`, `ItemFlowTests`, `ProtocolReplayTests` |
 
 ### Supply chain and CI
 
@@ -180,3 +182,6 @@ does not exist yet; the control comes with it).
     can deal any damage it likes, or none. The server passes it on as every client
     expects; checking a shot's hits needs the health rules the server does not keep
     yet.
+12. **T-G29:** the clients decide items, so a modified client can give its
+    characters any item, or catch boxes no shot dropped. Items last only for their
+    match and earn nothing; deciding them on the server is a later step.

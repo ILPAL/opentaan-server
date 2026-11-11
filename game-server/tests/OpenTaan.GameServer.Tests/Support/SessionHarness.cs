@@ -64,6 +64,8 @@ internal static class SessionHarness
         ShotWait = TimeSpan.FromSeconds(5),
         LongestShot = TimeSpan.FromSeconds(60),
         ResultWait = TimeSpan.FromSeconds(25),
+        ItemBoxesPerTurn = 1,
+        ItemDropQuality = 20,
     };
 
     /// <summary>What sessions share, with stores and settings a test may choose.</summary>
