@@ -33,7 +33,7 @@ services:
   # Applies database/migrations, then exits. The servers never create or alter
   # tables; they start only after this has finished successfully.
   flyway:
-    image: flyway/flyway:13.7.0
+    image: flyway/flyway:13.12.1
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,7 +52,7 @@ services:
   # Local development identity provider for operators. Realm, roles and clients
   # are imported from deploy/keycloak; operators are added with add-operator.sh.
   keycloak:
-    image: quay.io/keycloak/keycloak:26.7.4
+    image: quay.io/keycloak/keycloak:26.8.2-1
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       # Tokens must carry the issuer that browsers and the CLI see (localhost),
