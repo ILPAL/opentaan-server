@@ -120,6 +120,95 @@ internal static class Matching
     public static Task TurnToldAsync(byte slot, params Player[] players) =>
         EveryoneToldAsync(MatchRules.TurnOf(slot, round: 0), PcGamePlayTurnStart.TryRead, players);
 
+    /// <summary>
+    /// Starts a mission with <paramref name="host"/> and <paramref name="guest"/>, begins its
+    /// first level, and starts its first turn: the host's, in slot 0, with the guest in slot 1.
+    /// </summary>
+    public static async Task AtFirstTurnAsync(Player host, Player guest)
+    {
+        await MissionRoomAsync(host, guest);
+        await StartedAsync(host, host, guest);
+        await LevelBegunAsync(1, host, guest);
+        await FirstTurnAsync(1, 0, host, guest);
+    }
+
+    /// <summary>A shot by the character in <paramref name="slot"/>: a hit, then the mark that ends every shot.</summary>
+    public static PcGamePlayScenario Shot(byte slot) => new(
+        Direction: 0x01,
+        slot,
+        new GameScenario(
+            slot,
+            ActionType: 0x02,
+            [new GameScenarioCommandDamage(0x64, 0x04, 0x0102, 0x0304, 0x0506, 0x0708, 0x090A, 0x0B0C), new GameScenarioCommand(slot, 0x08, 0x0D0E, 0)],
+            [],
+            [],
+            WeaponFlags: 0x0F10,
+            InitialAngle: 0x11121314,
+            [0x64],
+            Seed: 0x15161718),
+        TotalStats: 0x191A1B1C,
+        AmmoAddition: 0x1D1E,
+        new IntegrityReport(0x1F202122, 0x23242526, 0x27, 0x28292A2B, 0x2C2D2E2F, 0x30313233));
+
+    /// <summary>Each of <paramref name="players"/> reports <paramref name="level"/> ready, and each is told that the turn of the character in <paramref name="slot"/> starts.</summary>
+    public static async Task FirstTurnAsync(byte level, byte slot, params Player[] players)
+    {
+        foreach (var player in players)
+        {
+            await player.SendAsync(new PqGameSessionMissionLevelReady(level));
+        }
+
+        await TurnToldAsync(slot, players);
+    }
+
+    /// <summary>The shooter shoots for the character in <paramref name="slot"/>, and each of <paramref name="others"/> is passed the shot as it was sent.</summary>
+    public static async Task ShotAsync(Player shooter, byte slot, params Player[] others)
+    {
+        var shot = Shot(slot);
+        await shooter.SendAsync(shot);
+        await EveryoneToldAsync(shot, PcGamePlayScenario.TryRead, others);
+    }
+
+    /// <summary>Each of <paramref name="players"/> reports the shot of the character in <paramref name="slot"/> played back, twice, as the client does.</summary>
+    public static async Task FinishedAsync(byte slot, params Player[] players)
+    {
+        foreach (var player in players)
+        {
+            await player.SendAsync(new PcGamePlayEndScenario(slot, 0));
+            await player.SendAsync(new PcGamePlayEndScenario(slot, 0));
+        }
+    }
+
+    /// <summary>Each of <paramref name="players"/> is told the turn of the character in <paramref name="from"/> ends, then the turn of the one in <paramref name="to"/> starts.</summary>
+    public static async Task TurnPassedAsync(byte from, byte to, params Player[] players)
+    {
+        foreach (var player in players)
+        {
+            Assert.Equal(MatchRules.TurnEndOf(from), await player.ReceiveAsync<PcGamePlayTurnEnd>(PcGamePlayTurnEnd.TryRead));
+            Assert.Equal(MatchRules.TurnOf(to, round: 0), await player.ReceiveAsync<PcGamePlayTurnStart>(PcGamePlayTurnStart.TryRead));
+        }
+    }
+
+    /// <summary>
+    /// The shooter shoots for the character in <paramref name="slot"/>, which kills the level's
+    /// last enemy: every one of <paramref name="players"/> asks for <paramref name="next"/> as it
+    /// finishes playing the shot back, and is told the level begins once every one has.
+    /// </summary>
+    public static async Task LevelClearedByShotAsync(Player shooter, byte slot, byte next, params Player[] players)
+    {
+        await ShotAsync(shooter, slot, [.. players.Where(player => player != shooter)]);
+        foreach (var player in players)
+        {
+            await player.SendAsync(Asking(next));
+            await FinishedAsync(slot, player);
+        }
+
+        if (next != PqGameSessionStartMissionLevel.NoNextLevel)
+        {
+            await EveryoneToldAsync(new PcGameSessionStartMissionLevel(next), PcGameSessionStartMissionLevel.TryRead, players);
+        }
+    }
+
     public static Task ReadyToldAsync(Player guest, params Player[] players) =>
         EveryoneToldAsync(new PcGameSessionReady(guest.PlayerId, IsReady: true), PcGameSessionReady.TryRead, players);
 

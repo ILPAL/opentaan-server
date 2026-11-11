@@ -97,6 +97,12 @@ The expensive bugs happen when two requests arrive at the same moment.
   ends once, and each is sent its end once.
 - Two players pick the same result card at once, twenty times over. One turns it
   over, everyone is told so once, and the other is refused alone.
+- Both clients in a mission report a shot played back at once, twice each as the
+  client does, twenty times over. The turn passes once.
+- Both clients ask for the next level as they finish playing back the same shot,
+  twenty times over. The level begins once, after the shot.
+- A client leaves as the shooter reports the shot played back, twenty times over.
+  The turn passes once, and after the leave.
 
 Each race passes whichever way it goes, so a pass only means something if both
 ways come up. Counted once over sixty rounds of each, both did: the expulsion
@@ -369,6 +375,36 @@ with real tokens:
   own id. The client writes each entry as a slot and a position, with no id, which
   the recorded bytes confirm. The check reads it as the client does, by a layout
   given once from the client's own writer.
+- **A turn that started on top of a shot.** The recorded sessions end a turn on
+  the shooter's report alone. The client's own code showed that a turn's start
+  does not wait for a shot the client is still playing, and that a death in a shot
+  reaches the server only from the dying character's own client, as it plays the
+  shot back. A turn started on the shooter's report could start on top of a slower
+  client's shot, and go to a character that client was about to see die. The turn
+  now waits for every client's report, and a planted version that passes it on the
+  first report fails the tests.
+- **Every shot reported twice.** A real client sent two reports for one shot. Its
+  code shows why: every shot ends with a mark a second after its last step, and the
+  client reports when it reaches the mark and again once the last step is behind
+  it, and every client that plays the shot does so. Counted as they come, the
+  shooter's two reports could stand for two clients and end the turn before the
+  others had finished, or end it twice. Each client now counts once per shot, and
+  its second report is not even logged.
+- **A copy back that would come round again.** A client sends on to the server any
+  shot, pass or fall it is given that names one of its own characters. The recorded
+  sessions send a fall back to its sender too, which would loop. A shot, a pass and
+  a fall go to every other client and never back.
+- **A level begun in the middle of a shot.** Levels began on the first client's
+  request, which was right while no shots were played. With shots, that request
+  comes from the first client to finish one, while the others are still in it, and
+  a level's opening would start on top of their shot. A later level is now held
+  until every client has played the shot back, and so is the mission's clear.
+- **A test that passed because a wait ran out.** A planted bug made a player's
+  leave no longer end the shot it was being waited for, and the test of that leave
+  still passed: on the real clock the shot's own wait, five seconds, passed the turn
+  anyway, within the ten seconds a test waits for a packet. Every test of turns now
+  runs on a clock that moves only when the test moves it, so a turn passes only for
+  the reason the test gives it, and the planted bug fails the test at once.
 - **A test that logged in again before the server had let go.** A test of the
   tutorial closed its connection and logged in again with the same account at
   once. The server frees an account only once it has finished with the old
@@ -428,10 +464,14 @@ through the codec in both directions:
   declared, are read by their own declarations, so a field swapped inside a
   character's starting values is caught there. A result card has a declaration,
   but its record derives its kind from its class instead of holding it, so it is
-  read by the client's layout and compared by name. Packets no recording carries,
-  and shapes no recording shows, such as a room list with rooms in it or a turn
-  that moves a ghost, are written from invented values and checked the same way. A
-  declared type the check does not know fails it rather than being skipped.
+  read by the client's layout and compared by name. The report a shot ends with is
+  declared only as an object, written inline and kept as one record, so its parts,
+  from the client's own writer, are paired with that record's. Packets no recording
+  carries, and shapes no recording shows, such as a room list with rooms in it, a
+  turn that moves a ghost, or a shot with a step of every kind, where the recorded
+  shots hold none or only item boxes, are written from invented values and checked
+  the same way. A declared type the check does not know fails it rather than being
+  skipped.
 - **The registry.** Each packet names itself once, in a `[WireClass]` attribute,
   and its id is computed from that name the way the client computes it. The
   computation is checked against every id in the reference table, not only the
@@ -450,7 +490,8 @@ recorded rooms are played through a guest getting ready, the host's options, a
 slot closed, a player entering, a team change, a weapon and a quick join. A
 mission is played through its start, with every character's starting values and
 the mission's seed, and through every client loading it, and a match between
-teams ends where it would start, as its turns come later.
+teams ends where it would start, as those matches come later. Every recorded turn
+belongs to that match, so turns are checked through real connections instead.
 A recorded answer can also hold packets of later stages; a recorded packet the
 server has no codec for is not expected, and every other one is, in order. One
 answer differs by design: the recordings move to another channel by reconnecting,
@@ -462,8 +503,7 @@ recordings list every lobby's players as empty and never add or remove anyone or
 change a room, where this server lists who is there and tells them of each player
 who comes or goes and each room that opens, changes or closes. These are checked
 through real connections instead, player by player and change by change. A few
-recorded values are placeholders of the server the sessions were recorded from,
-such as a room's team names, or the closed slots a recorded mission start lists
+recorded values are placeholders, such as a room's team names, or the closed slots a recorded mission start lists
 for the mission's own side; each is set to what this server sends before
 comparing, and the replay names every one of them. Two recorded steps end their
 session by design: a recorded mission reports a level ready before it asks for

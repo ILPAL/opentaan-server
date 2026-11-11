@@ -94,13 +94,51 @@ public sealed class RoomSettingsTests
     }
 
     [Fact]
-    public void TheShippedMatchSettingsWaitTenSecondsForALevelAndTwentyFiveForTheCards()
+    public void TheShippedMatchSettingsWaitTenSecondsForALevelTwentyFiveForATurnFiveAndSixtyForAShotAndTwentyFiveForTheCards()
     {
         var shipped = Shipped().GetSection(MatchOptions.Section).Get<MatchOptions>()!;
 
-        Assert.Equal((TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(25)), (shipped.LevelReadyWait, shipped.ResultWait));
+        Assert.Equal(
+            (TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(25), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(25)),
+            (shipped.LevelReadyWait, shipped.TurnWait, shipped.ShotWait, shipped.LongestShot, shipped.ResultWait));
+        Assert.Null(shipped.WaitsProblem());
         var harness = SessionHarness.ShippedMatchOptions();
-        Assert.Equal((shipped.LevelReadyWait, shipped.ResultWait), (harness.LevelReadyWait, harness.ResultWait));
+        Assert.Equal(
+            (shipped.LevelReadyWait, shipped.TurnWait, shipped.ShotWait, shipped.LongestShot, shipped.ResultWait),
+            (harness.LevelReadyWait, harness.TurnWait, harness.ShotWait, harness.LongestShot, harness.ResultWait));
+    }
+
+    [Theory]
+    [InlineData(15_900)]
+    [InlineData(10_000)]
+    public void ATurnWaitNoLongerThanTheClientsOwnTurnIsRefusedNamingIt(int milliseconds)
+    {
+        var options = SessionHarness.ShippedMatchOptions();
+        options.TurnWait = TimeSpan.FromMilliseconds(milliseconds);
+
+        var result = new MatchWaitsValidation().Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains("Matches:TurnWait", result.FailureMessage, StringComparison.Ordinal);
+        Assert.Contains("15.9 seconds", result.FailureMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ATurnWaitAnyLongerThanTheClientsOwnTurnIsAccepted()
+    {
+        var options = SessionHarness.ShippedMatchOptions();
+        options.TurnWait = MatchRules.ClientTurnLength + TimeSpan.FromMilliseconds(1);
+
+        Assert.True(new MatchWaitsValidation().Validate(null, options).Succeeded);
+    }
+
+    [Fact]
+    public void AWaitThatIsNotPositiveIsRefused()
+    {
+        var options = SessionHarness.ShippedMatchOptions();
+        options.ShotWait = TimeSpan.Zero;
+
+        Assert.True(new MatchWaitsValidation().Validate(null, options).Failed);
     }
 
     private static IConfiguration Shipped() => new ConfigurationBuilder()

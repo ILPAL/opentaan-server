@@ -60,6 +60,9 @@ internal static class SessionHarness
     public static MatchOptions ShippedMatchOptions() => new()
     {
         LevelReadyWait = TimeSpan.FromSeconds(10),
+        TurnWait = TimeSpan.FromSeconds(25),
+        ShotWait = TimeSpan.FromSeconds(5),
+        LongestShot = TimeSpan.FromSeconds(60),
         ResultWait = TimeSpan.FromSeconds(25),
     };
 

@@ -88,8 +88,8 @@ builder.Services.AddSingleton<IValidateOptions<RoomOptions>, RoomMapsValidation>
 builder.Services
     .AddOptions<MatchOptions>()
     .Bind(builder.Configuration.GetSection(MatchOptions.Section))
-    .Validate(o => o.LevelReadyWait > TimeSpan.Zero && o.ResultWait > TimeSpan.Zero, "Matches waits must be positive")
     .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<MatchOptions>, MatchWaitsValidation>();
 
 builder.Services
     .AddOptions<PlayTimeOptions>()

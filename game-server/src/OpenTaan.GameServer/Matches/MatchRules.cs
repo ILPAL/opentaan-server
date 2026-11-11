@@ -46,8 +46,17 @@ public static class MatchRules
     /// <summary>How good the items every turn drops are.</summary>
     public const uint TurnDropQuality = 20;
 
+    /// <summary>The value the end of every turn gives its character to keep, as the reference sessions carry.</summary>
+    public const uint TurnSeed = 0;
+
     /// <summary>The name of a result card that is no character's.</summary>
     public const string EmptyRewardName = "Empty";
+
+    /// <summary>
+    /// How long the client gives its player for a turn before it passes for it: a value of
+    /// the client's own, which the server neither sends nor can change.
+    /// </summary>
+    public static TimeSpan ClientTurnLength { get; } = TimeSpan.FromMilliseconds(15_900);
 
     /// <summary>The name of a result card's gold.</summary>
     public const string GoldRewardName = "Gold";
@@ -78,6 +87,15 @@ public static class MatchRules
         TurnDropQuality,
         DropQualityByTeam: [0, 0, 0],
         round);
+
+    /// <summary>The end of the turn of the character in slot <paramref name="slot"/>.</summary>
+    public static PcGamePlayTurnEnd TurnEndOf(byte slot) => new(slot, TurnSeed, TeamGauge: null);
+
+    /// <summary>The character in slot <paramref name="slot"/> as a ghost, where it was last reported standing, <paramref name="at"/>.</summary>
+    public static PcGamePlayMakeGhost GhostOf(byte slot, (int X, int Y) at) => new(slot, at.X, at.Y, PlayersTeam);
+
+    /// <summary>Where every character starts, until its client reports where it stands.</summary>
+    public static (int X, int Y) StartPosition => (StartX, StartY);
 
     /// <summary>
     /// The result of a match <paramref name="winningTeam"/> won, with a row for each slot:

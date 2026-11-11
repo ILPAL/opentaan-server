@@ -42,8 +42,10 @@ leaving a room, the room as a player is sent it, with its slots and its host,
 the changes a room is told of, the lobby's room list and the players in a room,
 what players do in a room: being ready, changing team and weapon, the host's
 options, opening and closing slots, and expelling a player, and a mission's match:
-starting it, how each character starts, loading it, its levels, the start of a
-turn, giving up, a player leaving it, its end and the result screen's cards.
+starting it, how each character starts, loading it, its levels, its turns (a shot
+and every kind of step in it, a shot played back, the end and start of a turn, a
+pass, a walk, a place, a fall and a ghost), giving up, a player leaving it, its end
+and the result screen's cards.
 
 A room travels two ways: as a record, which the client sends to create a room
 and is sent with each room it enters, and field by field in the lobby's room
@@ -58,6 +60,13 @@ connection.
 Each request to create, enter or quick-join a room ends with the client's report
 on its own code, which is read and kept but not checked: checking it needs data
 from the client's own files.
+
+A shot is read in full, every step of every kind in both of its lists, and written
+back exactly as it came, because the server passes it to the other clients unchanged:
+a body the codec cannot read is refused rather than passed on to clients that would
+read it unchecked. A shot's slots are read as they come, since a mission's enemies
+sit in slots of 100 and more; every packet that names a player's character refuses
+a slot outside the room.
 
 A match's result and its result screen's cards always carry eight entries, one for
 each slot, because the client reads eight of each without checking how many came.
@@ -243,9 +252,19 @@ which team, with which weapon.
 
 ## Matches
 
-A mission room's match is played from its start to its result screen. Its turns
-are not played yet: the first turn of the first level starts, and nothing after it.
-Matches between teams, and missions whose enemies fight back, come later.
+A mission room's match is played from its start to its result screen, turn by
+turn. The clients play the game: the shooter's client works a shot out and plays
+it, every other client plays it back from what it sends, and each client walks and
+places its own characters and reports their deaths. The server keeps the turns:
+whose turn it is, what the turn's character may do, when the turn ends and who has
+the next, and when the match is over. What a client tells of its own characters goes
+to every other client in the match as it came, and never back to its sender: a
+client sends on any shot, pass or fall it is given that names one of its own slots,
+so a copy back would come round again. Items and ghosts moving come next, then
+matches between teams and missions whose enemies fight back. Until then most of what
+a client sends for an item or a ghost is not handled: in development it is logged
+and dropped, and anywhere else it closes the connection, so a mission is played
+without items.
 
 - **Starting:** the host starts once every guest is ready; a host alone may start.
   Everyone in the room is told how each character starts, and only the characters,
@@ -256,23 +275,53 @@ Matches between teams, and missions whose enemies fight back, come later.
   why the host's options take only `Rooms:Missions`. The lobby shows the room
   playing, and no one enters it until it waits again. A start the rules do not
   allow is not answered: the client waits on none.
-- **Levels:** every client asks for each level, the first once it has loaded, each
-  next one once its own count of kills reaches the level's target, and one past
-  the last once the mission is cleared. Only the next level begins, once, and only
-  while the last level runs is the mission cleared: the server cannot count the
-  kills, which happen in each client's play of a shot, but it holds every client to
-  the order and the number of the levels. A level begins with an opening of about
-  two and a half seconds on every client, which places its enemies. Its first turn
-  waits until every client in the match reports the opening over, since a turn
-  that reaches a client still in it would leave that client without the level's
-  enemies, or for `Matches:LevelReadyWait` at most, so one stuck client cannot hold
-  up the rest. It goes to the lowest character still in the match.
+- **Levels:** every client asks for each level: the first once it has loaded, each
+  next one as it finishes playing back the shot that brings its own count of kills
+  to the level's target, and one past the last once the mission is cleared. Only
+  the next level begins, once, and only while the last level runs is the mission
+  cleared: the server cannot count the kills, which happen in each client's play of
+  a shot, but it holds every client to the order and the number of the levels. A
+  later level and the clear are taken only while a shot is played, and held until
+  every client has played it back: announced at once, the level's opening would
+  start on a client still in the shot, and the end would cut its shot short. A
+  level begins with an opening of about two and a half seconds on every client,
+  which places its enemies, and no end or start of a turn goes with it: the client
+  changes level by itself, and either would break that. Its first turn waits until
+  every client in the match reports the opening over, since a turn that reaches a
+  client still in it would leave that client without the level's enemies, or for
+  `Matches:LevelReadyWait` at most, so one stuck client cannot hold up the rest. The
+  first level's goes to the lowest character still in the match, a later level's to
+  the next character after the one whose shot finished the level before.
+- **Turns:** characters take turns in slot order, round again from the lowest,
+  skipping every character out of the match. The turn's character may walk and be
+  placed, which goes to the others, then shoot once or pass. A shot is taken only
+  for the turn's character, from its own client: any other would play on every other
+  screen while no turn was its. It goes to the others, and the turn ends once every
+  client in the room has reported it played back, since the start of a turn does not
+  wait for a shot a client is still playing. Each client reports a shot twice, and
+  is counted once. The others are given `Matches:ShotWait` once the first has
+  finished, and a shot no client reports ends `Matches:LongestShot` after it
+  arrived. A pass goes to the others and the turn ends at once. The client passes
+  for its player after a turn of 15.9 seconds; a turn with neither a shot nor a pass
+  within `Matches:TurnWait` is passed by the server, for a client that has stopped
+  answering. A turn ends with the end of the turn, then the start of the next
+  character's, both to everyone.
+- **Deaths:** a character that dies in a shot is reported by its own client as it
+  plays the shot back, before it reports the shot played back; one that falls while
+  walking is reported by its own client, and the fall goes to the others. Everyone
+  is told the character is a ghost, once, where its client last reported it
+  standing: once loaded, walking, placed or passing. A turn whose character is out
+  of the match passes on at once, but during a shot nothing is decided until every
+  client has played it back, since the shot may kill more.
 - **Giving up and leaving:** the client lets a player give up once a match has run
   for two minutes, for all of its characters at once; the player stays and sees
   the match end. A player leaving, or its connection closing, is taken off everyone
-  else's field, then out of the room as it would be from a waiting room. A match
-  whose every character has given up or left is lost.
-- **The end:** a cleared mission is won, a lost one is the mission's. Everyone still
+  else's field, then out of the room as it would be from a waiting room, and is no
+  longer waited for. Either way a turn that was theirs passes on. A match whose
+  every character has given up, left or died is lost.
+- **The end:** a cleared mission is won, even by a shot that also killed the last
+  player, and a lost one is the mission's; a shot's outcome is decided once every
+  client has played it back. Everyone still
   in the room is sent the result screen's cards, then the result, which builds the
   screen from the cards, so the cards always come first. Nothing about the match's
   turns is answered once it is over, since the client would act on it and leave its
@@ -287,9 +336,10 @@ Matches between teams, and missions whose enemies fight back, come later.
   `Matches:ResultWait` after the end, by when every client has left its result
   screen by itself.
 
-A match lives under the rooms' lock, so a level begun, a player leaving and the
-end happen in one order for everyone. The two waits run as timers on the server's
-clock, and a timer that fires for a match that has moved on finds nothing to do.
+A match lives under the rooms' lock, so a level begun, a shot, a death, a player
+leaving and the end happen in one order for everyone. Its waits run as timers on
+the server's clock, one at a time, each armed before anyone hears of what it waits
+on, and a timer that fires for a match that has moved on finds nothing to do.
 
 ## Play time
 
@@ -312,7 +362,7 @@ The client plays the tutorial by itself, before the first lobby, for a character
 below level 2 whose selection says it has not finished it. It waits on nothing
 from the server, but it still reports some of what happens: an item picked up,
 where its ghost stopped, and the tutorial's end. The first two belong to a
-match's turns, which are not played here yet, so they are read and dropped. The last is recorded
+match's items and ghosts, which are not played here yet, so they are read and dropped. The last is recorded
 against the character selected in the connection's first slot, never the one the
 report names, which the client fills with the first character it selected since
 it started. The client keeps no record of its own, so this record is all that
@@ -342,9 +392,10 @@ dotnet run --project src/OpenTaan.GameServer
 This runs in the Development environment, where any login creates the account
 it names (`Accounts:RequireRegistration` is off). A real client can log in,
 create and select a character, pick a channel, enter its lobby, create, enter and
-leave rooms, do everything a waiting room offers, start a mission, see its first
-level's opening and first turn, give up or leave, and see its result screen and
-pick a card; playing the turns is the next stage. The server
+leave rooms, do everything a waiting room offers, start a mission and play it turn
+by turn: walk, shoot, pass, die, see each level begin, clear the mission or lose it,
+give up or leave, and see its result screen and pick a card. Items and ghosts moving
+are the next stage. The server
 refuses to start with registration off in any other environment. Accounts,
 characters and rooms live in memory until the database stage.
 
@@ -372,6 +423,9 @@ variables, for example `GameServer__Port=2181`:
 | `Rooms:MapsByChannelMode` | mode `6`: maps `1` to `21` and the random picks `200` to `203` | The maps the host of a room of teams may pick, by the mode of the room's channel: those the client's own map list offers in that mode. Every mode `Channels:List` uses needs a list, or the server refuses to start. |
 | `Rooms:Missions` | mission `0`, of `4` levels | The missions a mission room may play, by number, each with its number of levels: those the client's own mission list offers. Must hold mission `0`, which every new mission room plays until its host picks another, and give each mission 1 to 254 levels. |
 | `Matches:LevelReadyWait` | `00:00:10` | How long a mission level's first turn waits for every client to report the level's opening over. |
+| `Matches:TurnWait` | `00:00:25` | How long a turn waits for its character to shoot or pass before the server passes it. Must be longer than the client's own turn of 15.9 seconds, after which it passes for its player, or the server refuses to start: a turn cut while its client still counts would leave a last-second shot on its shooter's screen alone. |
+| `Matches:ShotWait` | `00:00:05` | How long a shot waits, once the first client has played it back, for every other client to finish it. |
+| `Matches:LongestShot` | `00:01:00` | How long a shot may wait in all, from its arrival, in case no client reports it played back. |
 | `Matches:ResultWait` | `00:00:25` | How long after a match's end its room waits for every player's result card before it waits for players again. |
 | `Portraits:Folder` | none | Where the pictures clients send of their characters are kept. A relative path is taken from the content root. |
 | `Characters:CreatorParts` | `1, 3, 5, 8` | The appearance parts the client's character creator offers; a new character keeps only these. |

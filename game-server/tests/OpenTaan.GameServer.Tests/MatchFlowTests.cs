@@ -234,17 +234,25 @@ public sealed class MatchFlowTests
     [Fact]
     public async Task ClearingTheLastLevelEndsTheMatchWonWithTheRewardsBeforeTheResult()
     {
-        var services = Services();
+        var services = Services(time: new ManualTime());
         await using var host = await ArriveAsync(services, ChannelId, "Kimi");
         await using var guest = await ArriveAsync(services, ChannelId, "Rồng");
         await MissionRoomAsync(host, guest);
         await StartedAsync(host, host, guest);
-        for (byte level = 1; level <= 4; level++)
+        await LevelBegunAsync(1, host, guest);
+
+        // Each level's last enemy falls to a shot of the player whose turn it is, the host and
+        // the guest in turn, and the next player has the next level's first turn.
+        Player[] shooters = [host, guest];
+        for (byte level = 1; level <= 3; level++)
         {
-            await LevelBegunAsync(level, host, guest);
+            var slot = (byte)((level - 1) % 2);
+            await FirstTurnAsync(level, slot, host, guest);
+            await LevelClearedByShotAsync(shooters[slot], slot, (byte)(level + 1), host, guest);
         }
 
-        await guest.SendAsync(Asking(PqGameSessionStartMissionLevel.NoNextLevel));
+        await FirstTurnAsync(4, 1, host, guest);
+        await LevelClearedByShotAsync(guest, 1, PqGameSessionStartMissionLevel.NoNextLevel, host, guest);
 
         await EndToldAsync(MatchRules.PlayersTeam, [host, guest], host, guest);
         await QuietAsync(host, guest);

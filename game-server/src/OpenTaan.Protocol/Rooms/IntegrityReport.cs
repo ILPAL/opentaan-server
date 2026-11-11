@@ -2,7 +2,7 @@ namespace OpenTaan.Protocol.Rooms;
 
 /// <summary>
 /// A report the client makes on its own code, sent at the end of each request to create,
-/// enter or quick-join a room.
+/// enter or quick-join a room, and of each shot.
 /// </summary>
 /// <remarks>
 /// <para>
