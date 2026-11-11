@@ -122,15 +122,22 @@ public sealed partial class PacketDispatcher
             [PcGamePlayGiveUp.RegistryId] = Route.To<PcGamePlayGiveUp>(PcGamePlayGiveUp.TryRead, matches.GiveUpAsync),
             [PqResultRandSelect.RegistryId] = Route.To<PqResultRandSelect>(PqResultRandSelect.TryRead, matches.RandSelectAsync),
             [PqResultSelectCard.RegistryId] = Route.To<PqResultSelectCard>(PqResultSelectCard.TryRead, matches.SelectCardAsync),
+            [PcGamePlayLoadingDone.RegistryId] = Route.To<PcGamePlayLoadingDone>(PcGamePlayLoadingDone.TryRead, matches.LoadingDoneAsync),
+            [PcGamePlayScenario.RegistryId] = Route.To<PcGamePlayScenario>(PcGamePlayScenario.TryRead, matches.ScenarioAsync),
+            [PcGamePlayEndScenario.RegistryId] = Route.To<PcGamePlayEndScenario>(PcGamePlayEndScenario.TryRead, matches.EndScenarioAsync),
+            [PcGamePlayPassTurn.RegistryId] = Route.To<PcGamePlayPassTurn>(PcGamePlayPassTurn.TryRead, matches.PassTurnAsync),
+            [PcGamePlayMove.RegistryId] = Route.To<PcGamePlayMove>(PcGamePlayMove.TryRead, matches.MoveAsync),
+            [PcGamePlaySetPos.RegistryId] = Route.To<PcGamePlaySetPos>(PcGamePlaySetPos.TryRead, matches.SetPosAsync),
+            [PcGamePlayDeathByDrop.RegistryId] = Route.To<PcGamePlayDeathByDrop>(PcGamePlayDeathByDrop.TryRead, matches.DeathByDropAsync),
+            [PqGamePlayMakeGhost.RegistryId] = Route.To<PqGamePlayMakeGhost>(PqGamePlayMakeGhost.TryRead, matches.MakeGhostAsync),
 
-            // What a client tells of a match it loads, which a mission does not wait on:
-            // its enemies, the same ones every client in the room names, and where its own
-            // characters stand once loaded.
+            // What a client tells of a match it loads, which a mission does not wait on: its
+            // enemies, the same ones every client in the room names.
             [PqGameSessionReportEnemies.RegistryId] = Route.ReadAndDropped<PqGameSessionReportEnemies>(PqGameSessionReportEnemies.TryRead),
-            [PcGamePlayLoadingDone.RegistryId] = Route.ReadAndDropped<PcGamePlayLoadingDone>(PcGamePlayLoadingDone.TryRead),
 
-            // Reports from a game whose turns this server does not play yet: the tutorial,
-            // which the client plays alone, so there is nothing to record.
+            // Reports this server has no use for yet: an item picked up and where a ghost
+            // stopped, from the tutorial, which the client plays alone, and from a match,
+            // whose items and ghosts are not played yet.
             [PcGamePlayNotifyEatItem.RegistryId] = Route.ReadAndDropped<PcGamePlayNotifyEatItem>(PcGamePlayNotifyEatItem.TryRead),
             [PcGamePlaySetGhostPos.RegistryId] = Route.ReadAndDropped<PcGamePlaySetGhostPos>(PcGamePlaySetGhostPos.TryRead),
         };

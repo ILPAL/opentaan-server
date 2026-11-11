@@ -2,6 +2,7 @@ using OpenTaan.GameServer.Matches;
 using OpenTaan.Protocol.GamePlay;
 using OpenTaan.Protocol.Matches;
 using OpenTaan.Protocol.Results;
+using OpenTaan.Protocol.Rooms;
 using static OpenTaan.Tests.GameServer.Matching;
 using static OpenTaan.Tests.GameServer.Playing;
 
@@ -51,6 +52,69 @@ public sealed class MatchRaceTests
             await Task.WhenAll(host.SendAsync(new PcGamePlayGiveUp()), guest.SendAsync(new PcGamePlayGiveUp()));
 
             await EndToldAsync(MatchRules.MissionsTeam, [host, guest], host, guest);
+            await QuietAsync(host, guest);
+        }
+    }
+
+    [Fact]
+    public async Task TwoClientsFinishingAShotAtOnceEndTheTurnOnce()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            var services = Services(time: new ManualTime());
+            await using var host = await ArriveAsync(services, ChannelId, "Kimi");
+            await using var guest = await ArriveAsync(services, ChannelId, "Rồng");
+            await AtFirstTurnAsync(host, guest);
+            await ShotAsync(host, 0, guest);
+
+            await Task.WhenAll(FinishedAsync(0, host), FinishedAsync(0, guest));
+
+            await TurnPassedAsync(0, 1, host, guest);
+            await QuietAsync(host, guest);
+        }
+    }
+
+    [Fact]
+    public async Task EveryClientAskingForTheNextLevelDuringOneShotBeginsItOnce()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            var services = Services(time: new ManualTime());
+            await using var host = await ArriveAsync(services, ChannelId, "Kimi");
+            await using var guest = await ArriveAsync(services, ChannelId, "Rồng");
+            await AtFirstTurnAsync(host, guest);
+            await ShotAsync(host, 0, guest);
+
+            await Task.WhenAll(AskThenFinishAsync(host), AskThenFinishAsync(guest));
+
+            await EveryoneToldAsync(new PcGameSessionStartMissionLevel(2), PcGameSessionStartMissionLevel.TryRead, host, guest);
+            await QuietAsync(host, guest);
+        }
+
+        static async Task AskThenFinishAsync(Player player)
+        {
+            await player.SendAsync(Asking(2));
+            await FinishedAsync(0, player);
+        }
+    }
+
+    [Fact]
+    public async Task AClientLeavingAsTheShooterFinishesTheShotEndsTheTurnOnce()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            var services = Services(time: new ManualTime());
+            await using var host = await ArriveAsync(services, ChannelId, "Kimi");
+            await using var guest = await ArriveAsync(services, ChannelId, "Rồng");
+            await AtFirstTurnAsync(host, guest);
+            await ShotAsync(host, 0, guest);
+
+            await Task.WhenAll(FinishedAsync(0, host), LeaveAsync(guest));
+
+            // In either order the guest's leave is told first, since the turn waits for it.
+            Assert.Equal(new PcGamePlayLeaveUser(1), await host.ReceiveAsync<PcGamePlayLeaveUser>(PcGamePlayLeaveUser.TryRead));
+            Assert.NotNull(await host.ReceiveAsync<PcGameSessionUpdateSlot>(PcGameSessionUpdateSlot.TryRead));
+            await TurnPassedAsync(0, 0, host);
             await QuietAsync(host, guest);
         }
     }

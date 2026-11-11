@@ -7,14 +7,14 @@ using OpenTaan.Protocol.Results;
 
 namespace OpenTaan.GameServer.Rooms;
 
-/// <summary>Matches: starting one, a mission's levels and its first turns, giving up, the end, and the result screen's cards.</summary>
+/// <summary>Matches: starting one, a mission's levels and its first turns, giving up, the end, and the result screen's cards. Turns are in RoomDirectory.Turns.cs.</summary>
 /// <remarks>
 /// <para>
 /// A match lives in its room, under the same lock as every room, so what a match does and
-/// what its room does, a player leaving among them, happen in one order for everyone. Two
-/// waits run on their own, as timers on the server's clock: for a level's reports, and for
-/// the result screen's cards. Each takes the lock when it ends and finds nothing to do if
-/// the match has moved on.
+/// what its room does, a player leaving among them, happen in one order for everyone. Its
+/// waits run on their own, as timers on the server's clock: for a level's reports, for a
+/// turn's shot or pass, for a shot to be played back, and for the result screen's cards.
+/// Each takes the lock when it ends and finds nothing to do if the match has moved on.
 /// </para>
 /// <para>
 /// From its start until the room waits again, a room shows as playing, in the lobby and to
@@ -86,8 +86,17 @@ public sealed partial class RoomDirectory
     /// when the last level ran and the client has no next one. See <see cref="MissionLevels"/>.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// A client asks for the first level once it has loaded the match, and for every later
+    /// one, or for the clear, as it finishes playing back the shot that killed the level's
+    /// last enemy. So a later level and the clear are taken only while a shot is played,
+    /// and held until every client has played it: announced at once, the level's opening
+    /// would start on a client still in the shot, and the end would cut its shot short.
+    /// </para>
+    /// <para>
     /// A level that begins waits for its first turn until every client in the match reports
     /// it ready, or for <see cref="MatchOptions.LevelReadyWait"/> at most.
+    /// </para>
     /// </remarks>
     /// <returns>Null once done; otherwise why the request changed nothing, for the log.</returns>
     public string? AskForLevel(ClientSession session, byte level)
@@ -102,13 +111,24 @@ public sealed partial class RoomDirectory
             }
 
             var match = room.Match!;
+            var advances = level == match.Levels.Current + 1 || level == PqGameSessionStartMissionLevel.NoNextLevel;
+            if (advances && match.Phase is MatchPhase.Opening or MatchPhase.Turn)
+            {
+                return $"level {level} was asked for while no shot is played";
+            }
+
             switch (match.Levels.Ask(level, out var reason))
             {
+                case LevelAnswer.Announce when match.Phase == MatchPhase.Shot:
+                    match.HoldLevel();
+                    return null;
+
                 case LevelAnswer.Announce:
-                    // The wait runs from before anyone hears of the level.
-                    match.LevelBegan();
-                    match.Arm(time.CreateTimer(_ => LevelWaitElapsed(room, match, level), null, matchOptions.Value.LevelReadyWait, Timeout.InfiniteTimeSpan));
-                    SendToRoomLocked(room, new PcGameSessionStartMissionLevel(level));
+                    BeginLevelLocked(room, match);
+                    return null;
+
+                case LevelAnswer.Clear when match.Phase == MatchPhase.Shot:
+                    match.HoldClear();
                     return null;
 
                 case LevelAnswer.Clear:
@@ -159,12 +179,14 @@ public sealed partial class RoomDirectory
     }
 
     /// <summary>
-    /// Takes every character <paramref name="session"/> plays out of its match, and ends the
-    /// match, lost, once every character that started it is out.
+    /// Takes every character <paramref name="session"/> plays out of its match: the turn
+    /// passes on if it was one of theirs, and the match ends, lost, once every character
+    /// that started it is out.
     /// </summary>
     /// <remarks>
     /// The others are told nothing: the client has no handler for a give-up sent to it. The
-    /// player stays in the room, sees the match to its end, and picks its result card.
+    /// player stays in the room, sees the match to its end, and picks its result card. See
+    /// <see cref="ContinueAfterOutLocked"/> for what follows during a shot.
     /// </remarks>
     /// <returns>Null once done; otherwise why the request changed nothing, for the log.</returns>
     public string? GiveUp(ClientSession session)
@@ -185,11 +207,7 @@ public sealed partial class RoomDirectory
             }
 
             LogGaveUp(logger, room.Number, session.Id);
-            if (match.IsLost)
-            {
-                EndLocked(room, match, MatchRules.MissionsTeam);
-            }
-
+            ContinueAfterOutLocked(room, match);
             return null;
         }
     }
@@ -262,18 +280,14 @@ public sealed partial class RoomDirectory
     }
 
     // What the room's match does once a player has left the room, which still holds someone:
-    // it is lost if no character is left in it, a level's turn starts if the player was the
-    // last one it waited for, and the room waits again if everyone left has a card.
+    // it goes on without the player, see ContinueAfterOutLocked, and once it is over the
+    // room waits again if everyone left has a card.
     private void AfterLeavingMatchLocked(Room room)
     {
         switch (room.Match)
         {
-            case { IsOver: false, IsLost: true } match:
-                EndLocked(room, match, MatchRules.MissionsTeam);
-                break;
-
-            case { IsOver: false } match when match.EveryoneReady(MembersOf(room)):
-                StartTurnLocked(room, match);
+            case { IsOver: false } match:
+                ContinueAfterOutLocked(room, match);
                 break;
 
             case { IsOver: true } match when room.TakenSlots().All(match.Cards.HasPicked):
@@ -289,10 +303,21 @@ public sealed partial class RoomDirectory
     private Room? PlayingRoomLocked(ClientSession session) =>
         _roomOf.TryGetValue(session, out var room) && room.Match is { IsOver: false } ? room : null;
 
+    // Begins the level the mission has just moved to, and tells everyone in the match. The
+    // wait for its reports runs from before anyone hears of the level.
+    private void BeginLevelLocked(Room room, Match match)
+    {
+        var level = match.Levels.Current;
+        match.LevelBegan();
+        match.Arm(time.CreateTimer(_ => LevelWaitElapsed(room, match, level), null, matchOptions.Value.LevelReadyWait, Timeout.InfiniteTimeSpan));
+        SendToRoomLocked(room, new PcGameSessionStartMissionLevel(level));
+    }
+
+    // Starts the first turn of the level running; see Match.StartTurn for whose it is.
     private void StartTurnLocked(Room room, Match match)
     {
-        match.Disarm();
         var slot = match.StartTurn();
+        ArmTurnWaitLocked(room, match);
         SendToRoomLocked(room, MatchRules.TurnOf(slot, round: 0));
         LogTurnStarted(logger, room.Number, match.Levels.Current, slot);
     }

@@ -6,12 +6,12 @@ using OpenTaan.Protocol.Results;
 
 namespace OpenTaan.GameServer.Matches;
 
-/// <summary>Starting a match, a mission's levels, giving up, and the result screen's cards.</summary>
+/// <summary>Starting a match, a mission's levels and turns, giving up, and the result screen's cards.</summary>
 /// <remarks>
 /// The client waits on none of these but a result card a player picks itself, which is
 /// answered either way. So a request the match's rules do not allow is dropped, and only
-/// logged; see <see cref="RoomDirectory.StartMatch"/> and the methods after it for the
-/// rules.
+/// logged; see <see cref="RoomDirectory.StartMatch"/>, <see cref="RoomDirectory.Shoot"/> and
+/// the methods after them for the rules.
 /// </remarks>
 public sealed partial class MatchHandlers(RoomDirectory rooms, ILogger<MatchHandlers> logger)
 {
@@ -52,6 +52,86 @@ public sealed partial class MatchHandlers(RoomDirectory rooms, ILogger<MatchHand
         ArgumentNullException.ThrowIfNull(request);
 
         LogUnless(session, nameof(PcGamePlayGiveUp), rooms.GiveUp(session));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Records where the client's characters stand once loaded; see <see cref="RoomDirectory.ReportLoaded"/>.</summary>
+    public ValueTask LoadingDoneAsync(ClientSession session, PcGamePlayLoadingDone report, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(report);
+
+        LogUnless(session, nameof(PcGamePlayLoadingDone), rooms.ReportLoaded(session, report));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Passes the turn's shot to the other clients; see <see cref="RoomDirectory.Shoot"/>.</summary>
+    public ValueTask ScenarioAsync(ClientSession session, PcGamePlayScenario shot, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(shot);
+
+        LogUnless(session, nameof(PcGamePlayScenario), rooms.Shoot(session, shot));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Records a shot played back; see <see cref="RoomDirectory.FinishShot"/>.</summary>
+    public ValueTask EndScenarioAsync(ClientSession session, PcGamePlayEndScenario report, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(report);
+
+        LogUnless(session, nameof(PcGamePlayEndScenario), rooms.FinishShot(session, report));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Passes the turn on; see <see cref="RoomDirectory.PassTurn"/>.</summary>
+    public ValueTask PassTurnAsync(ClientSession session, PcGamePlayPassTurn pass, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(pass);
+
+        LogUnless(session, nameof(PcGamePlayPassTurn), rooms.PassTurn(session, pass));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Passes a step of the turn's character's walk on; see <see cref="RoomDirectory.Walk"/>.</summary>
+    public ValueTask MoveAsync(ClientSession session, PcGamePlayMove move, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(move);
+
+        LogUnless(session, nameof(PcGamePlayMove), rooms.Walk(session, move));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Passes where the turn's character stands on; see <see cref="RoomDirectory.Place"/>.</summary>
+    public ValueTask SetPosAsync(ClientSession session, PcGamePlaySetPos place, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(place);
+
+        LogUnless(session, nameof(PcGamePlaySetPos), rooms.Place(session, place));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Passes a character's fall on and makes it a ghost; see <see cref="RoomDirectory.Fall"/>.</summary>
+    public ValueTask DeathByDropAsync(ClientSession session, PcGamePlayDeathByDrop fall, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(fall);
+
+        LogUnless(session, nameof(PcGamePlayDeathByDrop), rooms.Fall(session, fall));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Makes a character that died in a shot a ghost; see <see cref="RoomDirectory.MakeGhost"/>.</summary>
+    public ValueTask MakeGhostAsync(ClientSession session, PqGamePlayMakeGhost request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(request);
+
+        LogUnless(session, nameof(PqGamePlayMakeGhost), rooms.MakeGhost(session, request));
         return ValueTask.CompletedTask;
     }
 

@@ -53,6 +53,27 @@ internal static class DeclaredLayout
         [("GameSlotPlayInfo", "pos")] = ["i32", "i32"],
         [("GhostMove", "src_pos")] = ["i32", "i32"],
         [("GhostMove", "tgt_pos")] = ["i32", "i32"],
+        [("PcGamePlay_PassTurn", "position")] = ["i32", "i32"],
+        [("PcGamePlay_Move", "position")] = ["i32", "i32"],
+        [("PcGamePlay_SetPos", "position")] = ["i32", "i32"],
+        [("PcGamePlay_DeathByDrop", "position")] = ["i32", "i32"],
+        [("PcGamePlay_MakeGhost", "position")] = ["i32", "i32"],
+        [("GameScenarioCommand_Weapon", "impact_pos")] = ["i32", "i32"],
+        [("GameScenarioCommand_Guided", "impact_pos")] = ["i32", "i32"],
+        [("GameScenarioCommand_Guided", "guided_target")] = ["i32", "i32"],
+        [("GameScenarioCommand_Fire", "impact_pos")] = ["i32", "i32"],
+        [("GameScenarioCommand_Fire", "explosion_pos")] = ["i32", "i32"],
+        [("GameScenarioCommand_Fire", "landing_pos")] = ["i32", "i32"],
+        [("GameScenarioCommand_MakeItemBox", "spawn_position")] = ["i32", "i32"],
+    };
+
+    // Objects written inline, with no id, that a codec keeps as one record: each part is
+    // paired with the next of that record's constructor parameters, by the wire name of
+    // the class that holds the object and the field's name.
+    private static readonly Dictionary<(string Class, string Field), string[]> InlineRecords = new()
+    {
+        // The client's report on its own code, at the end of a shot.
+        [("PcGamePlay_Scenario", "server_connection_info")] = ["u32", "u32", "u8", "u32", "u32", "u32"],
     };
 
     // The parts some computed fields are written as, by the expression the contract
@@ -83,6 +104,8 @@ internal static class DeclaredLayout
         ["PqGameSession_StartMissionLevel"] = LevelRequest,
         ["PqGameSession_MissionLevelReady"] = level => level.Number("u8", "Level"),
         ["PcGamePlay_TurnStart"] = TurnStart,
+        ["PcGamePlay_TurnEnd"] = TurnEnd,
+        ["PqGamePlay_MakeGhost"] = ghost => ghost.Number("u8", "SlotIndex"),
         ["GameRewardExp"] = ExperienceReward,
         ["GameRewardGold"] = GoldReward,
     };
@@ -169,16 +192,17 @@ internal static class DeclaredLayout
                 case "bytes":
                     var computed = ComputedParts.GetValueOrDefault(field.Expr ?? string.Empty)
                         ?? throw new InvalidOperationException($"{path}: no layout is known for the computed '{field.Expr}'");
-                    var computedParts = Positional(value ?? throw new InvalidOperationException($"{where} is null"));
-                    if (computedParts.Count != computed.Length)
+                    if (!CompareParts(cursor, computed, value, where, failures))
                     {
-                        failures.Add($"{where}: the layout has {computed.Length} parts, the codec {computedParts.Count}");
                         return;
                     }
 
-                    for (var index = 0; index < computed.Length; index++)
+                    break;
+
+                case "object" when InlineRecords.TryGetValue((spec.WireName, field.Name!), out var recordParts):
+                    if (!CompareParts(cursor, recordParts, value, where, failures))
                     {
-                        Expect($"{where}.{computedParts[index].Name}", cursor.Number(computed[index]), AsNumber(computedParts[index].Value), failures);
+                        return;
                     }
 
                     break;
@@ -239,6 +263,40 @@ internal static class DeclaredLayout
         if (position != parameters.Count)
         {
             failures.Add($"{path}: the declared layout has no field for {parameters[position].Name}");
+        }
+    }
+
+    // Reads parts and pairs each with the next constructor parameter of value, a record kept
+    // as one parameter; false, with the failure recorded, when their counts differ.
+    private static bool CompareParts(Cursor cursor, string[] parts, object? value, string where, List<string> failures)
+    {
+        var decodedParts = Positional(value ?? throw new InvalidOperationException($"{where} is null"));
+        if (decodedParts.Count != parts.Length)
+        {
+            failures.Add($"{where}: the layout has {parts.Length} parts, the codec {decodedParts.Count}");
+            return false;
+        }
+
+        for (var index = 0; index < parts.Length; index++)
+        {
+            Expect($"{where}.{decodedParts[index].Name}", cursor.Number(parts[index]), AsNumber(decodedParts[index].Value), failures);
+        }
+
+        return true;
+    }
+
+    // The end of a turn: a gauge change follows a flag of 1, and nothing follows a flag of 0.
+    private static void TurnEnd(Walk end)
+    {
+        end.Number("u8", "TurnSlot");
+        end.Number("u32", "TurnSeed");
+        if (end.Unpaired("u8") == 1)
+        {
+            end.Object("TeamGauge");
+        }
+        else
+        {
+            end.Absent("TeamGauge");
         }
     }
 
