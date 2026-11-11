@@ -71,15 +71,15 @@ public static class RoomRules
     /// <remarks>
     /// The host's options dialog offers only what is allowed here, so only a modified client
     /// is refused: a game mode the room's type allows and chances the client knows, as when
-    /// the room was created; in a room of teams one of <paramref name="maps"/>, the maps the
-    /// client lists in the room's channel, its random picks included; and in a mission room a
-    /// difficulty no harder than <see cref="HardestDifficulty"/>. A mission room's host picks
-    /// a mission, which is not checked, and outside a mission room the difficulty means
-    /// nothing, so it is not checked either.
+    /// the room was created; one of <paramref name="maps"/>, which in a room of teams are the
+    /// maps the client lists in the room's channel, its random picks included, and in a
+    /// mission room the missions it lists; and in a mission room a difficulty no harder than
+    /// <see cref="HardestDifficulty"/>. Outside a mission room the difficulty means nothing,
+    /// so it is not checked.
     /// </remarks>
     /// <param name="gameType">The kind of match the room plays, which no request changes.</param>
     /// <param name="requested">The options asked for.</param>
-    /// <param name="maps">The maps a host may pick in a room of teams in the room's channel.</param>
+    /// <param name="maps">The maps, or in a mission room the missions, a host may pick.</param>
     public static string? OptionsProblem(GameType gameType, PqGameSessionChangeGameOption requested, IReadOnlyCollection<ushort> maps)
     {
         ArgumentNullException.ThrowIfNull(requested);
@@ -92,9 +92,9 @@ public static class RoomRules
 
         if (gameType == GameType.Mission)
         {
-            return requested.Difficulty <= HardestDifficulty
-                ? null
-                : $"difficulty {requested.Difficulty} is past the hardest, {HardestDifficulty}";
+            return requested.Difficulty > HardestDifficulty ? $"difficulty {requested.Difficulty} is past the hardest, {HardestDifficulty}"
+                : maps.Contains(requested.MapId) ? null
+                : $"mission {requested.MapId} is not one the client lists";
         }
 
         return maps.Contains(requested.MapId)

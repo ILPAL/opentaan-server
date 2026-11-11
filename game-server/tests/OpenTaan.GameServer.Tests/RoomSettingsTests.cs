@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using OpenTaan.GameServer.Channels;
+using OpenTaan.GameServer.Matches;
 using OpenTaan.GameServer.Rooms;
 
 namespace OpenTaan.Tests.GameServer;
@@ -52,6 +53,59 @@ public sealed class RoomSettingsTests
         Assert.True(result.Failed);
         Assert.Contains("channel mode 4, 7,", result.FailureMessage, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void TheShippedSettingsListTheMissionEveryNewMissionRoomPlaysWithItsFourLevels()
+    {
+        var shipped = Shipped().GetSection(RoomOptions.Section).Get<RoomOptions>()!;
+
+        Assert.Equal(new Dictionary<ushort, byte> { [0] = 4 }, shipped.Missions);
+        Assert.Null(shipped.MissionsProblem());
+        Assert.Equal(shipped.Missions, SessionHarness.ShippedRoomOptions().Missions);
+    }
+
+    [Theory]
+    [InlineData("none")]
+    [InlineData("without the first")]
+    [InlineData("a mission of no levels")]
+    [InlineData("a mission of more levels than the client can ask for")]
+    public void MissionsAreRefusedWithoutTheFirstOrWithALevelCountTheClientCannotPlay(string missions)
+    {
+        var rooms = new RoomOptions
+        {
+            Missions = missions switch
+            {
+                "none" => new Dictionary<ushort, byte>(),
+                "without the first" => new Dictionary<ushort, byte> { [1] = 5 },
+                "a mission of no levels" => new Dictionary<ushort, byte> { [0] = 4, [1] = 0 },
+                _ => new Dictionary<ushort, byte> { [0] = 255 },
+            },
+        };
+
+        Assert.NotNull(rooms.MissionsProblem());
+    }
+
+    [Fact]
+    public void AMissionMayHaveAsManyLevelsAsTheClientCanAskFor()
+    {
+        var rooms = new RoomOptions { Missions = new Dictionary<ushort, byte> { [0] = 1, [7] = RoomOptions.MaxMissionLevels } };
+
+        Assert.Null(rooms.MissionsProblem());
+    }
+
+    [Fact]
+    public void TheShippedMatchSettingsWaitTenSecondsForALevelAndTwentyFiveForTheCards()
+    {
+        var shipped = Shipped().GetSection(MatchOptions.Section).Get<MatchOptions>()!;
+
+        Assert.Equal((TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(25)), (shipped.LevelReadyWait, shipped.ResultWait));
+        var harness = SessionHarness.ShippedMatchOptions();
+        Assert.Equal((shipped.LevelReadyWait, shipped.ResultWait), (harness.LevelReadyWait, harness.ResultWait));
+    }
+
+    private static IConfiguration Shipped() => new ConfigurationBuilder()
+        .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.json"), optional: false)
+        .Build();
 
     private static RoomMapsValidation Validation(ChannelOptions channels) => new(Options.Create(channels));
 

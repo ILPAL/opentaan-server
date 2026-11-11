@@ -1,16 +1,19 @@
 using OpenTaan.GameServer.Characters;
+using OpenTaan.GameServer.Matches;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol.Lobby;
+using OpenTaan.Protocol.Matches;
 using OpenTaan.Protocol.Rooms;
 
 namespace OpenTaan.GameServer.Rooms;
 
-/// <summary>A room: its rules, its slots, and who hosts it. Changed only under <see cref="RoomDirectory"/>'s lock.</summary>
+/// <summary>A room: its rules, its slots, who hosts it, and the match it plays. Changed only under <see cref="RoomDirectory"/>'s lock.</summary>
 /// <remarks>
 /// <para>
 /// A room has <see cref="GameSlotInfo.SlotCount"/> slots, on two teams as
 /// <see cref="Seating"/> describes. In a mission room the second team's slots are closed
-/// for good: that side of a mission is played by the server.
+/// for good: that side is the mission's own enemies, which every client plays from its own
+/// copy of the mission.
 /// </para>
 /// <para>
 /// What the room holds and what its members and the lobby are sent come from the same
@@ -19,10 +22,12 @@ namespace OpenTaan.GameServer.Rooms;
 /// </remarks>
 internal sealed class Room
 {
-    // The map a new room has: the first map in a room of teams, and 0 in a mission room,
-    // as the reference sessions have them. The create dialog sends 0 for both.
+    /// <summary>The mission a new mission room plays until its host picks another, as the reference sessions have it.</summary>
+    public const ushort FirstMission = 0;
+
+    // The map a new room of teams has, as the reference sessions have it. The create
+    // dialog sends 0 for both kinds of room.
     private const ushort FirstMap = 1;
-    private const ushort MissionMap = 0;
 
     private readonly TakenSlot?[] _seats = new TakenSlot?[GameSlotInfo.SlotCount];
     private readonly bool[] _closed = new bool[GameSlotInfo.SlotCount];
@@ -44,7 +49,7 @@ internal sealed class Room
         GameType = requested.GameType;
         GameMode = requested.GameMode;
         ChanceMode = requested.ChanceMode;
-        MapId = IsMission ? MissionMap : FirstMap;
+        MapId = IsMission ? FirstMission : FirstMap;
         Host = host;
 
         for (var slot = 0; slot < _closed.Length; slot++)
@@ -83,8 +88,11 @@ internal sealed class Room
     /// <summary>A mission's difficulty: 0, the easiest, until the host changes it. Always 0 outside a mission room.</summary>
     public byte Difficulty { get; private set; }
 
-    /// <summary>Where the room stands: waiting, until matches are played.</summary>
-    public RoomStatus Status => RoomStatus.Waiting;
+    /// <summary>Where the room stands: waiting for players, or playing a match, its result screen included.</summary>
+    public RoomStatus Status { get; private set; } = RoomStatus.Waiting;
+
+    /// <summary>The match the room plays, from its start until the room waits again, or null.</summary>
+    public Match? Match { get; private set; }
 
     /// <summary>The connection hosting the room.</summary>
     public RoomMember Host { get; private set; }
@@ -130,6 +138,55 @@ internal sealed class Room
     /// <summary>The connection whose character is in slot <paramref name="slot"/>, which must hold one.</summary>
     public RoomMember MemberIn(byte slot) =>
         _seats[slot]?.Member ?? throw new InvalidOperationException($"Slot {slot} holds no character.");
+
+    /// <summary>Whether every character in the room is ready to start, its host's apart: the host starts the match instead.</summary>
+    public bool GuestsReady => _seats.OfType<TakenSlot>().All(seat => seat.Member.Session == Host.Session || seat.IsReady);
+
+    /// <summary>The connection playing the character in each slot, by slot: the slots holding characters only.</summary>
+    public IReadOnlyDictionary<byte, ClientSession> PlayersBySlot() => Enumerable.Range(0, _seats.Length)
+        .Where(slot => _seats[slot] is not null)
+        .ToDictionary(slot => (byte)slot, slot => _seats[slot]!.Member.Session);
+
+    /// <summary>How each character in the room starts a match, in the order of their slots.</summary>
+    public IReadOnlyList<GameSlotPlayInfo> PlayData() =>
+    [
+        .. Enumerable.Range(0, _seats.Length)
+            .Where(slot => _seats[slot] is not null)
+            .Select(slot => MatchRules.StartOf((byte)slot, _seats[slot]!.WeaponId)),
+    ];
+
+    /// <summary>The level of the character in each slot, null for a slot with none, by slot.</summary>
+    public IReadOnlyList<ushort?> Levels() => [.. _seats.Select(seat => seat?.Character.Info.Level)];
+
+    /// <summary>The character in each slot, null for a slot with none, by slot.</summary>
+    public IReadOnlyList<uint?> CharacterIds() => [.. _seats.Select(seat => seat?.Character.CharacterId)];
+
+    /// <summary>The slots holding characters, in rising order.</summary>
+    public IReadOnlyList<byte> TakenSlots() => [.. Enumerable.Range(0, _seats.Length).Where(slot => _seats[slot] is not null).Select(slot => (byte)slot)];
+
+    /// <summary>Starts <paramref name="match"/>: the room plays it until <see cref="EndMatch"/>.</summary>
+    public void BeginMatch(Match match)
+    {
+        Match = match ?? throw new ArgumentNullException(nameof(match));
+        Status = RoomStatus.Playing;
+    }
+
+    /// <summary>Lets go of the match: the room waits for players again.</summary>
+    public void EndMatch()
+    {
+        Match?.Dispose();
+        Match = null;
+        Status = RoomStatus.Waiting;
+    }
+
+    /// <summary>Makes no character ready, as the client does itself when a match ends.</summary>
+    public void ClearReady()
+    {
+        foreach (var seat in _seats.OfType<TakenSlot>())
+        {
+            seat.IsReady = false;
+        }
+    }
 
     /// <summary>Whether <paramref name="session"/>'s characters are ready to start. They always are together.</summary>
     public bool IsReady(ClientSession session) => _seats.Any(seat => seat?.Member.Session == session && seat.IsReady);

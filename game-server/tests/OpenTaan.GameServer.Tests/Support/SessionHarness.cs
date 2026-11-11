@@ -8,6 +8,7 @@ using OpenTaan.GameServer.Accounts;
 using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Characters;
 using OpenTaan.GameServer.Lobby;
+using OpenTaan.GameServer.Matches;
 using OpenTaan.GameServer.PlayTime;
 using OpenTaan.GameServer.Rooms;
 using OpenTaan.GameServer.Sessions;
@@ -52,6 +53,14 @@ internal static class SessionHarness
         {
             [ChannelSettings.NormalMode] = [.. Enumerable.Range(1, 21).Select(map => (ushort)map), 200, 201, 202, 203],
         },
+        Missions = new Dictionary<ushort, byte> { [0] = 4 },
+    };
+
+    /// <summary>The match settings the server ships with, as <c>appsettings.json</c> sets them.</summary>
+    public static MatchOptions ShippedMatchOptions() => new()
+    {
+        LevelReadyWait = TimeSpan.FromSeconds(10),
+        ResultWait = TimeSpan.FromSeconds(25),
     };
 
     /// <summary>What sessions share, with stores and settings a test may choose.</summary>
@@ -67,7 +76,9 @@ internal static class SessionHarness
         PortraitOptions? portraitOptions = null,
         PlayTimeOptions? playTimeOptions = null,
         TimeProvider? time = null,
-        RoomOptions? roomOptions = null)
+        RoomOptions? roomOptions = null,
+        MatchOptions? matchOptions = null,
+        Random? random = null)
     {
         characterStore ??= new InMemoryCharacterStore();
         var accounts = new AccountHandlers(
@@ -91,7 +102,13 @@ internal static class SessionHarness
         var channels = new ChannelDirectory(channelOptions, address);
         var lobbies = new LobbyRoster();
         var roomSettings = Options.Create(roomOptions ?? ShippedRoomOptions());
-        var rooms = new RoomDirectory(lobbies, roomSettings, NullLogger<RoomDirectory>.Instance);
+        var rooms = new RoomDirectory(
+            lobbies,
+            roomSettings,
+            Options.Create(matchOptions ?? ShippedMatchOptions()),
+            time ?? TimeProvider.System,
+            random ?? new Random(1),
+            NullLogger<RoomDirectory>.Instance);
 
         var names = new PacketNames();
         var dispatcher = new PacketDispatcher(
@@ -111,6 +128,7 @@ internal static class SessionHarness
                 Options.Create(portraitOptions ?? new PortraitOptions()),
                 NullLogger<LobbyHandlers>.Instance),
             new RoomHandlers(rooms, channels, characterStore, roomSettings, NullLogger<RoomHandlers>.Instance),
+            new MatchHandlers(rooms, NullLogger<MatchHandlers>.Instance),
             names,
             Options.Create(options),
             NullLogger<PacketDispatcher>.Instance);

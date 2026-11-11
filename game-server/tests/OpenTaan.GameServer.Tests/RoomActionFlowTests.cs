@@ -29,6 +29,8 @@ public sealed class RoomActionFlowTests
             ["a chance mode that does not exist"] = (GameType.TeamGame, new(1, GameMode.Items, (ChanceMode)3, 0xFF)),
             ["a captain mode in a mission room"] = (GameType.Mission, new(0, GameMode.CaptainItems, ChanceMode.Bonus, 0)),
             ["a difficulty past the hardest"] = (GameType.Mission, new(0, GameMode.Items, ChanceMode.Bonus, 3)),
+            ["a mission the client does not list"] = (GameType.Mission, new(0x0BB8, GameMode.Items, ChanceMode.Bonus, 0)),
+            ["a map in a mission room"] = (GameType.Mission, new(1, GameMode.Items, ChanceMode.Bonus, 0)),
         };
 
     public static TheoryData<string> RefusedOptionRequests => [.. RefusedOptions.Keys];
@@ -346,14 +348,16 @@ public sealed class RoomActionFlowTests
     [Fact]
     public async Task AMissionTheHostPicksAndItsDifficultyAreKeptAndShownToPlayersEnteringLater()
     {
-        var services = Services();
+        var rooms = SessionHarness.ShippedRoomOptions();
+        rooms.Missions = new Dictionary<ushort, byte> { [0] = 4, [0x0BB8] = 2 };
+        var services = Services(rooms);
         await using var host = await ArriveAsync(services, ChannelId, "Kimi");
         await using var guest = await ArriveAsync(services, ChannelId, "Rồng");
         await using var late = await ArriveAsync(services, ChannelId, "Linh");
         var number = (await CreatedAsync(host, Requested(gameType: GameType.Mission))).Room.RoomNumber;
         await SeatedAsync(guest, number, host);
 
-        // A mission's number, which no list of maps holds.
+        // A mission's number the client lists, which no list of maps holds.
         await host.SendAsync(new PqGameSessionChangeGameOption(0x0BB8, GameMode.Items, ChanceMode.Basic, RoomRules.HardestDifficulty));
 
         await EveryoneToldAsync(new PcGameSessionChangeGameOption(0x0BB8, GameMode.Items, ChanceMode.Basic, RoomRules.HardestDifficulty), PcGameSessionChangeGameOption.TryRead, host, guest);

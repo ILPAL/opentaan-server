@@ -34,10 +34,13 @@ namespace OpenTaan.Tests.Conformance;
 /// <para>
 /// Some classes have no usable declaration at all: the contract lists none of their
 /// fields, or lists them only as bytes it computes, because their layout depends on
-/// their own values. Those are read by <see cref="ClientLayouts"/>, written from the
-/// client's own reader and apart from the codecs, and each part read is compared with
-/// the decoded object's property of the name it is read for, since their records do not
-/// follow the wire field for field.
+/// their own values, or declares them in a way the client does not read them. Others
+/// are declared, but their records derive a field rather than carry it, as a reward's
+/// kind. Those are read by <see cref="ClientLayouts"/>, written from the client's own
+/// reader and apart from the codecs, and each part read is compared with the decoded
+/// object's property of the name it is read for, since their records do not follow the
+/// wire field for field. A packet with a client layout is checked by it whether or not
+/// the contract declares its fields; see <see cref="HasClientLayout"/>.
 /// </para>
 /// </remarks>
 internal static class DeclaredLayout
@@ -47,6 +50,9 @@ internal static class DeclaredLayout
     private static readonly Dictionary<(string Class, string Field), string[]> InlineObjects = new()
     {
         [("PcGamePlay_SetGhostPos", "position")] = ["i32", "i32"],
+        [("GameSlotPlayInfo", "pos")] = ["i32", "i32"],
+        [("GhostMove", "src_pos")] = ["i32", "i32"],
+        [("GhostMove", "tgt_pos")] = ["i32", "i32"],
     };
 
     // The parts some computed fields are written as, by the expression the contract
@@ -70,7 +76,19 @@ internal static class DeclaredLayout
         ["GameSessionInfoPack"] = RoomListEntry,
         ["GameSlotInfo"] = RoomSlot,
         ["CharacterAppear"] = Appearance,
+        ["PqGameSession_StartGame"] = _ => { },
+        ["PcGameSession_StartGame"] = MatchStart,
+        ["PqGameSessionReportEnemies"] = EnemyReport,
+        ["PcGamePlay_LoadingDone"] = LoadingReport,
+        ["PqGameSession_StartMissionLevel"] = LevelRequest,
+        ["PqGameSession_MissionLevelReady"] = level => level.Number("u8", "Level"),
+        ["PcGamePlay_TurnStart"] = TurnStart,
+        ["GameRewardExp"] = ExperienceReward,
+        ["GameRewardGold"] = GoldReward,
     };
+
+    /// <summary>Whether the class of this wire name is read by a layout written from the client's own reader.</summary>
+    public static bool HasClientLayout(string wireName) => ClientLayouts.ContainsKey(wireName);
 
     /// <summary>Every place where <paramref name="decoded"/> disagrees with the declared layout of <paramref name="body"/>.</summary>
     /// <param name="body">The body, its packet's id first.</param>
@@ -381,6 +399,90 @@ internal static class DeclaredLayout
         }
     }
 
+    // The start of a match: the map, each player's starting values as an object of its
+    // own, the wind, a value, a captain for each team number, and the mission's seed.
+    private static void MatchStart(Walk start)
+    {
+        start.Number("u16", "MapId");
+        start.Objects("Players");
+        start.Number("u32", "Wind");
+        start.Number("u16", "Field24");
+        start.Numbers("u8", "CaptainSlots", 3);
+        start.Number("u32", "MissionSeed");
+    }
+
+    // A client's report of its enemies: a counted list of pairs, with no id of their own.
+    private static void EnemyReport(Walk report) =>
+        report.CountedEach("Enemies", enemy =>
+        {
+            enemy.Number("u32", "CharacterId");
+            enemy.Number("u32", "Value");
+        });
+
+    // A client's report that it has loaded: a one-byte count, then each character's slot
+    // and position, with no id of their own, whatever the contract declares.
+    private static void LoadingReport(Walk report)
+    {
+        var count = (int)report.Unpaired("u8");
+        report.Each("Characters", count, character =>
+        {
+            character.Number("u8", "SlotIndex");
+            character.Number("i32", "X");
+            character.Number("i32", "Y");
+        });
+    }
+
+    // A client's request for a mission level: the level, two values from its settings and a flag.
+    private static void LevelRequest(Walk request)
+    {
+        request.Number("u8", "Level");
+        request.Number("u32", "TileIndex");
+        request.Number("u32", "EndValue");
+        request.Number("u8", "IsDynamic");
+    }
+
+    // The start of a turn: its slot and values, the item boxes taken off, the ghosts'
+    // moves and the health changes as objects of their own, the drop quality, a share for
+    // each team number, and a mission's round.
+    private static void TurnStart(Walk turn)
+    {
+        turn.Number("u8", "TurnSlot");
+        turn.Number("u8", "Field11");
+        turn.Number("u32", "Wind");
+        turn.Number("u16", "AmmoAddition");
+        turn.Number("u8", "ItemBoxBudget");
+        turn.CountedNumbers("u64", "RemovedItemBoxes");
+        turn.Objects("GhostMoves");
+        turn.Objects("HpUpdates");
+        turn.Number("u32", "DropQuality");
+        turn.Numbers("u32", "DropQualityByTeam", 3);
+        turn.Number("u16", "MissionRound");
+    }
+
+    // A reward of experience: the fields every reward has, its kind derived by the record
+    // from its class, then the experience.
+    private static void ExperienceReward(Walk reward)
+    {
+        RewardHead(reward);
+        reward.Number("u32", "Amount");
+    }
+
+    // A reward of gold: the fields every reward has, then the gold and a game room's bonus card.
+    private static void GoldReward(Walk reward)
+    {
+        RewardHead(reward);
+        reward.Number("u32", "Amount");
+        reward.Number("u8", "HasPcRoomBonusCard");
+        reward.Number("u32", "PcRoomBonusGold");
+    }
+
+    private static void RewardHead(Walk reward)
+    {
+        reward.Text("Name");
+        reward.Number("u8", "RewardType");
+        reward.Number("u32", "CharacterId");
+    }
+
     // The constructor's parameters, in order, with the values of the properties they set.
     private static List<(string Name, object? Value)> Positional(object decoded)
     {
@@ -469,6 +571,36 @@ internal static class DeclaredLayout
         // Parts that belong to an object the decoded record holds as a property.
         public void Into(string property, Action<Walk> parts) =>
             parts(new Walk(cursor, Property(property) ?? Missing(property), $"{path}.{property}", classes, failures));
+
+        // Objects with ids of their own, behind a 32-bit count, each read by its own class's layout.
+        public void Objects(string property)
+        {
+            var count = cursor.UInt32();
+            var elements = Elements(Property(property)).ToArray();
+            if (elements.Length != count)
+            {
+                failures.Add($"{path}.{property}: the layout has {count} objects, the codec {elements.Length}");
+                return;
+            }
+
+            for (var index = 0; index < elements.Length; index++)
+            {
+                CompareObject(cursor, elements[index]!, classes, $"{path}.{property}[{index}]", failures);
+            }
+        }
+
+        // A fixed number of numbers, each paired with the property's elements in order.
+        public void Numbers(string type, string property, int count)
+        {
+            var read = Enumerable.Range(0, count).Select(_ => cursor.Number(type)).ToArray();
+            Expect($"{path}.{property}", read, Elements(Property(property)).Select(AsNumber).ToArray(), failures);
+        }
+
+        // Numbers behind a 32-bit count, each paired with the property's elements in order.
+        public void CountedNumbers(string type, string property) => Numbers(type, property, (int)cursor.UInt32());
+
+        // Elements with no id of their own behind a 32-bit count, each paired with the property's elements in order.
+        public void CountedEach(string property, Action<Walk> parts) => Each(property, (int)cursor.UInt32(), parts);
 
         // A fixed number of elements, each paired with the property's elements in order.
         public void Each(string property, int count, Action<Walk> parts)

@@ -91,11 +91,18 @@ The expensive bugs happen when two requests arrive at the same moment.
 - A host changes a room's options as a player enters it, twenty times over. The
   player is shown the new options exactly once: in the room it is sent, or as a
   change after it.
+- Two clients in a mission ask for the same level at once, as every client does,
+  twenty times over. Each is told once that the level begins.
+- The last two players in a mission give up at once, twenty times over. The match
+  ends once, and each is sent its end once.
+- Two players pick the same result card at once, twenty times over. One turns it
+  over, everyone is told so once, and the other is refused alone.
 
 Each race passes whichever way it goes, so a pass only means something if both
 ways come up. Counted once over sixty rounds of each, both did: the expulsion
-came first 56 times and the leave 4, and the new options were in the room sent
-55 times and came as a change 5 times.
+came first 56 times and the leave 4, the new options were in the room sent
+55 times and came as a change 5 times, and of two players picking the same result
+card, the host's pick came first 54 times and the guest's 6.
 
 The trigger's comment says that a writer under `REPEATABLE READ` fails rather
 than forking the chain. That claim was tested by hand with two sessions before
@@ -334,6 +341,34 @@ with real tokens:
   as every client shows it, and the match is left to decide the map. The first
   plan for this stage had said rooms of teams had no random map at all; the
   client's own map list showed otherwise.
+- **A turn that would have left a client without enemies.** Every client plays a
+  mission level's opening, which places the level's enemies, and reports when it is
+  over. The first plan, like the recorded sessions, started the level's first
+  turn on the report of the player whose turn it was. The
+  client's own code showed that a turn's start ends whatever its mission was doing,
+  the opening included, so a client slower than that player would never place the
+  level's enemies. The first turn now waits for every client, for ten seconds at
+  most, and a planted version that starts it on the first report fails the tests.
+- **A level asked for by everyone.** Every client asks for each level, so in a room
+  of two every level is asked for twice, and each announcement restarts the
+  level's opening on every client. Only the next level begins now, once; the copies
+  change nothing, and a planted version that begins any later level fails the
+  tests.
+- **A mission cleared at once.** A client asks for the level after the last when it
+  has none: the mission is cleared. Taken at any moment, that request would let a
+  modified client clear a mission at once. The server cannot count kills, which
+  happen in each client's play of a shot, but it accepts the clear only while the
+  last level runs.
+- **A wait that started after the news.** The first version told the room a level
+  had begun and only then started the wait for its reports. A client, or a test on
+  a clock it moves itself, could act on the news before the wait existed, and the
+  wait would then never end for it. Writing the test on that clock showed it: the
+  wait now starts before anyone is told.
+- **A layout declared otherwise than it is read.** The reference data declares the
+  report a client sends once it has loaded as a list of objects, each led by its
+  own id. The client writes each entry as a slot and a position, with no id, which
+  the recorded bytes confirm. The check reads it as the client does, by a layout
+  given once from the client's own writer.
 - **A test that logged in again before the server had let go.** A test of the
   tutorial closed its connection and logged in again with the same account at
   once. The server frees an account only once it has finished with the old
@@ -387,10 +422,16 @@ through the codec in both directions:
   only when it is taken, and an entry of the lobby's room list carries the fields
   its mask names, in an order of its own. Those are read by layouts given once in
   the check, from the client's own reader and apart from the codecs, and each part
-  is compared with the codec's field of the same name. Packets no recording
-  carries, and shapes no recording shows, such as a room list with rooms in it,
-  are written from invented values and checked the same way. A declared type the
-  check does not know fails it rather than being skipped.
+  is compared with the codec's field of the same name. A few packets have no
+  declaration at all, such as the start of a match or of a turn; they are read by
+  layouts from the client's own reader too, and the objects they hold, which are
+  declared, are read by their own declarations, so a field swapped inside a
+  character's starting values is caught there. A result card has a declaration,
+  but its record derives its kind from its class instead of holding it, so it is
+  read by the client's layout and compared by name. Packets no recording carries,
+  and shapes no recording shows, such as a room list with rooms in it or a turn
+  that moves a ghost, are written from invented values and checked the same way. A
+  declared type the check does not know fails it rather than being skipped.
 - **The registry.** Each packet names itself once, in a `[WireClass]` attribute,
   and its id is computed from that name the way the client computes it. The
   computation is checked against every id in the reference table, not only the
@@ -406,8 +447,10 @@ participant is followed until it sends something that belongs to a later stage,
 and one that does so while in a room ends the whole session's replay there: what
 everyone else does next can depend on what it would have done in the room. So the
 recorded rooms are played through a guest getting ready, the host's options, a
-slot closed, a player entering, a team change, a weapon and a quick join, and end
-where a match would start or a captain be chosen, both of which come with matches.
+slot closed, a player entering, a team change, a weapon and a quick join. A
+mission is played through its start, with every character's starting values and
+the mission's seed, and through every client loading it, and a match between
+teams ends where it would start, as its turns come later.
 A recorded answer can also hold packets of later stages; a recorded packet the
 server has no codec for is not expected, and every other one is, in order. One
 answer differs by design: the recordings move to another channel by reconnecting,
@@ -420,8 +463,13 @@ change a room, where this server lists who is there and tells them of each playe
 who comes or goes and each room that opens, changes or closes. These are checked
 through real connections instead, player by player and change by change. A few
 recorded values are placeholders of the server the sessions were recorded from,
-such as a room's team names; each is set to what this server sends before
-comparing, and the replay names every one of them.
+such as a room's team names, or the closed slots a recorded mission start lists
+for the mission's own side; each is set to what this server sends before
+comparing, and the replay names every one of them. Two recorded steps end their
+session by design: a recorded mission reports a level ready before it asks for
+one, where a real client asks for the first level once it has loaded, and a match
+between teams is not started yet. A match's seed and the cards picked for players
+are drawn as the recordings have them.
 
 Codecs are written by hand and published one stage of the protocol at a time,
 so the repository shows the layouts this server implements and nothing more.

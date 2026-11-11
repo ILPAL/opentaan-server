@@ -10,7 +10,9 @@ using OpenTaan.Protocol.Connection;
 using OpenTaan.Protocol.GamePlay;
 using OpenTaan.Protocol.Handshake;
 using OpenTaan.Protocol.Lobby;
+using OpenTaan.Protocol.Matches;
 using OpenTaan.Protocol.PlayTime;
+using OpenTaan.Protocol.Results;
 using OpenTaan.Protocol.Rooms;
 using OpenTaan.Transport;
 
@@ -96,6 +98,22 @@ public sealed class ProtocolReplayTests
         [PcLobbyUpdateRoomList.RegistryId] = body => Replay.Of(PcLobbyUpdateRoomList.TryRead(body), packet => packet.Write),
         [PqLobbyViewRoomSimpleInfo.RegistryId] = body => Replay.Of(PqLobbyViewRoomSimpleInfo.TryRead(body), packet => packet.Write),
         [PrLobbyViewRoomSimpleInfo.RegistryId] = body => Replay.Of(PrLobbyViewRoomSimpleInfo.TryRead(body), packet => packet.Write),
+        [PqGameSessionStartGame.RegistryId] = body => Replay.Of(PqGameSessionStartGame.TryRead(body), packet => packet.Write),
+        [PcGameSessionStartGame.RegistryId] = body => Replay.Of(PcGameSessionStartGame.TryRead(body), packet => packet.Write),
+        [PqGameSessionReportEnemies.RegistryId] = body => Replay.Of(PqGameSessionReportEnemies.TryRead(body), packet => packet.Write),
+        [PcGamePlayLoadingDone.RegistryId] = body => Replay.Of(PcGamePlayLoadingDone.TryRead(body), packet => packet.Write),
+        [PqGameSessionStartMissionLevel.RegistryId] = body => Replay.Of(PqGameSessionStartMissionLevel.TryRead(body), packet => packet.Write),
+        [PcGameSessionStartMissionLevel.RegistryId] = body => Replay.Of(PcGameSessionStartMissionLevel.TryRead(body), packet => packet.Write),
+        [PqGameSessionMissionLevelReady.RegistryId] = body => Replay.Of(PqGameSessionMissionLevelReady.TryRead(body), packet => packet.Write),
+        [PcGamePlayTurnStart.RegistryId] = body => Replay.Of(PcGamePlayTurnStart.TryRead(body), packet => packet.Write),
+        [PcGamePlayGiveUp.RegistryId] = body => Replay.Of(PcGamePlayGiveUp.TryRead(body), packet => packet.Write),
+        [PcGamePlayLeaveUser.RegistryId] = body => Replay.Of(PcGamePlayLeaveUser.TryRead(body), packet => packet.Write),
+        [PcGameSessionEndGame.RegistryId] = body => Replay.Of(PcGameSessionEndGame.TryRead(body), packet => packet.Write),
+        [PcResultSetReward.RegistryId] = body => Replay.Of(PcResultSetReward.TryRead(body), packet => packet.Write),
+        [PqResultRandSelect.RegistryId] = body => Replay.Of(PqResultRandSelect.TryRead(body), packet => packet.Write),
+        [PqResultSelectCard.RegistryId] = body => Replay.Of(PqResultSelectCard.TryRead(body), packet => packet.Write),
+        [PrResultSelectCard.RegistryId] = body => Replay.Of(PrResultSelectCard.TryRead(body), packet => packet.Write),
+        [PrResultAlreadyOpend.RegistryId] = body => Replay.Of(PrResultAlreadyOpend.TryRead(body), packet => packet.Write),
     };
 
     // A room and an integrity report from invented values whose bytes differ field to
@@ -119,6 +137,7 @@ public sealed class ProtocolReplayTests
         [PcGameSessionUpdateOption.RegistryId] = Written(new PcGameSessionUpdateOption(new GameSessionOption(0x44332211, 0x88776655))),
         [PcLobbyUpdateRoomList.RegistryId] = Written(new PcLobbyUpdateRoomList(
             [GameSessionInfoPack.Listing(InventedRoom), GameSessionInfoPack.Removal(0x1112), GameSessionInfoPack.Listing(InventedRoom with { Password = null })])),
+        [PcGamePlayLeaveUser.RegistryId] = Written(new PcGamePlayLeaveUser(0x05)),
     };
 
     // Recorded packets in shapes no recording shows, written from invented values so that
@@ -132,6 +151,51 @@ public sealed class ProtocolReplayTests
         Written(new PqGameSessionEnter(0x0A0B, "mk", InventedIntegrity)),
         Written(new PqGameSessionQuickJoin(PqGameSessionQuickJoin.AnyRoom, InventedIntegrity)),
         Written(new PcGameSessionChangeTeam(0x44332211, 2, 0, 1, 6, 7)),
+
+        // Every recorded match start and turn start carries the same few values, most of
+        // them 0, every list in a turn start is empty, and no recorded result row has a
+        // bonus or a medal.
+        Written(new PcGameSessionStartGame(
+            0x0A0B,
+            [
+                new GameSlotPlayInfo(0x01, 0x02030405, -0x06070809, true, 0x0A0B0C0D, 0x0E0F1011, 0x12131415, 0x1617, 0x1819, 0x1A1B, 0x1C1D),
+                new GameSlotPlayInfo(0x06, 0x22232425, 0x26272829, false, 0x2A2B2C2D, 0x2E2F3031, 0x32333435, 0x3637, 0x3839, 0x3A3B, 0x3C3D),
+            ],
+            0x3E3F4041,
+            0x4243,
+            [0x07, 0x05, 0x02],
+            0x44454647)),
+        Written(new PcGamePlayTurnStart(
+            0x06,
+            0x07,
+            0x08090A0B,
+            0x0C0D,
+            0x0E,
+            [0x0F10111213141516, 0x1718191A1B1C1D1E],
+            [new GhostMove(0x02, 0x1F202122, -0x23242526, 0x27282930, 0x31323334)],
+            [new HpUpdate(0x03, 0x35, -0x36373839), new HpUpdate(0x04, 0x3A, 0x3B3C3D3E)],
+            0x3F404142,
+            [0x43444546, 0x47484950, 0x51525354],
+            0x5556)),
+        Written(new PcGamePlayLoadingDone([new LoadedCharacter(0x04, 0x01020304, -0x05060708), new LoadedCharacter(0x05, 0x090A0B0C, 0x0D0E0F10)])),
+        Written(new PqGameSessionStartMissionLevel(0x03, 0x04050607, 0x08090A0B, true)),
+        Written(new PcGameSessionEndGame(
+            new GameResult(
+                2,
+                [
+                    new GameResultSlot(0x00, 0x0102, -0x03040506, [new ExpResult(0x0708, 0x090A0B0C, 0x0D0E0F10, 0x11121314)], 0x15161718, 0x19, 0x1A1B1C1D, 0.25f, 0x1E1F2021,
+                        [new ResultBonus(0x22, 0x23242526, 0x2728292A), new ResultBonus(0x2B, 0x2C2D2E2F, 0x30313233)], 0x34, 0x35, 0x36, true, 0x37383940, 0x41424344),
+                    .. Enumerable.Range(1, 7).Select(slot => GameResultSlot.Empty((byte)slot)),
+                ],
+                -0x45464748,
+                0x494A4B4C),
+            0x4D)),
+        Written(new PcResultSetReward(
+        [
+            new GameRewardGold("Vàng", 0x01020304, 0x05060708, true, 0x090A0B0C),
+            new GameRewardExp("Kinh nghiệm", 0x0D0E0F10, 0x11121314),
+            .. Enumerable.Range(0, 6).Select(_ => new GameRewardGold("Empty", 0, 0, false, 0)),
+        ])),
     ];
 
     [Fact]
@@ -226,7 +290,8 @@ public sealed class ProtocolReplayTests
         foreach (var (origin, body) in Bodies().Concat(written))
         {
             var id = LeadingId(body);
-            if (!Codecs.ContainsKey(id) || classes.GetValueOrDefault(id)?.Fields.Count is not > 0)
+            if (!Codecs.ContainsKey(id) || classes.GetValueOrDefault(id) is not { } spec
+                || !(spec.Fields.Count > 0 || DeclaredLayout.HasClientLayout(spec.WireName)))
             {
                 continue;
             }
@@ -328,6 +393,22 @@ public sealed class ProtocolReplayTests
         [PcGameSessionUserExpel.RegistryId] = body => PcGameSessionUserExpel.TryRead(body).Packet,
         [PcLobbyUpdateRoomList.RegistryId] = body => PcLobbyUpdateRoomList.TryRead(body).Packet,
         [PrLobbyViewRoomSimpleInfo.RegistryId] = body => PrLobbyViewRoomSimpleInfo.TryRead(body).Packet,
+        [PqGameSessionStartGame.RegistryId] = body => PqGameSessionStartGame.TryRead(body).Packet,
+        [PcGameSessionStartGame.RegistryId] = body => PcGameSessionStartGame.TryRead(body).Packet,
+        [PqGameSessionReportEnemies.RegistryId] = body => PqGameSessionReportEnemies.TryRead(body).Packet,
+        [PcGamePlayLoadingDone.RegistryId] = body => PcGamePlayLoadingDone.TryRead(body).Packet,
+        [PqGameSessionStartMissionLevel.RegistryId] = body => PqGameSessionStartMissionLevel.TryRead(body).Packet,
+        [PcGameSessionStartMissionLevel.RegistryId] = body => PcGameSessionStartMissionLevel.TryRead(body).Packet,
+        [PqGameSessionMissionLevelReady.RegistryId] = body => PqGameSessionMissionLevelReady.TryRead(body).Packet,
+        [PcGamePlayTurnStart.RegistryId] = body => PcGamePlayTurnStart.TryRead(body).Packet,
+        [PcGamePlayGiveUp.RegistryId] = body => PcGamePlayGiveUp.TryRead(body).Packet,
+        [PcGamePlayLeaveUser.RegistryId] = body => PcGamePlayLeaveUser.TryRead(body).Packet,
+        [PcGameSessionEndGame.RegistryId] = body => PcGameSessionEndGame.TryRead(body).Packet,
+        [PcResultSetReward.RegistryId] = body => PcResultSetReward.TryRead(body).Packet,
+        [PqResultRandSelect.RegistryId] = body => PqResultRandSelect.TryRead(body).Packet,
+        [PqResultSelectCard.RegistryId] = body => PqResultSelectCard.TryRead(body).Packet,
+        [PrResultSelectCard.RegistryId] = body => PrResultSelectCard.TryRead(body).Packet,
+        [PrResultAlreadyOpend.RegistryId] = body => PrResultAlreadyOpend.TryRead(body).Packet,
     };
 
     private static object Decode(uint registryId, byte[] body) =>
