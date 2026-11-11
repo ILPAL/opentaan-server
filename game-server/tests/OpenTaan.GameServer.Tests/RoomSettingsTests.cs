@@ -55,6 +55,81 @@ public sealed class RoomSettingsTests
     }
 
     [Fact]
+    public void TheShippedSettingsDrawEachRandomPickFromItsGroupOfTheClientsMapsAndTheTwoExtras()
+    {
+        var shipped = Shipped().GetSection(RoomOptions.Section).Get<RoomOptions>()!;
+        IReadOnlyList<ushort> all = [.. Enumerable.Range(1, 21).Select(map => (ushort)map)];
+
+        Assert.Equal(new ushort[] { 200, 201, 202, 203 }, shipped.RandomMaps.Keys.Order());
+        Assert.Equal(all, shipped.RandomMaps[200]);
+        Assert.Equal([(ushort)7, 8, 12, 14, 19, 20], shipped.RandomMaps[201]);
+        Assert.Equal(all.Except(new ushort[] { 3, 6, 12, 15 }), shipped.RandomMaps[202]);
+        Assert.Equal([(ushort)3, 6, 12, 13, 15, 21], shipped.RandomMaps[203]);
+        Assert.Equal([(ushort)300, 500], shipped.RandomMapExtras);
+        Assert.True(Validation(ChannelsOfModes(ChannelSettings.NormalMode)).Validate(null, shipped).Succeeded);
+
+        // The harness the other tests run on stands in for the shipped settings.
+        var harness = SessionHarness.ShippedRoomOptions();
+        Assert.Equal(shipped.RandomMaps.Keys.Order(), harness.RandomMaps.Keys.Order());
+        Assert.All(shipped.RandomMaps, group => Assert.Equal(group.Value, harness.RandomMaps[group.Key]));
+        Assert.Equal(shipped.RandomMapExtras, harness.RandomMapExtras);
+    }
+
+    [Fact]
+    public void ARandomPickDrawsFromTheMapsOfItsGroupTheChannelOffersThenTheExtrasEachOnce()
+    {
+        var rooms = new RoomOptions
+        {
+            RandomMaps = new Dictionary<ushort, IReadOnlyList<ushort>> { [201] = [7, 8, 12] },
+            RandomMapExtras = [300, 7],
+        };
+
+        Assert.Equal([(ushort)7, 12, 300], rooms.RandomPool(201, [12, 7, 201]));
+        Assert.Empty(rooms.RandomPool(202, [12, 7, 202]));
+    }
+
+    [Fact]
+    public void ARandomPickWithOnlyTheExtrasToDrawFromIsAccepted()
+    {
+        var rooms = new RoomOptions
+        {
+            MapsByChannelMode = new Dictionary<byte, IReadOnlyList<ushort>> { [6] = [1, 201] },
+            RandomMaps = new Dictionary<ushort, IReadOnlyList<ushort>> { [201] = [] },
+            RandomMapExtras = [300],
+        };
+
+        Assert.True(Validation(ChannelsOfModes(6)).Validate(null, rooms).Succeeded);
+    }
+
+    [Theory]
+    [InlineData("a group for a map that is no random pick", "gives a group to map 7:")]
+    [InlineData("a random pick in a group", "never a random pick")]
+    [InlineData("a random pick among the extras", "never a random pick")]
+    [InlineData("a random pick the channel offers with no group", "leaves random pick 203, which channel mode 6 offers, no map to draw from")]
+    [InlineData("a group with no map the channel offers and no extras", "leaves random pick 201, which channel mode 6 offers")]
+    public void RandomMapsAreRefusedNamingWhatIsWrong(string settings, string named)
+    {
+        var rooms = new RoomOptions
+        {
+            MapsByChannelMode = new Dictionary<byte, IReadOnlyList<ushort>> { [6] = [1, 2, 201, 203] },
+            RandomMaps = settings switch
+            {
+                "a group for a map that is no random pick" => new Dictionary<ushort, IReadOnlyList<ushort>> { [201] = [1], [203] = [2], [7] = [1] },
+                "a random pick in a group" => new Dictionary<ushort, IReadOnlyList<ushort>> { [201] = [1, 203], [203] = [2] },
+                "a random pick the channel offers with no group" => new Dictionary<ushort, IReadOnlyList<ushort>> { [201] = [1] },
+                "a group with no map the channel offers and no extras" => new Dictionary<ushort, IReadOnlyList<ushort>> { [201] = [5], [203] = [2] },
+                _ => new Dictionary<ushort, IReadOnlyList<ushort>> { [201] = [1], [203] = [2] },
+            },
+            RandomMapExtras = settings == "a random pick among the extras" ? [200] : [],
+        };
+
+        var result = Validation(ChannelsOfModes(6)).Validate(null, rooms);
+
+        Assert.True(result.Failed);
+        Assert.Contains(named, result.FailureMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheShippedSettingsListTheMissionEveryNewMissionRoomPlaysWithItsFourLevels()
     {
         var shipped = Shipped().GetSection(RoomOptions.Section).Get<RoomOptions>()!;
@@ -106,6 +181,40 @@ public sealed class RoomSettingsTests
         Assert.Equal(
             (shipped.LevelReadyWait, shipped.TurnWait, shipped.ShotWait, shipped.LongestShot, shipped.ResultWait),
             (harness.LevelReadyWait, harness.TurnWait, harness.ShotWait, harness.LongestShot, harness.ResultWait));
+    }
+
+    [Fact]
+    public void TheShippedMatchSettingsWaitFiveSecondsForTheOthersOnceAClientHasLoadedAndThirtyInAll()
+    {
+        var shipped = Shipped().GetSection(MatchOptions.Section).Get<MatchOptions>()!;
+
+        Assert.Equal((TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30)), (shipped.LoadWait, shipped.LongestLoad));
+        var harness = SessionHarness.ShippedMatchOptions();
+        Assert.Equal((shipped.LoadWait, shipped.LongestLoad), (harness.LoadWait, harness.LongestLoad));
+    }
+
+    [Theory]
+    [InlineData(16_000)]
+    [InlineData(10_000)]
+    public void ALongestLoadNoLongerThanTheClientsTourOfAFullRoomIsRefusedNamingIt(int milliseconds)
+    {
+        var options = SessionHarness.ShippedMatchOptions();
+        options.LongestLoad = TimeSpan.FromMilliseconds(milliseconds);
+
+        var result = new MatchOptionsValidation().Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains("Matches:LongestLoad", result.FailureMessage, StringComparison.Ordinal);
+        Assert.Contains("16 seconds", result.FailureMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ALongestLoadAnyLongerThanTheClientsTourOfAFullRoomIsAccepted()
+    {
+        var options = SessionHarness.ShippedMatchOptions();
+        options.LongestLoad = MatchRules.LongestClientTour + TimeSpan.FromMilliseconds(1);
+
+        Assert.True(new MatchOptionsValidation().Validate(null, options).Succeeded);
     }
 
     [Fact]
@@ -168,11 +277,14 @@ public sealed class RoomSettingsTests
         Assert.True(new MatchOptionsValidation().Validate(null, options).Succeeded);
     }
 
-    [Fact]
-    public void AWaitThatIsNotPositiveIsRefused()
+    [Theory]
+    [InlineData(nameof(MatchOptions.ShotWait))]
+    [InlineData(nameof(MatchOptions.LoadWait))]
+    [InlineData(nameof(MatchOptions.LongestLoad))]
+    public void AWaitThatIsNotPositiveIsRefused(string wait)
     {
         var options = SessionHarness.ShippedMatchOptions();
-        options.ShotWait = TimeSpan.Zero;
+        typeof(MatchOptions).GetProperty(wait)!.SetValue(options, TimeSpan.Zero);
 
         Assert.True(new MatchOptionsValidation().Validate(null, options).Failed);
     }

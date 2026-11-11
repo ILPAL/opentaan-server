@@ -5,14 +5,14 @@ using OpenTaan.Protocol.GamePlay;
 
 namespace OpenTaan.GameServer.Rooms;
 
-/// <summary>A mission's turns: shots, passes, characters walking and dying, and the waits that keep turns moving.</summary>
+/// <summary>A match's turns: shots, passes, characters walking and dying, and the waits that keep turns moving.</summary>
 /// <remarks>
 /// <para>
 /// The clients play the game. The shooter's client works a shot out and plays it, and every
 /// other client plays it back from what it sends; a client walks and places its own
 /// characters, and reports their deaths. The server keeps the turns: whose turn it is, what
-/// the turn's character may do, when the turn ends and who has the next, and when the match
-/// is over. What a client tells of its own characters goes to every other client in the
+/// the turn's character may do, when the turn ends and who has the next, the teams taking
+/// turns, and when the match is over. What a client tells of its own characters goes to every other client in the
 /// match, as it came, and never back to the sender: a client sends on any shot, pass or
 /// fall it is given that names one of its own slots, so a copy back would come round again.
 /// </para>
@@ -185,35 +185,6 @@ public sealed partial class RoomDirectory
         return Die(session, request.SlotIndex, passOn: null);
     }
 
-    /// <summary>Records where a client's characters stand once it has loaded the match, for the ghosts they may become.</summary>
-    /// <returns>Null once recorded; otherwise why the report was dropped, for the log.</returns>
-    public string? ReportLoaded(ClientSession session, PcGamePlayLoadingDone report)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        ArgumentNullException.ThrowIfNull(report);
-
-        lock (_lock)
-        {
-            if (PlayingRoomLocked(session) is not { } room)
-            {
-                return NotInMatch;
-            }
-
-            var match = room.Match!;
-            if (report.Characters.FirstOrDefault(character => !match.IsPlayedBy(character.SlotIndex, session)) is { } stranger)
-            {
-                return $"slot {stranger.SlotIndex} is not one of its characters";
-            }
-
-            foreach (var character in report.Characters)
-            {
-                match.Moved(character.SlotIndex, character.X, character.Y);
-            }
-
-            return null;
-        }
-    }
-
     // Why a shot or a pass for the character in slot is not taken from the connection.
     private static string WhyNotTurn(Match match, ClientSession session, byte slot) =>
         match.Phase == MatchPhase.Shot ? "a shot is being played"
@@ -293,30 +264,24 @@ public sealed partial class RoomDirectory
     }
 
     // Every client has played the shot back, or the wait for them is over, and what the shot
-    // led to happens now, in this order: a cleared mission is won, even by a shot that also
-    // killed the last player; a match with no character left in it is lost; a level that
+    // led to happens now, in this order: a match the shot won ends, see Match.Winner, so a
+    // cleared mission is won even by a shot that also killed the last player; a level that
     // began is announced, with no end or start of a turn, since the client changes level by
     // itself and either would break it, and its first turn goes to the next character once
     // every client has played the level's opening; otherwise the next character has the turn.
     private void EndShotLocked(Room room, Match match)
     {
-        if (match.HeldClear)
+        if (match.Winner() is { } winner)
         {
-            EndLocked(room, match, MatchRules.PlayersTeam);
-            return;
-        }
-
-        if (match.IsLost)
-        {
-            EndLocked(room, match, MatchRules.MissionsTeam);
+            EndLocked(room, match, winner);
             return;
         }
 
         var next = match.NextInPlay(match.TurnSlot!.Value)!.Value;
-        if (match.HeldLevel is not null)
+        if (match is { HeldLevel: not null, Levels: { } levels })
         {
             match.HandNextTurnTo(next);
-            BeginLevelLocked(room, match);
+            BeginLevelLocked(room, match, levels);
             return;
         }
 
@@ -331,15 +296,15 @@ public sealed partial class RoomDirectory
         match.HandTurnTo(next);
         ArmTurnWaitLocked(room, match);
         SendToRoomLocked(room, MatchRules.TurnEndOf(ending));
-        SendToRoomLocked(room, MatchRules.TurnOf(next, match.TurnCount, matchOptions.Value, match.GhostMoves(MatchRules.StartPosition)));
+        SendToRoomLocked(room, MatchRules.TurnOf(next, match.TurnCount, room.GameMode, matchOptions.Value, match.GhostMoves(MatchRules.StartPosition)));
         LogTurnPassed(logger, room.Number, ending, next);
     }
 
     // What a match does once a character is out of it, having given up, left or died. During
     // a shot nothing is decided until every client has played it back, since the shot may
-    // kill more, but a client gone is no longer waited for. Otherwise a match with no
-    // character left in it is lost, a turn whose character is out passes on, and a level's
-    // first turn starts if the client gone was the last one it waited for.
+    // take more out, but a client gone is no longer waited for. Otherwise a match with a
+    // team that has nobody left in play is over, a turn whose character is out passes on,
+    // and a first turn starts if the client gone was the last one it waited for.
     private void ContinueAfterOutLocked(Room room, Match match)
     {
         if (match.Phase == MatchPhase.Shot)
@@ -349,9 +314,9 @@ public sealed partial class RoomDirectory
                 EndShotLocked(room, match);
             }
         }
-        else if (match.IsLost)
+        else if (match.Winner() is { } winner)
         {
-            EndLocked(room, match, MatchRules.MissionsTeam);
+            EndLocked(room, match, winner);
         }
         else if (match.Phase == MatchPhase.Turn && !match.InPlay(match.TurnSlot!.Value))
         {

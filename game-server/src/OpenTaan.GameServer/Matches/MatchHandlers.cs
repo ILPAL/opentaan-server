@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Options;
+using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Rooms;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol.GamePlay;
@@ -13,15 +15,22 @@ namespace OpenTaan.GameServer.Matches;
 /// logged; see <see cref="RoomDirectory.StartMatch"/>, <see cref="RoomDirectory.Shoot"/> and
 /// the methods after them for the rules.
 /// </remarks>
-public sealed partial class MatchHandlers(RoomDirectory rooms, ILogger<MatchHandlers> logger)
+public sealed partial class MatchHandlers(
+    RoomDirectory rooms,
+    ChannelDirectory channels,
+    IOptions<RoomOptions> roomOptions,
+    ILogger<MatchHandlers> logger)
 {
-    /// <summary>Starts the host's match; see <see cref="RoomDirectory.StartMatch"/>.</summary>
+    /// <summary>
+    /// Starts the host's match, a random pick of map drawn among the maps the client lists in
+    /// the connection's channel; see <see cref="RoomDirectory.StartMatch"/>.
+    /// </summary>
     public ValueTask StartGameAsync(ClientSession session, PqGameSessionStartGame request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(request);
 
-        LogUnless(session, nameof(PqGameSessionStartGame), rooms.StartMatch(session));
+        LogUnless(session, nameof(PqGameSessionStartGame), rooms.StartMatch(session, roomOptions.Value.MapsFor(channels.ModeOf(session))));
         return ValueTask.CompletedTask;
     }
 
@@ -55,7 +64,7 @@ public sealed partial class MatchHandlers(RoomDirectory rooms, ILogger<MatchHand
         return ValueTask.CompletedTask;
     }
 
-    /// <summary>Records where the client's characters stand once loaded; see <see cref="RoomDirectory.ReportLoaded"/>.</summary>
+    /// <summary>Records that the client has loaded its match, and where its characters stand; see <see cref="RoomDirectory.ReportLoaded"/>.</summary>
     public ValueTask LoadingDoneAsync(ClientSession session, PcGamePlayLoadingDone report, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);

@@ -9,16 +9,64 @@ using static OpenTaan.Tests.GameServer.Playing;
 
 namespace OpenTaan.Tests.GameServer;
 
-/// <summary>Brings players into a mission's match and through it, as the client does. Every value is invented.</summary>
+/// <summary>A character in a match: the player's character at <paramref name="Position"/> among its own, in slot <paramref name="Slot"/>.</summary>
+internal sealed record SeatOf(Player Player, byte Slot, int Position = 0);
+
+/// <summary>Brings players into a match and through it, as the client does. Every value is invented.</summary>
 internal static class Matching
 {
     /// <summary>A request for a mission level, with the values a client sends for one that exists.</summary>
     public static PqGameSessionStartMissionLevel Asking(byte level) => new(level, 0x0102, 0x0304, true);
 
     /// <summary>Creates a mission room with the host in it, seats each guest, and readies them.</summary>
-    public static async Task<ushort> MissionRoomAsync(Player host, params Player[] guests)
+    public static Task<ushort> MissionRoomAsync(Player host, params Player[] guests) =>
+        ReadyRoomAsync(Requested(gameType: GameType.Mission), host, guests);
+
+    /// <summary>
+    /// Creates a room of teams with items in play, with the host in it, seats each guest
+    /// where the room puts it, on the team with fewer characters, and readies them.
+    /// </summary>
+    public static Task<ushort> TeamRoomAsync(Player host, params Player[] guests) => TeamRoomAsync(GameMode.Items, host, guests);
+
+    /// <summary>As <see cref="TeamRoomAsync(Player, Player[])"/>, in a room playing <paramref name="gameMode"/>.</summary>
+    public static Task<ushort> TeamRoomAsync(GameMode gameMode, Player host, params Player[] guests) =>
+        ReadyRoomAsync(Requested(gameMode: gameMode), host, guests);
+
+    /// <summary>A report that a client has loaded its match, with its characters in <paramref name="slots"/> where every character starts.</summary>
+    public static PcGamePlayLoadingDone Loading(params byte[] slots) =>
+        new([.. slots.Select(slot => new LoadedCharacter(slot, MatchRules.StartX, MatchRules.StartY))]);
+
+    /// <summary>
+    /// Starts a match between <paramref name="host"/>, in slot 0, and <paramref name="guest"/>,
+    /// in slot 2, on the other team; both report it loaded, and the first turn starts: the
+    /// host's.
+    /// </summary>
+    public static async Task AtFirstTeamTurnAsync(Player host, Player guest)
     {
-        var number = (await CreatedAsync(host, Requested(gameType: GameType.Mission))).Room.RoomNumber;
+        await TeamRoomAsync(host, guest);
+        await StartedAsync(host, host, guest);
+        await host.SendAsync(Loading(0));
+        await guest.SendAsync(Loading(2));
+        await TurnToldAsync(0, GameMode.Items, host, guest);
+    }
+
+    /// <summary>
+    /// The player passes the turn of the character in <paramref name="from"/>: each of
+    /// <paramref name="players"/> but the passer is passed the pass, and each is told the turn
+    /// passes to the character in <paramref name="to"/>.
+    /// </summary>
+    public static async Task PassedAsync(Player passer, byte from, byte to, params Player[] players)
+    {
+        var pass = new PcGamePlayPassTurn(from, 0x0102, 0x0304, 0x01, 0x05060708);
+        await passer.SendAsync(pass);
+        await EveryoneToldAsync(pass, PcGamePlayPassTurn.TryRead, [.. players.Where(player => player != passer)]);
+        await TurnPassedAsync(from, to, players);
+    }
+
+    // Creates the room requested with the host in it, seats each guest, and readies them.
+    private static async Task<ushort> ReadyRoomAsync(GameSessionInfo requested, Player host, Player[] guests)
+    {
+        var number = (await CreatedAsync(host, requested)).Room.RoomNumber;
         var seated = new List<Player> { host };
         foreach (var guest in guests)
         {
@@ -91,21 +139,33 @@ internal static class Matching
     /// won, in which the characters of <paramref name="characters"/>, seated in the first
     /// team's slots in order, earned nothing: the cards first, then the result.
     /// </summary>
-    public static async Task EndToldAsync(byte winningTeam, Player[] characters, params Player[] told)
+    public static Task EndToldAsync(byte winningTeam, Player[] characters, params Player[] told)
+    {
+        var teamOne = Enumerable.Range(0, GameSlotInfo.SlotCount).Where(slot => Seating.TeamOf(slot) == 1).Select(slot => (byte)slot).ToArray();
+        var next = 0;
+
+        // The order of seating in these tests: the first team's lowest slots first.
+        SeatOf[] seats =
+        [
+            .. characters.SelectMany(player => player.Characters.Select((_, position) => new SeatOf(player, teamOne[next++], position))),
+        ];
+        return EndToldAsync(winningTeam, seats, told);
+    }
+
+    /// <summary>
+    /// Each of <paramref name="told"/> is sent the end of a match <paramref name="winningTeam"/>
+    /// won, in which the characters in <paramref name="seats"/>, the room's only ones, earned
+    /// nothing: the cards first, then the result.
+    /// </summary>
+    public static async Task EndToldAsync(byte winningTeam, SeatOf[] seats, params Player[] told)
     {
         var slots = new uint?[GameSlotInfo.SlotCount];
         var levels = new ushort?[GameSlotInfo.SlotCount];
-        var teamOne = Enumerable.Range(0, GameSlotInfo.SlotCount).Where(slot => Seating.TeamOf(slot) == 1).ToArray();
-        var next = 0;
-        foreach (var player in characters)
+        foreach (var seat in seats)
         {
-            foreach (var character in player.Characters)
-            {
-                // The order of seating in these tests: the first team's lowest slots first.
-                var slot = teamOne[next++];
-                slots[slot] = character.CharacterId;
-                levels[slot] = character.Level;
-            }
+            var character = seat.Player.Characters[seat.Position];
+            slots[seat.Slot] = character.CharacterId;
+            levels[seat.Slot] = character.Level;
         }
 
         foreach (var player in told)
@@ -118,8 +178,15 @@ internal static class Matching
     }
 
     /// <summary>Each of <paramref name="players"/> is told that a level's first turn starts, the turn of the character in <paramref name="slot"/>, at a turn count of 0.</summary>
-    public static Task TurnToldAsync(byte slot, params Player[] players) =>
-        EveryoneToldAsync(MatchRules.TurnOf(slot, turnCount: 0, SessionHarness.ShippedMatchOptions(), []), PcGamePlayTurnStart.TryRead, players);
+    public static Task TurnToldAsync(byte slot, params Player[] players) => TurnToldAsync(slot, GameMode.Items, players);
+
+    /// <summary>
+    /// Each of <paramref name="players"/> is told that the first turn of a match, or of a
+    /// mission's level, starts: the turn of the character in <paramref name="slot"/>, at a
+    /// turn count of 0, in a match played by <paramref name="gameMode"/>.
+    /// </summary>
+    public static Task TurnToldAsync(byte slot, GameMode gameMode, params Player[] players) =>
+        EveryoneToldAsync(MatchRules.TurnOf(slot, turnCount: 0, gameMode, SessionHarness.ShippedMatchOptions(), []), PcGamePlayTurnStart.TryRead, players);
 
     /// <summary>
     /// Starts a mission with <paramref name="host"/> and <paramref name="guest"/>, begins its
@@ -204,7 +271,7 @@ internal static class Matching
         foreach (var player in players)
         {
             Assert.Equal(MatchRules.TurnEndOf(from), await player.ReceiveAsync<PcGamePlayTurnEnd>(PcGamePlayTurnEnd.TryRead));
-            Assert.Equal(MatchRules.TurnOf(to, turnCount, SessionHarness.ShippedMatchOptions(), ghostMoves), await player.ReceiveAsync<PcGamePlayTurnStart>(PcGamePlayTurnStart.TryRead));
+            Assert.Equal(MatchRules.TurnOf(to, turnCount, GameMode.Items, SessionHarness.ShippedMatchOptions(), ghostMoves), await player.ReceiveAsync<PcGamePlayTurnStart>(PcGamePlayTurnStart.TryRead));
         }
     }
 

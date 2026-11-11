@@ -164,6 +164,13 @@ internal sealed class Room
     /// <summary>The slots holding characters, in rising order.</summary>
     public IReadOnlyList<byte> TakenSlots() => [.. Enumerable.Range(0, _seats.Length).Where(slot => _seats[slot] is not null).Select(slot => (byte)slot)];
 
+    /// <summary>How many characters each team holds: the first team's, then the second's.</summary>
+    public (int First, int Second) TeamSizes()
+    {
+        var taken = TakenSlots();
+        return (taken.Count(slot => Seating.TeamOf(slot) == 1), taken.Count(slot => Seating.TeamOf(slot) == 2));
+    }
+
     /// <summary>Starts <paramref name="match"/>: the room plays it until <see cref="EndMatch"/>.</summary>
     public void BeginMatch(Match match)
     {

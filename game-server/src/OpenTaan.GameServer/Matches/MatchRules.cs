@@ -1,15 +1,17 @@
+using OpenTaan.GameServer.Rooms;
 using OpenTaan.Protocol.GamePlay;
 using OpenTaan.Protocol.Matches;
 using OpenTaan.Protocol.Results;
+using OpenTaan.Protocol.Rooms;
 
 namespace OpenTaan.GameServer.Matches;
 
 /// <summary>The values a match starts with and every turn starts with, and how a result is built.</summary>
 /// <remarks>
 /// The starting and turn values are the ones the reference sessions carry, which real
-/// clients have played with: every character starts in the same place with the same
-/// health and ammunition, and every turn has the same wind. Picking them per map, per
-/// weapon and per turn belongs to matches between teams.
+/// clients have played with, in missions and in matches between teams alike: every
+/// character starts in the same place with the same health and ammunition, and every turn
+/// has the same wind. Picking them per map, per weapon and per turn is for later.
 /// </remarks>
 public static class MatchRules
 {
@@ -46,6 +48,9 @@ public static class MatchRules
     /// <summary>The value the end of every turn gives its character to keep, as the reference sessions carry.</summary>
     public const uint TurnSeed = 0;
 
+    /// <summary>The seed the start of a match between teams carries: only a mission is laid out from one.</summary>
+    public const uint NoMissionSeed = 0;
+
     /// <summary>The name of a result card that is no character's.</summary>
     public const string EmptyRewardName = "Empty";
 
@@ -54,6 +59,22 @@ public static class MatchRules
     /// the client's own, which the server neither sends nor can change.
     /// </summary>
     public static TimeSpan ClientTurnLength { get; } = TimeSpan.FromMilliseconds(15_900);
+
+    /// <summary>
+    /// How long the client's camera rests on each character in its tour of them before a
+    /// match: a value of the client's own. The client reports a match between teams loaded
+    /// only once the tour has shown every character.
+    /// </summary>
+    public static TimeSpan ClientTourStep { get; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>How long the client's tour of the characters takes in a full room: one step for every slot.</summary>
+    public static TimeSpan LongestClientTour { get; } = ClientTourStep * GameSlotInfo.SlotCount;
+
+    /// <summary>
+    /// The maps the client lists as random picks. It cannot load one: a match on a random
+    /// pick is played on a map drawn at its start; see <see cref="RoomOptions.RandomMaps"/>.
+    /// </summary>
+    public static IReadOnlySet<ushort> RandomMapPicks { get; } = new HashSet<ushort> { 200, 201, 202, 203 };
 
     /// <summary>The name of a result card's gold.</summary>
     public const string GoldRewardName = "Gold";
@@ -67,17 +88,24 @@ public static class MatchRules
     /// <summary>The weapon a character picked as it is played: a random pick becomes the dragon.</summary>
     public static ushort WeaponPlayed(ushort picked) => picked == RandomWeapon ? RandomWeaponPlayedAs : picked;
 
+    /// <summary>Whether a match played by <paramref name="gameMode"/> has items in play.</summary>
+    public static bool HasItems(GameMode gameMode) => gameMode is GameMode.Items or GameMode.CaptainItems;
+
+    /// <summary>Whether a match played by <paramref name="gameMode"/> has a captain for each team.</summary>
+    public static bool HasCaptains(GameMode gameMode) => gameMode is GameMode.CaptainItems or GameMode.CaptainNoItems;
+
     /// <summary>How the character in slot <paramref name="slot"/>, with weapon <paramref name="weaponId"/>, starts.</summary>
     public static GameSlotPlayInfo StartOf(byte slot, ushort weaponId) =>
         new(slot, StartX, StartY, IsAirborne: false, StartingHp, StartingHp, Seed: 0, WeaponPlayed(weaponId), MaxAmmo, Field3C: 0, StartingAmmo: 0);
 
     /// <summary>
     /// The start of a turn for the character in slot <paramref name="slot"/>, at a mission
-    /// level's turn count <paramref name="turnCount"/>: as many item boxes may drop as
-    /// <paramref name="options"/> allow, of the quality they set, and every ghost in
-    /// <paramref name="ghostMoves"/> moves on its way.
+    /// level's turn count <paramref name="turnCount"/>, in a match played by
+    /// <paramref name="gameMode"/>: when it has items in play, as many item boxes may drop as
+    /// <paramref name="options"/> allow, and none otherwise; the items drawn are of the
+    /// quality they set; and every ghost in <paramref name="ghostMoves"/> moves on its way.
     /// </summary>
-    public static PcGamePlayTurnStart TurnOf(byte slot, ushort turnCount, MatchOptions options, IReadOnlyList<GhostMove> ghostMoves)
+    public static PcGamePlayTurnStart TurnOf(byte slot, ushort turnCount, GameMode gameMode, MatchOptions options, IReadOnlyList<GhostMove> ghostMoves)
     {
         ArgumentNullException.ThrowIfNull(options);
         return new(
@@ -85,7 +113,7 @@ public static class MatchRules
             Field11: 0,
             TurnWind,
             TurnAmmo,
-            options.ItemBoxesPerTurn,
+            HasItems(gameMode) ? options.ItemBoxesPerTurn : (byte)0,
             RemovedItemBoxes: [],
             ghostMoves,
             HpUpdates: [],
@@ -97,8 +125,8 @@ public static class MatchRules
     /// <summary>The end of the turn of the character in slot <paramref name="slot"/>.</summary>
     public static PcGamePlayTurnEnd TurnEndOf(byte slot) => new(slot, TurnSeed, TeamGauge: null);
 
-    /// <summary>The character in slot <paramref name="slot"/> as a ghost, where it was last reported standing, <paramref name="at"/>.</summary>
-    public static PcGamePlayMakeGhost GhostOf(byte slot, (int X, int Y) at) => new(slot, at.X, at.Y, PlayersTeam);
+    /// <summary>The character in slot <paramref name="slot"/> as a ghost of its team, where it was last reported standing, <paramref name="at"/>.</summary>
+    public static PcGamePlayMakeGhost GhostOf(byte slot, (int X, int Y) at) => new(slot, at.X, at.Y, Seating.TeamOf(slot));
 
     /// <summary>Where every character starts, until its client reports where it stands.</summary>
     public static (int X, int Y) StartPosition => (StartX, StartY);

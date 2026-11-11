@@ -47,6 +47,22 @@ public sealed class MatchOptions
     public TimeSpan LevelReadyWait { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
+    /// How long the first turn of a match between teams waits, once the first client has
+    /// reported the match loaded, for every other client to report it too. Every client
+    /// shows the same characters, at the same pace, before it reports, so the others report
+    /// within about the time their maps take to load.
+    /// </summary>
+    public TimeSpan LoadWait { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How long the first turn of a match between teams may wait in all, from the match's
+    /// start, in case no client reports it loaded. A client reports only once its tour of
+    /// the characters is over, <see cref="MatchRules.LongestClientTour"/> in a full room, so
+    /// this must be longer.
+    /// </summary>
+    public TimeSpan LongestLoad { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
     /// How long after a match's end its room waits for every player to pick a result card
     /// before it is open to new players again. The client leaves the result screen by
     /// itself about nineteen seconds after the end.
@@ -69,7 +85,7 @@ public sealed class MatchOptions
     /// <summary>What is wrong with the settings, for the message the server refuses to start with; null when nothing is.</summary>
     public string? Problem()
     {
-        if (new[] { LevelReadyWait, TurnWait, ShotWait, LongestShot, ResultWait }.Any(wait => wait <= TimeSpan.Zero))
+        if (new[] { LevelReadyWait, LoadWait, LongestLoad, TurnWait, ShotWait, LongestShot, ResultWait }.Any(wait => wait <= TimeSpan.Zero))
         {
             return $"Every wait in {Section} must be positive";
         }
@@ -79,6 +95,13 @@ public sealed class MatchOptions
             return string.Create(
                 CultureInfo.InvariantCulture,
                 $"{Section}:{nameof(TurnWait)} must be longer than the client's own turn, {MatchRules.ClientTurnLength.TotalSeconds} seconds, or it cuts turns the client still counts");
+        }
+
+        if (LongestLoad <= MatchRules.LongestClientTour)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"{Section}:{nameof(LongestLoad)} must be longer than the client's tour of a full room's characters, {MatchRules.LongestClientTour.TotalSeconds} seconds, or every full match starts before any client has loaded it");
         }
 
         return ItemDropQuality <= MaxDropQuality

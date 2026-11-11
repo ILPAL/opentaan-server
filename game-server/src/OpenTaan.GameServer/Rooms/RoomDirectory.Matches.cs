@@ -7,7 +7,7 @@ using OpenTaan.Protocol.Results;
 
 namespace OpenTaan.GameServer.Rooms;
 
-/// <summary>Matches: starting one, a mission's levels and its first turns, giving up, the end, and the result screen's cards. Turns are in RoomDirectory.Turns.cs.</summary>
+/// <summary>Matches: starting one, its first turns, a mission's levels, giving up, the end, and the result screen's cards. Turns are in RoomDirectory.Turns.cs.</summary>
 /// <remarks>
 /// <para>
 /// A match lives in its room, under the same lock as every room, so what a match does and
@@ -18,31 +18,45 @@ namespace OpenTaan.GameServer.Rooms;
 /// </para>
 /// <para>
 /// From its start until the room waits again, a room shows as playing, in the lobby and to
-/// anyone trying to enter; its waiting-room actions are dropped. Matches between teams are
-/// not played yet: their host's start is not answered.
+/// anyone trying to enter; its waiting-room actions are dropped. Matches between teams with
+/// captains are not played yet: their host's start is not answered.
 /// </para>
 /// </remarks>
 public sealed partial class RoomDirectory
 {
     // Why a request about a match is dropped when there is none to act on.
     private const string NotInMatch = "it is in no match being played";
+    private const string NotInMission = "its match is no mission";
     private const string NotOnResultScreen = "it is in no match whose result is shown";
 
     /// <summary>
     /// Starts the match of the host's room, and tells everyone in it and the lobby: every
     /// character in the room starts as <see cref="MatchRules"/> says, in the mission the
-    /// room plays, laid out from a seed drawn for this match.
+    /// room plays, laid out from a seed drawn for this match, or on the map a room of teams
+    /// plays.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The host's client asks only once every guest is ready, and does not wait for an
     /// answer, so a start the room's rules do not allow is dropped and only logged. A
     /// mission the client might not have is never started: it would leave every client in
     /// the room without a map.
+    /// </para>
+    /// <para>
+    /// A match between teams starts only between teams of the same size, as the host's
+    /// client checks itself, and not yet with captains. A room on one of the client's random
+    /// picks is played on a map drawn for the match from the pick's maps among
+    /// <paramref name="maps"/>; see <see cref="RoomOptions.RandomMaps"/>. Its first turn waits
+    /// for every client to load it; see <see cref="ReportLoaded"/>.
+    /// </para>
     /// </remarks>
+    /// <param name="session">The connection asking.</param>
+    /// <param name="maps">The maps a host may pick in a room of teams in the room's channel.</param>
     /// <returns>Null once started; otherwise why the request was dropped, for the log.</returns>
-    public string? StartMatch(ClientSession session)
+    public string? StartMatch(ClientSession session, IReadOnlyCollection<ushort> maps)
     {
         ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(maps);
 
         lock (_lock)
         {
@@ -56,27 +70,75 @@ public sealed partial class RoomDirectory
                 return "only the host starts the match";
             }
 
-            if (!room.IsMission)
-            {
-                return "matches between teams are not played yet";
-            }
-
             if (!room.GuestsReady)
             {
                 return "a guest is not ready";
             }
 
-            if (!options.Value.Missions.TryGetValue(room.MapId, out var levels))
+            return room.IsMission ? StartMissionLocked(room) : StartBetweenTeamsLocked(room, maps);
+        }
+    }
+
+    /// <summary>
+    /// Records that <paramref name="session"/>'s client has loaded its match, and where its
+    /// characters stand, for the ghosts they may become; in a match between teams, starts the
+    /// first turn once every client in the match has reported.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The client reports once, as soon as its camera has toured every character, and a turn
+    /// reaching it before that would set its tour going again over the turn. So the first
+    /// turn of a match between teams waits for every client, but no longer than
+    /// <see cref="MatchOptions.LoadWait"/> once the first has reported: every client tours the
+    /// same characters at the same pace. And no longer than <see cref="MatchOptions.LongestLoad"/>
+    /// from the start in all, in case none reports. A mission's first turn waits for its
+    /// first level instead.
+    /// </para>
+    /// <para>
+    /// A report counts for its client whichever slots it names, since only the client knows
+    /// it has loaded; where characters stand is taken from it only when every slot it names
+    /// is one of the client's own.
+    /// </para>
+    /// </remarks>
+    /// <returns>Null once recorded; otherwise why the report's places were dropped, for the log.</returns>
+    public string? ReportLoaded(ClientSession session, PcGamePlayLoadingDone report)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(report);
+
+        lock (_lock)
+        {
+            if (PlayingRoomLocked(session) is not { } room)
             {
-                return $"mission {room.MapId} is not one the client lists";
+                return NotInMatch;
             }
 
-            var match = new Match(room.MapId, levels, NextSeed(), room.PlayersBySlot());
-            room.BeginMatch(match);
-            SendToRoomLocked(room, new PcGameSessionStartGame(match.MissionId, room.PlayData(), Wind: 0, Field24: 0, MatchRules.CaptainSlots, match.Seed));
-            lobbies.Tell(room.ChannelId, new PcLobbyUpdateRoomList([room.Listing()]));
-            LogMatchStarted(logger, room.Number, match.MissionId, levels);
-            return null;
+            var match = room.Match!;
+            var stranger = report.Characters.FirstOrDefault(character => !match.IsPlayedBy(character.SlotIndex, session));
+            if (stranger is null)
+            {
+                foreach (var character in report.Characters)
+                {
+                    match.Moved(character.SlotIndex, character.X, character.Y);
+                }
+            }
+
+            var first = !match.AnyReady;
+            if (match.Loaded(session))
+            {
+                if (match.EveryoneReady(MembersOf(room)))
+                {
+                    StartTurnLocked(room, match);
+                }
+                else if (first)
+                {
+                    var now = time.GetUtcNow();
+                    var due = Min(match.Started + matchOptions.Value.LongestLoad, now + matchOptions.Value.LoadWait) - now;
+                    ArmLoadWaitLocked(room, match, due > TimeSpan.Zero ? due : TimeSpan.Zero);
+                }
+            }
+
+            return stranger is null ? null : $"slot {stranger.SlotIndex} is not one of its characters";
         }
     }
 
@@ -111,20 +173,25 @@ public sealed partial class RoomDirectory
             }
 
             var match = room.Match!;
-            var advances = level == match.Levels.Current + 1 || level == PqGameSessionStartMissionLevel.NoNextLevel;
+            if (match.Levels is not { } levels)
+            {
+                return NotInMission;
+            }
+
+            var advances = level == levels.Current + 1 || level == PqGameSessionStartMissionLevel.NoNextLevel;
             if (advances && match.Phase is MatchPhase.Opening or MatchPhase.Turn)
             {
                 return $"level {level} was asked for while no shot is played";
             }
 
-            switch (match.Levels.Ask(level, out var reason))
+            switch (levels.Ask(level, out var reason))
             {
                 case LevelAnswer.Announce when match.Phase == MatchPhase.Shot:
                     match.HoldLevel();
                     return null;
 
                 case LevelAnswer.Announce:
-                    BeginLevelLocked(room, match);
+                    BeginLevelLocked(room, match, levels);
                     return null;
 
                 case LevelAnswer.Clear when match.Phase == MatchPhase.Shot:
@@ -303,23 +370,93 @@ public sealed partial class RoomDirectory
     private Room? PlayingRoomLocked(ClientSession session) =>
         _roomOf.TryGetValue(session, out var room) && room.Match is { IsOver: false } ? room : null;
 
+    // Starts a mission's match: everyone in the room is told how it starts, and the lobby
+    // that the room is playing.
+    private string? StartMissionLocked(Room room)
+    {
+        if (!options.Value.Missions.TryGetValue(room.MapId, out var levels))
+        {
+            return $"mission {room.MapId} is not one the client lists";
+        }
+
+        BeginMatchLocked(room, Match.OfMission(room.MapId, levels, NextSeed(), room.PlayersBySlot(), time.GetUtcNow()));
+        LogMissionStarted(logger, room.Number, room.MapId, levels);
+        return null;
+    }
+
+    // Starts a match between the room's teams, on its map or, for a random pick, on one drawn
+    // evenly from the pick's maps. Its first turn waits for every client to load it.
+    private string? StartBetweenTeamsLocked(Room room, IReadOnlyCollection<ushort> maps)
+    {
+        if (MatchRules.HasCaptains(room.GameMode))
+        {
+            return "matches with captains are not played yet";
+        }
+
+        var (first, second) = room.TeamSizes();
+        if (first != second)
+        {
+            return $"its teams hold {first} and {second} characters, and a match is between teams of the same size";
+        }
+
+        var map = room.MapId;
+        if (MatchRules.RandomMapPicks.Contains(map))
+        {
+            var pool = options.Value.RandomPool(map, maps);
+            if (pool.Count == 0)
+            {
+                return $"random pick {map} has no map to draw from in the room's channel";
+            }
+
+            map = pool[random.Next(pool.Count)];
+        }
+
+        var match = Match.BetweenTeams(map, room.PlayersBySlot(), time.GetUtcNow());
+        BeginMatchLocked(room, match);
+        LogTeamMatchStarted(logger, room.Number, first, second, map, room.MapId);
+        return null;
+    }
+
+    // Plays match in the room, and tells everyone in it how the match starts and the lobby
+    // that the room is playing. A match between teams waits for its clients to load it from
+    // before anyone hears of it.
+    private void BeginMatchLocked(Room room, Match match)
+    {
+        room.BeginMatch(match);
+        if (!match.IsMission)
+        {
+            ArmLoadWaitLocked(room, match, matchOptions.Value.LongestLoad);
+        }
+
+        SendToRoomLocked(room, new PcGameSessionStartGame(match.MapId, room.PlayData(), Wind: 0, Field24: 0, MatchRules.CaptainSlots, match.Seed));
+        lobbies.Tell(room.ChannelId, new PcLobbyUpdateRoomList([room.Listing()]));
+    }
+
     // Begins the level the mission has just moved to, and tells everyone in the match. The
     // wait for its reports runs from before anyone hears of the level.
-    private void BeginLevelLocked(Room room, Match match)
+    private void BeginLevelLocked(Room room, Match match, MissionLevels levels)
     {
-        var level = match.Levels.Current;
+        var level = levels.Current;
         match.LevelBegan();
         match.Arm(time.CreateTimer(_ => LevelWaitElapsed(room, match, level), null, matchOptions.Value.LevelReadyWait, Timeout.InfiniteTimeSpan));
         SendToRoomLocked(room, new PcGameSessionStartMissionLevel(level));
     }
 
-    // Starts the first turn of the level running; see Match.StartTurn for whose it is.
+    // Starts the first turn of the match, or of the mission level running; see
+    // Match.StartTurn for whose it is.
     private void StartTurnLocked(Room room, Match match)
     {
         var slot = match.StartTurn();
         ArmTurnWaitLocked(room, match);
-        SendToRoomLocked(room, MatchRules.TurnOf(slot, match.TurnCount, matchOptions.Value, match.GhostMoves(MatchRules.StartPosition)));
-        LogTurnStarted(logger, room.Number, match.Levels.Current, slot);
+        SendToRoomLocked(room, MatchRules.TurnOf(slot, match.TurnCount, room.GameMode, matchOptions.Value, match.GhostMoves(MatchRules.StartPosition)));
+        if (match.Levels is { } levels)
+        {
+            LogLevelTurnStarted(logger, room.Number, levels.Current, slot);
+        }
+        else
+        {
+            LogMatchTurnStarted(logger, room.Number, slot);
+        }
     }
 
     // Ends the match with winningTeam the winner: everyone still in the room is sent the
@@ -333,7 +470,12 @@ public sealed partial class RoomDirectory
         room.ClearReady();
         SendToRoomLocked(room, MatchRules.RewardsOf(room.CharacterIds()));
         SendToRoomLocked(room, new PcGameSessionEndGame(MatchRules.ResultOf(winningTeam, room.Levels()), EndGameMode: 0));
-        LogMatchEnded(logger, room.Number, winningTeam == MatchRules.PlayersTeam ? "cleared" : "lost");
+        LogMatchEnded(
+            logger,
+            room.Number,
+            !match.IsMission ? $"team {winningTeam} won"
+            : winningTeam == MatchRules.PlayersTeam ? "the mission was cleared"
+            : "the mission was lost");
     }
 
     private void BackToWaitingLocked(Room room)
@@ -347,13 +489,36 @@ public sealed partial class RoomDirectory
     {
         lock (_lock)
         {
-            if (room.Match != match || !match.AwaitsTurn || match.Levels.Current != level)
+            if (room.Match != match || !match.AwaitsTurn || match.Levels?.Current != level)
             {
                 return;
             }
 
             var late = match.NotReady(MembersOf(room));
             LogLevelWaitElapsed(logger, room.Number, level, string.Join(", ", late.Select(member => member.Id)));
+            StartTurnLocked(room, match);
+        }
+    }
+
+    private void ArmLoadWaitLocked(Room room, Match match, TimeSpan due)
+    {
+        var step = match.Step;
+        match.Arm(time.CreateTimer(_ => LoadWaitElapsed(room, match, step), null, due, Timeout.InfiniteTimeSpan));
+    }
+
+    // Not every client reported the match loaded in time: its first turn starts without
+    // waiting for the rest.
+    private void LoadWaitElapsed(Room room, Match match, int step)
+    {
+        lock (_lock)
+        {
+            if (room.Match != match || match.Step != step || !match.AwaitsTurn)
+            {
+                return;
+            }
+
+            var late = match.NotReady(MembersOf(room));
+            LogLoadWaitElapsed(logger, room.Number, string.Join(", ", late.Select(member => member.Id)));
             StartTurnLocked(room, match);
         }
     }
@@ -373,19 +538,30 @@ public sealed partial class RoomDirectory
     private uint NextSeed() => (uint)random.NextInt64(0, 1L << 32);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Room {RoomNumber} started mission {MissionId}, of {Levels} levels")]
-    private static partial void LogMatchStarted(ILogger logger, ushort roomNumber, ushort missionId, byte levels);
+    private static partial void LogMissionStarted(ILogger logger, ushort roomNumber, ushort missionId, byte levels);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Room {RoomNumber} started a match of {FirstTeam} against {SecondTeam} on map {MapId}, for the room's map {RoomMapId}")]
+    private static partial void LogTeamMatchStarted(ILogger logger, ushort roomNumber, int firstTeam, int secondTeam, ushort mapId, ushort roomMapId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Room {RoomNumber}: level {Level}'s first turn went to slot {Slot}")]
-    private static partial void LogTurnStarted(ILogger logger, ushort roomNumber, byte level, byte slot);
+    private static partial void LogLevelTurnStarted(ILogger logger, ushort roomNumber, byte level, byte slot);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Room {RoomNumber}: the match's first turn went to slot {Slot}")]
+    private static partial void LogMatchTurnStarted(ILogger logger, ushort roomNumber, byte slot);
 
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Room {RoomNumber}: level {Level}'s first turn started without a report from connections {Connections}")]
     private static partial void LogLevelWaitElapsed(ILogger logger, ushort roomNumber, byte level, string connections);
 
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Room {RoomNumber}: the match's first turn started without connections {Connections} reporting it loaded")]
+    private static partial void LogLoadWaitElapsed(ILogger logger, ushort roomNumber, string connections);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Room {RoomNumber}: connection {ConnectionId} gave up its match")]
     private static partial void LogGaveUp(ILogger logger, ushort roomNumber, long connectionId);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Room {RoomNumber}'s match ended: the mission was {Outcome}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Room {RoomNumber}'s match ended: {Outcome}")]
     private static partial void LogMatchEnded(ILogger logger, ushort roomNumber, string outcome);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Room {RoomNumber} waits for players again")]

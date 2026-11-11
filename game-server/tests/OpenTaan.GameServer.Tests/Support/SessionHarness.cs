@@ -54,12 +54,22 @@ internal static class SessionHarness
             [ChannelSettings.NormalMode] = [.. Enumerable.Range(1, 21).Select(map => (ushort)map), 200, 201, 202, 203],
         },
         Missions = new Dictionary<ushort, byte> { [0] = 4 },
+        RandomMaps = new Dictionary<ushort, IReadOnlyList<ushort>>
+        {
+            [200] = [.. Enumerable.Range(1, 21).Select(map => (ushort)map)],
+            [201] = [7, 8, 12, 14, 19, 20],
+            [202] = [.. Enumerable.Range(1, 21).Select(map => (ushort)map).Except([(ushort)3, (ushort)6, (ushort)12, (ushort)15])],
+            [203] = [3, 6, 12, 13, 15, 21],
+        },
+        RandomMapExtras = [300, 500],
     };
 
     /// <summary>The match settings the server ships with, as <c>appsettings.json</c> sets them.</summary>
     public static MatchOptions ShippedMatchOptions() => new()
     {
         LevelReadyWait = TimeSpan.FromSeconds(10),
+        LoadWait = TimeSpan.FromSeconds(5),
+        LongestLoad = TimeSpan.FromSeconds(30),
         TurnWait = TimeSpan.FromSeconds(25),
         ShotWait = TimeSpan.FromSeconds(5),
         LongestShot = TimeSpan.FromSeconds(60),
@@ -133,7 +143,7 @@ internal static class SessionHarness
                 Options.Create(portraitOptions ?? new PortraitOptions()),
                 NullLogger<LobbyHandlers>.Instance),
             new RoomHandlers(rooms, channels, characterStore, roomSettings, NullLogger<RoomHandlers>.Instance),
-            new MatchHandlers(rooms, NullLogger<MatchHandlers>.Instance),
+            new MatchHandlers(rooms, channels, roomSettings, NullLogger<MatchHandlers>.Instance),
             names,
             Options.Create(options),
             NullLogger<PacketDispatcher>.Instance);

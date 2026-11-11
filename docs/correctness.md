@@ -103,6 +103,10 @@ The expensive bugs happen when two requests arrive at the same moment.
   twenty times over. The level begins once, after the shot.
 - A client leaves as the shooter reports the shot played back, twenty times over.
   The turn passes once, and after the leave.
+- Both clients in a match between teams report it loaded at once, twenty times
+  over. Its first turn starts once.
+- A player leaves a match between teams as the last other player reports it loaded,
+  twenty times over. The first turn starts once, and after the leave.
 
 Each race passes whichever way it goes, so a pass only means something if both
 ways come up. Counted once over sixty rounds of each, both did: the expulsion
@@ -435,6 +439,32 @@ with real tokens:
   have moved a ghost no client had. The client skips a ghost it does not have, so
   nothing broke; the server now forgets a ghost with its player, and a planted
   version that keeps it fails the tests.
+- **Every ghost on one team.** A mission's players all sit on the first team, so
+  every ghost was sent as the first team's. In a match between teams, the second
+  team's dead would have come back as the first team's. Each ghost now carries the
+  team of its slot, and a planted version that sends the first team's fails the
+  tests.
+- **A wait counted from the wrong moment.** A client reports a match between teams
+  loaded only once its camera has toured every character, two seconds each, so in a
+  full room no client can report before sixteen seconds have passed. The first plan
+  gave the clients five seconds from the start, which would have cut every client's
+  tour short in a full room, and a turn reaching a client still touring sets its tour
+  going again over the turn. The five seconds now run from the first client's report,
+  every client touring the same characters at the same pace, with `Matches:LongestLoad`
+  from the start in all, and the server refuses to start with a `LongestLoad` no
+  longer than a full room's tour.
+- **A report naming another player's slot.** One recorded client reports its match
+  loaded for a slot that is not its own. Dropped whole, that report would have left
+  the first turn waiting for its client until the wait ran out. A report now counts
+  for its client whatever slots it names, since only the client knows it has loaded,
+  and only the places it gives are dropped; a planted version that drops the whole
+  report fails the tests.
+- **A test that asked at the wrong moment.** A match between teams drops a
+  mission's requests, and the first test sent them during a turn, where a rule
+  older than these matches drops a level request anyway. A planted version without
+  the new check passed it. While the clients load, nothing else stops a level
+  request, and it would have begun a mission's level in the middle of a match
+  between teams; the test now asks there too, and the planted version fails it.
 
 ## The game server: bytes, not types
 
@@ -509,9 +539,10 @@ everyone else does next can depend on what it would have done in the room. So th
 recorded rooms are played through a guest getting ready, the host's options, a
 slot closed, a player entering, a team change, a weapon and a quick join. A
 mission is played through its start, with every character's starting values and
-the mission's seed, and through every client loading it, and a match between
-teams ends where it would start, as those matches come later. Every recorded turn
-belongs to that match, so turns are checked through real connections instead.
+the mission's seed, and through every client loading it. A match between teams is
+played through its start, every client loading it, its first turn, and that turn's
+walking and items, up to a box a ghost catches. Every later recorded turn belongs
+to such a match, so turns are checked through real connections instead.
 A recorded answer can also hold packets of later stages; a recorded packet the
 server has no codec for is not expected, and every other one is, in order. One
 answer differs by design: the recordings move to another channel by reconnecting,
@@ -525,11 +556,14 @@ who comes or goes and each room that opens, changes or closes. These are checked
 through real connections instead, player by player and change by change. A few
 recorded values are placeholders, such as a room's team names, or the closed slots a recorded mission start lists
 for the mission's own side; each is set to what this server sends before
-comparing, and the replay names every one of them. Two recorded steps end their
-session by design: a recorded mission reports a level ready before it asks for
-one, where a real client asks for the first level once it has loaded, and a match
-between teams is not started yet. A match's seed and the cards picked for players
-are drawn as the recordings have them.
+comparing, and the replay names every one of them. Three kinds of recorded step
+end their session by design: a recorded mission reports a level ready before it
+asks for one, where a real client asks for the first level once it has loaded; a
+box a ghost catches is passed on to every client, where the recording answers
+none; and a player giving up is passed on to no one, since no client does anything
+with it, and its match's end pays nothing yet, where the recording passes it on and
+pays. A match's seed, the cards picked for players and the item boxes each turn
+allows are as the recordings have them.
 
 Codecs are written by hand and published one stage of the protocol at a time,
 so the repository shows the layouts this server implements and nothing more.
