@@ -4,6 +4,7 @@ using OpenTaan.GameServer.Accounts;
 using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Characters;
 using OpenTaan.GameServer.Lobby;
+using OpenTaan.GameServer.Matches;
 using OpenTaan.GameServer.Rooms;
 using OpenTaan.Protocol;
 using OpenTaan.Protocol.Accounts;
@@ -12,6 +13,8 @@ using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.Connection;
 using OpenTaan.Protocol.GamePlay;
 using OpenTaan.Protocol.Lobby;
+using OpenTaan.Protocol.Matches;
+using OpenTaan.Protocol.Results;
 using OpenTaan.Protocol.Rooms;
 
 namespace OpenTaan.GameServer.Sessions;
@@ -66,6 +69,7 @@ public sealed partial class PacketDispatcher
         ChannelHandlers channels,
         LobbyHandlers lobby,
         RoomHandlers rooms,
+        MatchHandlers matches,
         PacketNames names,
         IOptions<GameServerOptions> options,
         ILogger<PacketDispatcher> logger)
@@ -75,6 +79,7 @@ public sealed partial class PacketDispatcher
         ArgumentNullException.ThrowIfNull(channels);
         ArgumentNullException.ThrowIfNull(lobby);
         ArgumentNullException.ThrowIfNull(rooms);
+        ArgumentNullException.ThrowIfNull(matches);
         ArgumentNullException.ThrowIfNull(options);
 
         _names = names;
@@ -111,10 +116,21 @@ public sealed partial class PacketDispatcher
             [PqGameSessionOpenCloseSlot.RegistryId] = Route.To<PqGameSessionOpenCloseSlot>(PqGameSessionOpenCloseSlot.TryRead, rooms.OpenOrCloseSlotAsync),
             [PqGameSessionUserExpel.RegistryId] = Route.To<PqGameSessionUserExpel>(PqGameSessionUserExpel.TryRead, rooms.ExpelAsync),
             [PcTutorialFinished.RegistryId] = Route.To<PcTutorialFinished>(PcTutorialFinished.TryRead, characters.TutorialFinishedAsync),
+            [PqGameSessionStartGame.RegistryId] = Route.To<PqGameSessionStartGame>(PqGameSessionStartGame.TryRead, matches.StartGameAsync),
+            [PqGameSessionStartMissionLevel.RegistryId] = Route.To<PqGameSessionStartMissionLevel>(PqGameSessionStartMissionLevel.TryRead, matches.StartMissionLevelAsync),
+            [PqGameSessionMissionLevelReady.RegistryId] = Route.To<PqGameSessionMissionLevelReady>(PqGameSessionMissionLevelReady.TryRead, matches.MissionLevelReadyAsync),
+            [PcGamePlayGiveUp.RegistryId] = Route.To<PcGamePlayGiveUp>(PcGamePlayGiveUp.TryRead, matches.GiveUpAsync),
+            [PqResultRandSelect.RegistryId] = Route.To<PqResultRandSelect>(PqResultRandSelect.TryRead, matches.RandSelectAsync),
+            [PqResultSelectCard.RegistryId] = Route.To<PqResultSelectCard>(PqResultSelectCard.TryRead, matches.SelectCardAsync),
 
-            // Reports from a game. Until games are played here, the only game they can
-            // come from is the tutorial, which the client plays alone, so there is
-            // nothing to record.
+            // What a client tells of a match it loads, which a mission does not wait on:
+            // its enemies, the same ones every client in the room names, and where its own
+            // characters stand once loaded.
+            [PqGameSessionReportEnemies.RegistryId] = Route.ReadAndDropped<PqGameSessionReportEnemies>(PqGameSessionReportEnemies.TryRead),
+            [PcGamePlayLoadingDone.RegistryId] = Route.ReadAndDropped<PcGamePlayLoadingDone>(PcGamePlayLoadingDone.TryRead),
+
+            // Reports from a game whose turns this server does not play yet: the tutorial,
+            // which the client plays alone, so there is nothing to record.
             [PcGamePlayNotifyEatItem.RegistryId] = Route.ReadAndDropped<PcGamePlayNotifyEatItem>(PcGamePlayNotifyEatItem.TryRead),
             [PcGamePlaySetGhostPos.RegistryId] = Route.ReadAndDropped<PcGamePlaySetGhostPos>(PcGamePlaySetGhostPos.TryRead),
         };

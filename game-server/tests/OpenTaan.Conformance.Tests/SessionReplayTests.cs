@@ -3,12 +3,14 @@ using System.Buffers.Binary;
 using System.Reflection;
 using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Characters;
+using OpenTaan.GameServer.Rooms;
 using OpenTaan.Protocol;
 using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Channels;
 using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.Data;
 using OpenTaan.Protocol.Lobby;
+using OpenTaan.Protocol.Matches;
 using OpenTaan.Protocol.Rooms;
 using OpenTaan.Tests.GameServer;
 using OpenTaan.Transport;
@@ -71,9 +73,21 @@ namespace OpenTaan.Tests.Conformance;
 ///   <item>In a mission room, the reply to a player entering carries the mission's
 ///   difficulty, as the reply to its creator does. The recordings carry the player's slot
 ///   there, so a player entering was shown a difficulty the room did not have.</item>
+///   <item>The start of a mission lists how each character starts, and only the
+///   characters, where the recordings also list the mission's own side, closed slots the
+///   client skips.</item>
 /// </list>
 /// Each recorded answer is decoded, those values set, and the answer encoded again, so
 /// every other byte is still compared as recorded.
+/// </para>
+/// <para>
+/// Two kinds of step end the session's replay, as this server answers them differently by
+/// design. A host starting a match between teams is not answered yet. And a client
+/// reporting a mission level ready before any level was asked for is not answered: the
+/// recordings report level 0 ready first and ask for level 1 after, where a real client
+/// asks for level 1 once it has loaded, and reports a level ready once it has been told the
+/// level begins. The match's seed and its automatic card picks are drawn as the recordings
+/// have them, 0 and the first card left.
 /// </para>
 /// <para>
 /// One recorded answer is replaced by design: a channel move answered with a reconnect.
@@ -149,7 +163,8 @@ public sealed class SessionReplayTests
             gameMasters: session.World?.GmAccountEmails,
             handshakeKeys: () => new HandshakeKeys(nextHandshake!.FirstSeed, nextHandshake.SecondSeed, nextHandshake.Shift),
             characterOptions: RecordedCharacterOptions,
-            channelOptions: RecordedChannelOptions(session));
+            channelOptions: RecordedChannelOptions(session),
+            random: new RecordedChance());
 
         var connections = new Dictionary<string, Connection>(StringComparer.Ordinal);
         var recordedValues = new RecordedValues();
@@ -214,6 +229,11 @@ public sealed class SessionReplayTests
                 if (IsThrottleRefusal(exchange))
                 {
                     continue;
+                }
+
+                if (IsAnsweredDifferentlyByDesign(body, services.Rooms.RoomOf(connection.Session), recordedValues))
+                {
+                    break;
                 }
 
                 await connection.Client.SendBodyAsync(body);
@@ -332,6 +352,16 @@ public sealed class SessionReplayTests
         }
     }
 
+    // A host starting a match between teams, or a client reporting a mission level ready
+    // that no recorded step has begun; see the remarks.
+    private static bool IsAnsweredDifferentlyByDesign(byte[] body, ushort? roomNumber, RecordedValues recordedValues) =>
+        RegistryIdOf(body) switch
+        {
+            var id when id == PqGameSessionStartGame.RegistryId => roomNumber is not { } number || !recordedValues.IsMissionRoom(number),
+            var id when id == PqGameSessionMissionLevelReady.RegistryId => !recordedValues.HasBegun(PqGameSessionMissionLevelReady.TryRead(body).Packet!.Level),
+            _ => false,
+        };
+
     private static bool IsThrottleRefusal(Exchange exchange) =>
         exchange.Frames.Count == 1
         && PrUserLogin.TryRead(exchange.Frames[0].Body()).Packet is PrUserLoginFailed { Reason: LoginRefusalReason.Penalty };
@@ -360,6 +390,13 @@ public sealed class SessionReplayTests
     {
         private readonly Dictionary<uint, Gender> _genders = [];
         private readonly Dictionary<ushort, byte> _missionDifficulties = [];
+        private readonly HashSet<byte> _levelsBegun = [];
+
+        /// <summary>Whether room <paramref name="number"/> was recorded as created to play missions.</summary>
+        public bool IsMissionRoom(ushort number) => _missionDifficulties.ContainsKey(number);
+
+        /// <summary>Whether a recorded step began mission level <paramref name="level"/>.</summary>
+        public bool HasBegun(byte level) => _levelsBegun.Contains(level);
 
         /// <summary>Learns from <paramref name="recorded"/>, sent in answer to <paramref name="request"/>.</summary>
         public void Learn(byte[] request, byte[] recorded)
@@ -385,6 +422,10 @@ public sealed class SessionReplayTests
                                  && RegistryIdOf(request) == PqGameSessionCreate.RegistryId
                                  && PcGameSessionInit.TryRead(recorded).Packet is { Room.GameType: GameType.Mission } reply:
                     _missionDifficulties[reply.Room.RoomNumber] = reply.Difficulty;
+                    break;
+
+                case var id when id == PcGameSessionStartMissionLevel.RegistryId:
+                    _levelsBegun.Add(PcGameSessionStartMissionLevel.TryRead(recorded).Packet!.Level);
                     break;
             }
         }
@@ -430,6 +471,18 @@ public sealed class SessionReplayTests
                     new PcGameSessionUpdateSlot(update.Change, WithGender(update.Slot), update.TeamName).Write(adjusted);
                     break;
 
+                // Only a mission's start is compared: a start between teams ends the replay first.
+                case var id when id == PcGameSessionStartGame.RegistryId
+                                 && PcGameSessionStartGame.TryRead(recorded).Packet is { } start:
+                    new PcGameSessionStartGame(
+                        start.MapId,
+                        [.. start.Players.Where(player => Seating.TeamOf(player.SlotIndex) == 1)],
+                        start.Wind,
+                        start.Field24,
+                        start.CaptainSlots,
+                        start.MissionSeed).Write(adjusted);
+                    break;
+
                 default:
                     return recorded;
             }
@@ -466,5 +519,13 @@ public sealed class SessionReplayTests
                     occupant.Appearance with { Gender = gender },
                     occupant.WeaponId));
         }
+    }
+
+    /// <summary>Chance as the recordings have it: a match's seed of 0, and the first of the result cards left.</summary>
+    private sealed class RecordedChance : Random
+    {
+        public override long NextInt64(long minValue, long maxValue) => minValue;
+
+        public override int Next(int maxValue) => 0;
     }
 }

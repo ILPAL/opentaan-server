@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using OpenTaan.GameServer.Characters;
 using OpenTaan.GameServer.Lobby;
+using OpenTaan.GameServer.Matches;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol;
 using OpenTaan.Protocol.Lobby;
@@ -43,7 +44,19 @@ public enum RoomCreation
 /// queues a packet, so nothing under the lock waits on a network.
 /// </para>
 /// </remarks>
-public sealed partial class RoomDirectory(LobbyRoster lobbies, IOptions<RoomOptions> options, ILogger<RoomDirectory> logger)
+/// <param name="lobbies">The lobbies, told of every room as it changes.</param>
+/// <param name="options">The room settings.</param>
+/// <param name="matchOptions">The match settings.</param>
+/// <param name="time">The clock a match's waits run on.</param>
+/// <param name="random">Where a match's seed and a result card picked for a player come from.</param>
+/// <param name="logger">The log.</param>
+public sealed partial class RoomDirectory(
+    LobbyRoster lobbies,
+    IOptions<RoomOptions> options,
+    IOptions<MatchOptions> matchOptions,
+    TimeProvider time,
+    Random random,
+    ILogger<RoomDirectory> logger)
 {
     // Why a request to act in a room is dropped when the connection is in none that waits.
     private const string NotWaiting = "it is in no room waiting for a match";
@@ -340,7 +353,8 @@ public sealed partial class RoomDirectory(LobbyRoster lobbies, IOptions<RoomOpti
     /// </para>
     /// <para>
     /// The difficulty is kept only in a mission room. Elsewhere it means nothing, and the
-    /// room is sent back what the request carried.
+    /// room is sent back what the request carried. A mission room's host picks one of
+    /// <see cref="RoomOptions.Missions"/> rather than a map.
     /// </para>
     /// </remarks>
     /// <param name="session">The connection asking.</param>
@@ -365,7 +379,9 @@ public sealed partial class RoomDirectory(LobbyRoster lobbies, IOptions<RoomOpti
                 return "only the host changes the room's options";
             }
 
-            if (RoomRules.OptionsProblem(room.GameType, requested, maps) is { } problem)
+            // A mission room's host picks a mission instead of a map.
+            IReadOnlyCollection<ushort> choices = room.IsMission ? [.. options.Value.Missions.Keys] : maps;
+            if (RoomRules.OptionsProblem(room.GameType, requested, choices) is { } problem)
             {
                 session.Send(room.Options(room.Difficulty));
                 return problem;
@@ -572,10 +588,12 @@ public sealed partial class RoomDirectory(LobbyRoster lobbies, IOptions<RoomOpti
         }
 
         var wasHost = room.IsHost(session);
+        LeaveMatchLocked(room, session);
         var freed = room.Vacate(session);
 
         if (room.IsEmpty)
         {
+            room.EndMatch();
             _rooms.Remove(room.Number);
             lobbies.Tell(room.ChannelId, new PcLobbyUpdateRoomList([GameSessionInfoPack.Removal(room.Number)]));
             LogClosed(logger, room.Number, room.ChannelId);
@@ -596,6 +614,7 @@ public sealed partial class RoomDirectory(LobbyRoster lobbies, IOptions<RoomOpti
         }
 
         lobbies.Tell(room.ChannelId, new PcLobbyUpdateRoomList([room.Listing()]));
+        AfterLeavingMatchLocked(room);
         return true;
     }
 

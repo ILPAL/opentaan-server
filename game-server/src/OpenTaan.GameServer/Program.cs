@@ -6,6 +6,7 @@ using OpenTaan.GameServer.Accounts;
 using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Characters;
 using OpenTaan.GameServer.Lobby;
+using OpenTaan.GameServer.Matches;
 using OpenTaan.GameServer.PlayTime;
 using OpenTaan.GameServer.Rooms;
 using OpenTaan.GameServer.Sessions;
@@ -80,8 +81,15 @@ builder.Services
     .Validate(
         o => o.MaxNameLength is > 0 and <= RoomOptions.LongestNameAllowed,
         $"Rooms:MaxNameLength must be between 1 and {RoomOptions.LongestNameAllowed}, so that every room reply fits a frame")
+    .Validate(o => o.MissionsProblem() is null, $"{RoomOptions.Section}:Missions must list mission {Room.FirstMission}, with 1 to {RoomOptions.MaxMissionLevels} levels for each mission")
     .ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<RoomOptions>, RoomMapsValidation>();
+
+builder.Services
+    .AddOptions<MatchOptions>()
+    .Bind(builder.Configuration.GetSection(MatchOptions.Section))
+    .Validate(o => o.LevelReadyWait > TimeSpan.Zero && o.ResultWait > TimeSpan.Zero, "Matches waits must be positive")
+    .ValidateOnStart();
 
 builder.Services
     .AddOptions<PlayTimeOptions>()
@@ -102,6 +110,8 @@ builder.Services.AddSingleton<LobbyHandlers>();
 builder.Services.AddSingleton<LobbyRoster>();
 builder.Services.AddSingleton<RoomDirectory>();
 builder.Services.AddSingleton<RoomHandlers>();
+builder.Services.AddSingleton<MatchHandlers>();
+builder.Services.AddSingleton(Random.Shared);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<PlayTimeGrant>();
 builder.Services.AddSingleton<PacketDispatcher>();

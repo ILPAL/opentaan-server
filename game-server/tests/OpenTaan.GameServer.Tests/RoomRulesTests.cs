@@ -9,6 +9,9 @@ public sealed class RoomRulesTests
     // The maps a host may pick in a room of teams, for these tests.
     private static readonly IReadOnlyList<ushort> Maps = [3, 4, 5, 200, 201];
 
+    // The missions a mission room's host may pick: numbers no list of maps holds.
+    private static readonly IReadOnlyList<ushort> Missions = [0, 6, 0xFFFF];
+
     /// <summary>A host's request each options rule refuses, with the kind of room it is made in, by what is wrong with it.</summary>
     internal static readonly IReadOnlyDictionary<string, (GameType Room, PqGameSessionChangeGameOption Request)> RefusedOptions =
         new Dictionary<string, (GameType, PqGameSessionChangeGameOption)>
@@ -105,16 +108,22 @@ public sealed class RoomRulesTests
         Assert.Null(RoomRules.OptionsProblem(GameType.TeamGame, new PqGameSessionChangeGameOption(3, GameMode.Items, ChanceMode.Bonus, difficulty), Maps));
 
     [Fact]
-    public void AMissionRoomTakesAnyMissionAtEachDifficultyTheClientOffers()
+    public void AMissionRoomTakesEachMissionTheClientListsAtEachDifficultyItOffers()
     {
-        // A mission's number is not a map of the list, which covers rooms of teams alone.
-        foreach (var mission in new ushort[] { 0, 6, 0xFFFF })
+        foreach (var mission in Missions)
         {
             for (var difficulty = 0; difficulty <= RoomRules.HardestDifficulty; difficulty++)
             {
-                Assert.Null(RoomRules.OptionsProblem(GameType.Mission, new PqGameSessionChangeGameOption(mission, GameMode.Items, ChanceMode.Basic, (byte)difficulty), Maps));
+                Assert.Null(RoomRules.OptionsProblem(GameType.Mission, new PqGameSessionChangeGameOption(mission, GameMode.Items, ChanceMode.Basic, (byte)difficulty), Missions));
             }
         }
+    }
+
+    [Fact]
+    public void AMissionRoomTakesNoMissionTheClientDoesNotListNorAnyMap()
+    {
+        Assert.NotNull(RoomRules.OptionsProblem(GameType.Mission, new PqGameSessionChangeGameOption(7, GameMode.Items, ChanceMode.Basic, 0), Missions));
+        Assert.NotNull(RoomRules.OptionsProblem(GameType.Mission, new PqGameSessionChangeGameOption(3, GameMode.Items, ChanceMode.Basic, 0), Missions));
     }
 
     [Theory]
@@ -123,7 +132,7 @@ public sealed class RoomRulesTests
     {
         var (room, refused) = RefusedOptions[request];
 
-        Assert.NotNull(RoomRules.OptionsProblem(room, refused, Maps));
+        Assert.NotNull(RoomRules.OptionsProblem(room, refused, room == GameType.Mission ? Missions : Maps));
     }
 
     [Fact]

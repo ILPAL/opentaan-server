@@ -67,13 +67,19 @@ internal static class Playing
     };
 
     /// <summary>What sessions share, with any login creating its account.</summary>
-    public static SessionServices Services(RoomOptions? rooms = null, GameServerOptions? options = null) =>
+    public static SessionServices Services(
+        RoomOptions? rooms = null,
+        GameServerOptions? options = null,
+        TimeProvider? time = null,
+        Random? random = null) =>
         SessionHarness.Services(
             requireRegistration: false,
             store: new InMemoryAccountStore(0),
             options: options,
             channelOptions: Channels(),
-            roomOptions: rooms);
+            time: time,
+            roomOptions: rooms,
+            random: random);
 
     /// <summary>
     /// Connects, logs in with one new account for each name, creates a character with that

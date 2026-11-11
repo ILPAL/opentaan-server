@@ -40,8 +40,10 @@ of a character, the reports it sends while it plays the tutorial, the play time
 it is allowed, and the room packets: creating, entering, quick-joining and
 leaving a room, the room as a player is sent it, with its slots and its host,
 the changes a room is told of, the lobby's room list and the players in a room,
-and what players do in a room: being ready, changing team and weapon, the
-host's options, opening and closing slots, and expelling a player.
+what players do in a room: being ready, changing team and weapon, the host's
+options, opening and closing slots, and expelling a player, and a mission's match:
+starting it, how each character starts, loading it, its levels, the start of a
+turn, giving up, a player leaving it, its end and the result screen's cards.
 
 A room travels two ways: as a record, which the client sends to create a room
 and is sent with each room it enters, and field by field in the lobby's room
@@ -56,6 +58,13 @@ connection.
 Each request to create, enter or quick-join a room ends with the client's report
 on its own code, which is read and kept but not checked: checking it needs data
 from the client's own files.
+
+A match's result and its result screen's cards always carry eight entries, one for
+each slot, because the client reads eight of each without checking how many came.
+A start lists one entry for each character, no two for the same slot, since the
+client looks them up by slot. A result card is a class of its own for each kind of
+reward, and also carries its kind as a number, which the codec derives from the
+class instead of holding it twice.
 
 Some packets carry data in the client's envelope (`DataEnvelope`): a signature, a
 checksum, and contents that may be compressed, scrambled with a key, or both. The
@@ -170,7 +179,8 @@ slots, and the host's, by that id.
   (a name, a password when one is asked for, a game mode the room's type allows),
   and the server sets the rest: the status, the player counts and the map. The host
   takes the first slots of the first team. A mission room keeps the second team's
-  slots closed, since that side of a mission is played by the server. A channel
+  slots closed: that side is the mission's own enemies, which every client plays
+  from its own copy of the mission. A channel
   holds at most `Rooms:MaxPerChannel` rooms. Room numbers rise from 1 and a freed
   one is not given to the next room at once.
 - **Entering:** the player sits on the team with fewer characters when all of its
@@ -216,7 +226,8 @@ moment sees each change exactly once: in the room it is sent, or after it.
   difficulty, within what the client's options dialog offers: in a room of teams a
   map the client lists for the channel's mode (`Rooms:MapsByChannelMode`), its
   random picks included, which stay as picked until the match decides them; in a
-  mission room any mission, at a difficulty from 0 to 2. The host's dialog waits
+  mission room one of the missions the client lists (`Rooms:Missions`), at a
+  difficulty from 0 to 2. The host's dialog waits
   for an answer, so a refused change is answered too, with the room as it is, to
   the host alone. The lobby is told of every change.
 - **Slots:** the host closes an empty slot to players entering, or opens it again.
@@ -228,7 +239,57 @@ moment sees each change exactly once: in the room it is sent, or after it.
   stops it coming back.
 
 The slots keep every change, so a player entering later is shown who is ready, on
-which team, with which weapon. Matches come next.
+which team, with which weapon.
+
+## Matches
+
+A mission room's match is played from its start to its result screen. Its turns
+are not played yet: the first turn of the first level starts, and nothing after it.
+Matches between teams, and missions whose enemies fight back, come later.
+
+- **Starting:** the host starts once every guest is ready; a host alone may start.
+  Everyone in the room is told how each character starts, and only the characters,
+  in the mission the room plays, laid out from a seed drawn for this match. Every
+  client lays the mission out from that seed, so all of them lay it out alike. A
+  random weapon is played as the dragon. A mission the client might not have is
+  never started: it would leave every client in the room without a map, which is
+  why the host's options take only `Rooms:Missions`. The lobby shows the room
+  playing, and no one enters it until it waits again. A start the rules do not
+  allow is not answered: the client waits on none.
+- **Levels:** every client asks for each level, the first once it has loaded, each
+  next one once its own count of kills reaches the level's target, and one past
+  the last once the mission is cleared. Only the next level begins, once, and only
+  while the last level runs is the mission cleared: the server cannot count the
+  kills, which happen in each client's play of a shot, but it holds every client to
+  the order and the number of the levels. A level begins with an opening of about
+  two and a half seconds on every client, which places its enemies. Its first turn
+  waits until every client in the match reports the opening over, since a turn
+  that reaches a client still in it would leave that client without the level's
+  enemies, or for `Matches:LevelReadyWait` at most, so one stuck client cannot hold
+  up the rest. It goes to the lowest character still in the match.
+- **Giving up and leaving:** the client lets a player give up once a match has run
+  for two minutes, for all of its characters at once; the player stays and sees
+  the match end. A player leaving, or its connection closing, is taken off everyone
+  else's field, then out of the room as it would be from a waiting room. A match
+  whose every character has given up or left is lost.
+- **The end:** a cleared mission is won, a lost one is the mission's. Everyone still
+  in the room is sent the result screen's cards, then the result, which builds the
+  screen from the cards, so the cards always come first. Nothing about the match's
+  turns is answered once it is over, since the client would act on it and leave its
+  result screen. Every guest is no longer ready, as the client shows by itself.
+  Rewards that last come later, so a card shows no gold and grants none, and the
+  wins and losses the client adds on its own screen are not stored yet.
+- **The cards:** each character turns over one card of the first eight, which then
+  belongs to no one else; everyone sees each one turned. A card the player picked
+  that another took first is refused to that player alone, who may pick again; a
+  card picked for a player whose time ran out is one of those left. The room waits
+  for players again once every character in it has its card, or
+  `Matches:ResultWait` after the end, by when every client has left its result
+  screen by itself.
+
+A match lives under the rooms' lock, so a level begun, a player leaving and the
+end happen in one order for everyone. The two waits run as timers on the server's
+clock, and a timer that fires for a match that has moved on finds nothing to do.
 
 ## Play time
 
@@ -250,8 +311,8 @@ counting play time shows in chat, from the first hour, how long is left.
 The client plays the tutorial by itself, before the first lobby, for a character
 below level 2 whose selection says it has not finished it. It waits on nothing
 from the server, but it still reports some of what happens: an item picked up,
-where its ghost stopped, and the tutorial's end. The first two belong to games,
-which are not played here yet, so they are read and dropped. The last is recorded
+where its ghost stopped, and the tutorial's end. The first two belong to a
+match's turns, which are not played here yet, so they are read and dropped. The last is recorded
 against the character selected in the connection's first slot, never the one the
 report names, which the client fills with the first character it selected since
 it started. The client keeps no record of its own, so this record is all that
@@ -281,8 +342,9 @@ dotnet run --project src/OpenTaan.GameServer
 This runs in the Development environment, where any login creates the account
 it names (`Accounts:RequireRegistration` is off). A real client can log in,
 create and select a character, pick a channel, enter its lobby, create, enter and
-leave rooms, and do everything a waiting room offers but start the match; matches
-are the next stage. The server
+leave rooms, do everything a waiting room offers, start a mission, see its first
+level's opening and first turn, give up or leave, and see its result screen and
+pick a card; playing the turns is the next stage. The server
 refuses to start with registration off in any other environment. Accounts,
 characters and rooms live in memory until the database stage.
 
@@ -308,5 +370,8 @@ variables, for example `GameServer__Port=2181`:
 | `Rooms:MaxPerChannel` | `500` | Rooms one channel may hold at once; a request to create one more is refused. |
 | `Rooms:MaxNameLength` | `128` | The longest room name, in UTF-16 code units, a request to create a room may carry. At most 1000, so every room reply fits a frame. |
 | `Rooms:MapsByChannelMode` | mode `6`: maps `1` to `21` and the random picks `200` to `203` | The maps the host of a room of teams may pick, by the mode of the room's channel: those the client's own map list offers in that mode. Every mode `Channels:List` uses needs a list, or the server refuses to start. |
+| `Rooms:Missions` | mission `0`, of `4` levels | The missions a mission room may play, by number, each with its number of levels: those the client's own mission list offers. Must hold mission `0`, which every new mission room plays until its host picks another, and give each mission 1 to 254 levels. |
+| `Matches:LevelReadyWait` | `00:00:10` | How long a mission level's first turn waits for every client to report the level's opening over. |
+| `Matches:ResultWait` | `00:00:25` | How long after a match's end its room waits for every player's result card before it waits for players again. |
 | `Portraits:Folder` | none | Where the pictures clients send of their characters are kept. A relative path is taken from the content root. |
 | `Characters:CreatorParts` | `1, 3, 5, 8` | The appearance parts the client's character creator offers; a new character keeps only these. |
