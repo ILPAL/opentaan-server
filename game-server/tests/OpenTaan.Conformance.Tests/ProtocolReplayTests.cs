@@ -117,6 +117,13 @@ public sealed class ProtocolReplayTests
         [PcGamePlayDeathByDrop.RegistryId] = body => Replay.Of(PcGamePlayDeathByDrop.TryRead(body), packet => packet.Write),
         [PqGamePlayMakeGhost.RegistryId] = body => Replay.Of(PqGamePlayMakeGhost.TryRead(body), packet => packet.Write),
         [PcGamePlayMakeGhost.RegistryId] = body => Replay.Of(PcGamePlayMakeGhost.TryRead(body), packet => packet.Write),
+        [PcGamePlayUseItem.RegistryId] = body => Replay.Of(PcGamePlayUseItem.TryRead(body), packet => packet.Write),
+        [PcGamePlaySpendItem.RegistryId] = body => Replay.Of(PcGamePlaySpendItem.TryRead(body), packet => packet.Write),
+        [PcGamePlayForsakeItem.RegistryId] = body => Replay.Of(PcGamePlayForsakeItem.TryRead(body), packet => packet.Write),
+        [PcGamePlayForsakeActiveItem.RegistryId] = body => Replay.Of(PcGamePlayForsakeActiveItem.TryRead(body), packet => packet.Write),
+        [PcGamePlayEatItemBox.RegistryId] = body => Replay.Of(PcGamePlayEatItemBox.TryRead(body), packet => packet.Write),
+        [PcGamePlayEatBonusItem.RegistryId] = body => Replay.Of(PcGamePlayEatBonusItem.TryRead(body), packet => packet.Write),
+        [PcGamePlaySetGhostTarget.RegistryId] = body => Replay.Of(PcGamePlaySetGhostTarget.TryRead(body), packet => packet.Write),
         [PcGameSessionEndGame.RegistryId] = body => Replay.Of(PcGameSessionEndGame.TryRead(body), packet => packet.Write),
         [PcResultSetReward.RegistryId] = body => Replay.Of(PcResultSetReward.TryRead(body), packet => packet.Write),
         [PqResultRandSelect.RegistryId] = body => Replay.Of(PqResultRandSelect.TryRead(body), packet => packet.Write),
@@ -237,6 +244,22 @@ public sealed class ProtocolReplayTests
             new GameRewardExp("Kinh nghiệm", 0x0D0E0F10, 0x11121314),
             .. Enumerable.Range(0, 6).Select(_ => new GameRewardGold("Empty", 0, 0, false, 0)),
         ])),
+
+        // Every recorded item and ghost packet is for slot 0, with most of its values 0, no
+        // recorded catch carries a gauge change, and no recorded spend spends more than one item.
+        Written(new PcGamePlayUseItem(0x05, 0x02, 0x07, 0x08, 0x09, 0x0A0B)),
+        Written(new PcGamePlaySpendItem(0x06, 0x01, 0x02, [new SpentItem(0x0304, 0x05), new SpentItem(0x0708, 0x09)])),
+        Written(new PcGamePlayForsakeItem(0x04, 0x05, 0x0607)),
+        Written(new PcGamePlayForsakeActiveItem(0x03, 0x01, 0x06, 0x07, 0x0809)),
+        Written(new PcGamePlayEatItemBox(
+            0x02,
+            new GameScenarioCommandEatItemBox(0x03, 0x0B, 0x0C0D0E0F, 0x10111213, 0x1415161718191A1B, 0x1C1D, 0x1E1F2021),
+            new GameScenarioCommandTeamGauge(0x04, 0x0C, 0x22232425, 0x26272829, 0x2A, 0x2B2C, 0x2D2E))),
+        Written(new PcGamePlayEatBonusItem(
+            0x05,
+            new GameScenarioCommandEatItemBox(0x06, 0x0B, 0x31323334, 0x35363738, 0x393A3B3C3D3E3F40, 0x4142, 0x43444546),
+            new GameScenarioCommandTeamGauge(0x07, 0x0C, 0x47484950, 0x51525354, 0x55, 0x5657, 0x5859))),
+        Written(new PcGamePlaySetGhostTarget(0x02, -0x03040506, 0x0708090A)),
     ];
 
     [Fact]
@@ -453,6 +476,13 @@ public sealed class ProtocolReplayTests
         [PcGamePlayDeathByDrop.RegistryId] = body => PcGamePlayDeathByDrop.TryRead(body).Packet,
         [PqGamePlayMakeGhost.RegistryId] = body => PqGamePlayMakeGhost.TryRead(body).Packet,
         [PcGamePlayMakeGhost.RegistryId] = body => PcGamePlayMakeGhost.TryRead(body).Packet,
+        [PcGamePlayUseItem.RegistryId] = body => PcGamePlayUseItem.TryRead(body).Packet,
+        [PcGamePlaySpendItem.RegistryId] = body => PcGamePlaySpendItem.TryRead(body).Packet,
+        [PcGamePlayForsakeItem.RegistryId] = body => PcGamePlayForsakeItem.TryRead(body).Packet,
+        [PcGamePlayForsakeActiveItem.RegistryId] = body => PcGamePlayForsakeActiveItem.TryRead(body).Packet,
+        [PcGamePlayEatItemBox.RegistryId] = body => PcGamePlayEatItemBox.TryRead(body).Packet,
+        [PcGamePlayEatBonusItem.RegistryId] = body => PcGamePlayEatBonusItem.TryRead(body).Packet,
+        [PcGamePlaySetGhostTarget.RegistryId] = body => PcGamePlaySetGhostTarget.TryRead(body).Packet,
         [PcGameSessionEndGame.RegistryId] = body => PcGameSessionEndGame.TryRead(body).Packet,
         [PcResultSetReward.RegistryId] = body => PcResultSetReward.TryRead(body).Packet,
         [PqResultRandSelect.RegistryId] = body => PqResultRandSelect.TryRead(body).Packet,

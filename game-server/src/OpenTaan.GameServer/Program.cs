@@ -89,7 +89,7 @@ builder.Services
     .AddOptions<MatchOptions>()
     .Bind(builder.Configuration.GetSection(MatchOptions.Section))
     .ValidateOnStart();
-builder.Services.AddSingleton<IValidateOptions<MatchOptions>, MatchWaitsValidation>();
+builder.Services.AddSingleton<IValidateOptions<MatchOptions>, MatchOptionsValidation>();
 
 builder.Services
     .AddOptions<PlayTimeOptions>()

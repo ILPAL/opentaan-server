@@ -1,6 +1,7 @@
 using OpenTaan.GameServer;
 using OpenTaan.GameServer.Accounts;
 using OpenTaan.GameServer.Channels;
+using OpenTaan.GameServer.Matches;
 using OpenTaan.GameServer.Rooms;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol;
@@ -71,7 +72,8 @@ internal static class Playing
         RoomOptions? rooms = null,
         GameServerOptions? options = null,
         TimeProvider? time = null,
-        Random? random = null) =>
+        Random? random = null,
+        MatchOptions? matches = null) =>
         SessionHarness.Services(
             requireRegistration: false,
             store: new InMemoryAccountStore(0),
@@ -79,6 +81,7 @@ internal static class Playing
             channelOptions: Channels(),
             time: time,
             roomOptions: rooms,
+            matchOptions: matches,
             random: random);
 
     /// <summary>

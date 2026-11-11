@@ -38,18 +38,7 @@ public sealed record PcGamePlayTurnEnd(byte TurnSlot, uint TurnSeed, GameScenari
         reader.ExpectRegistryId(RegistryId);
         var turnSlot = reader.ReadByte();
         var turnSeed = reader.ReadUInt32();
-        var hasTeamGauge = reader.ReadBoolean();
-        GameScenarioCommandTeamGauge? teamGauge = null;
-        if (hasTeamGauge && reader.Error == PacketError.None)
-        {
-            teamGauge = GameScenarioCommand.ReadFrom(ref reader) as GameScenarioCommandTeamGauge;
-            if (teamGauge is null)
-            {
-                // A step of another kind where only a gauge change belongs.
-                reader.Fail(PacketError.UnexpectedValue);
-            }
-        }
-
+        var teamGauge = TeamGaugeChange.ReadOptional(ref reader);
         if (turnSlot >= GameSlotInfo.SlotCount)
         {
             reader.Fail(PacketError.UnexpectedValue);
@@ -66,7 +55,6 @@ public sealed record PcGamePlayTurnEnd(byte TurnSlot, uint TurnSeed, GameScenari
         writer.WriteUInt32(RegistryId);
         writer.WriteByte(TurnSlot);
         writer.WriteUInt32(TurnSeed);
-        writer.WriteBoolean(TeamGauge is not null);
-        TeamGauge?.WriteTo(writer);
+        TeamGaugeChange.WriteOptional(writer, TeamGauge);
     }
 }

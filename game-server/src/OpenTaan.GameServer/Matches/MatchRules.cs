@@ -43,9 +43,6 @@ public static class MatchRules
     /// <summary>The ammunition every turn's character is given.</summary>
     public const ushort TurnAmmo = 10;
 
-    /// <summary>How good the items every turn drops are.</summary>
-    public const uint TurnDropQuality = 20;
-
     /// <summary>The value the end of every turn gives its character to keep, as the reference sessions carry.</summary>
     public const uint TurnSeed = 0;
 
@@ -74,19 +71,28 @@ public static class MatchRules
     public static GameSlotPlayInfo StartOf(byte slot, ushort weaponId) =>
         new(slot, StartX, StartY, IsAirborne: false, StartingHp, StartingHp, Seed: 0, WeaponPlayed(weaponId), MaxAmmo, Field3C: 0, StartingAmmo: 0);
 
-    /// <summary>The start of a turn for the character in slot <paramref name="slot"/>, in a mission's round <paramref name="round"/>.</summary>
-    public static PcGamePlayTurnStart TurnOf(byte slot, ushort round) => new(
-        slot,
-        Field11: 0,
-        TurnWind,
-        TurnAmmo,
-        ItemBoxBudget: 0,
-        RemovedItemBoxes: [],
-        GhostMoves: [],
-        HpUpdates: [],
-        TurnDropQuality,
-        DropQualityByTeam: [0, 0, 0],
-        round);
+    /// <summary>
+    /// The start of a turn for the character in slot <paramref name="slot"/>, at a mission
+    /// level's turn count <paramref name="turnCount"/>: as many item boxes may drop as
+    /// <paramref name="options"/> allow, of the quality they set, and every ghost in
+    /// <paramref name="ghostMoves"/> moves on its way.
+    /// </summary>
+    public static PcGamePlayTurnStart TurnOf(byte slot, ushort turnCount, MatchOptions options, IReadOnlyList<GhostMove> ghostMoves)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return new(
+            slot,
+            Field11: 0,
+            TurnWind,
+            TurnAmmo,
+            options.ItemBoxesPerTurn,
+            RemovedItemBoxes: [],
+            ghostMoves,
+            HpUpdates: [],
+            options.ItemDropQuality,
+            DropQualityByTeam: [0, 0, 0],
+            MissionTurnCount: turnCount);
+    }
 
     /// <summary>The end of the turn of the character in slot <paramref name="slot"/>.</summary>
     public static PcGamePlayTurnEnd TurnEndOf(byte slot) => new(slot, TurnSeed, TeamGauge: null);

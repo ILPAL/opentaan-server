@@ -1,4 +1,5 @@
 using OpenTaan.GameServer.Sessions;
+using OpenTaan.Protocol.GamePlay;
 
 namespace OpenTaan.GameServer.Matches;
 
@@ -42,6 +43,7 @@ internal sealed class Match : IDisposable
     private readonly HashSet<ClientSession> _ready = [];
     private readonly HashSet<ClientSession> _finished = [];
     private readonly Dictionary<byte, (int X, int Y)> _positions = [];
+    private readonly Dictionary<byte, (int X, int Y)> _ghostTargets = [];
     private ITimer? _timer;
 
     /// <summary>A match of mission <paramref name="missionId"/>, started by the characters in <paramref name="players"/>.</summary>
@@ -96,6 +98,13 @@ internal sealed class Match : IDisposable
     /// <summary>When the shot being played arrived.</summary>
     public DateTimeOffset ShotArrived { get; private set; }
 
+    /// <summary>
+    /// The turn count of the level running, which the start of each of its turns carries
+    /// and the client shows: how many shots its players have fired. A pass adds none, and
+    /// every level starts from 0.
+    /// </summary>
+    public ushort TurnCount { get; private set; }
+
     /// <summary>Whether any client has reported the shot being played finished.</summary>
     public bool AnyFinished => _finished.Count > 0;
 
@@ -104,6 +113,7 @@ internal sealed class Match : IDisposable
     {
         Phase = MatchPhase.Opening;
         Step++;
+        TurnCount = 0;
         _ready.Clear();
     }
 
@@ -176,12 +186,13 @@ internal sealed class Match : IDisposable
     public bool HasTurn(byte slot, ClientSession session) =>
         Phase == MatchPhase.Turn && TurnSlot == slot && IsPlayedBy(slot, session) && InPlay(slot);
 
-    /// <summary>Starts waiting for every client to play back the shot the turn's character has just fired.</summary>
+    /// <summary>Starts waiting for every client to play back the shot the turn's character has just fired, which adds one to the level's turn count.</summary>
     /// <param name="now">When the shot arrived.</param>
     public void BeginShot(DateTimeOffset now)
     {
         Phase = MatchPhase.Shot;
         Step++;
+        TurnCount = (ushort)Math.Min(TurnCount + 1, ushort.MaxValue);
         ShotArrived = now;
         HeldLevel = null;
         HeldClear = false;
@@ -226,6 +237,33 @@ internal sealed class Match : IDisposable
     /// <summary>Where the character in <paramref name="slot"/> was last reported standing, or <paramref name="start"/> before any report.</summary>
     public (int X, int Y) PositionOf(byte slot, (int X, int Y) start) => _positions.GetValueOrDefault(slot, start);
 
+    /// <summary>Records where the ghost of the character in <paramref name="slot"/> is to go.</summary>
+    public void AimGhost(byte slot, int x, int y) => _ghostTargets[slot] = (x, y);
+
+    /// <summary>Records where the ghost of the character in <paramref name="slot"/> stopped, and forgets its target once it is there.</summary>
+    public void GhostStopped(byte slot, int x, int y)
+    {
+        Moved(slot, x, y);
+        if (_ghostTargets.TryGetValue(slot, out var target) && target == (x, y))
+        {
+            _ghostTargets.Remove(slot);
+        }
+    }
+
+    /// <summary>
+    /// The move of every ghost that has not reached its target yet, in slot order: from where
+    /// its client last reported it, or <paramref name="start"/> before any report, to its target.
+    /// A ghost that stops short is sent on its way again with every turn, until it arrives.
+    /// </summary>
+    public IReadOnlyList<GhostMove> GhostMoves((int X, int Y) start) =>
+    [
+        .. _ghostTargets
+            .OrderBy(ghost => ghost.Key)
+            .Select(ghost => (Slot: ghost.Key, From: PositionOf(ghost.Key, start), To: ghost.Value))
+            .Where(ghost => ghost.From != ghost.To)
+            .Select(ghost => new GhostMove(ghost.Slot, ghost.From.X, ghost.From.Y, ghost.To.X, ghost.To.Y)),
+    ];
+
     /// <summary>Takes every character <paramref name="session"/> plays out of the match, and returns whether any was still in it.</summary>
     public bool GiveUp(ClientSession session)
     {
@@ -235,10 +273,18 @@ internal sealed class Match : IDisposable
         return wasIn;
     }
 
-    /// <summary>Takes every character <paramref name="session"/> plays out of the match, and stops waiting for its client.</summary>
+    /// <summary>
+    /// Takes every character <paramref name="session"/> plays out of the match, and stops
+    /// waiting for its client. Their ghosts leave the field with them, so none is moved again.
+    /// </summary>
     public void Leave(ClientSession session)
     {
-        _out.UnionWith(SlotsOf(session));
+        foreach (var slot in SlotsOf(session))
+        {
+            _out.Add(slot);
+            _ghostTargets.Remove(slot);
+        }
+
         _ready.Remove(session);
         _finished.Remove(session);
     }

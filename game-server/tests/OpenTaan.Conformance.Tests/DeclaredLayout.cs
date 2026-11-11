@@ -50,6 +50,7 @@ internal static class DeclaredLayout
     private static readonly Dictionary<(string Class, string Field), string[]> InlineObjects = new()
     {
         [("PcGamePlay_SetGhostPos", "position")] = ["i32", "i32"],
+        [("PcGamePlay_SetGhostTarget", "target")] = ["i32", "i32"],
         [("GameSlotPlayInfo", "pos")] = ["i32", "i32"],
         [("GhostMove", "src_pos")] = ["i32", "i32"],
         [("GhostMove", "tgt_pos")] = ["i32", "i32"],
@@ -106,6 +107,9 @@ internal static class DeclaredLayout
         ["PcGamePlay_TurnStart"] = TurnStart,
         ["PcGamePlay_TurnEnd"] = TurnEnd,
         ["PqGamePlay_MakeGhost"] = ghost => ghost.Number("u8", "SlotIndex"),
+        ["PcGamePlay_SpendItem"] = SpendReport,
+        ["PcGamePlay_EatItemBox"] = ItemCatch,
+        ["PcGamePlay_EatBonusItem"] = ItemCatch,
         ["GameRewardExp"] = ExperienceReward,
         ["GameRewardGold"] = GoldReward,
     };
@@ -285,18 +289,47 @@ internal static class DeclaredLayout
         return true;
     }
 
-    // The end of a turn: a gauge change follows a flag of 1, and nothing follows a flag of 0.
+    // The end of a turn: its slot and seed, then a gauge change it may carry.
     private static void TurnEnd(Walk end)
     {
         end.Number("u8", "TurnSlot");
         end.Number("u32", "TurnSeed");
-        if (end.Unpaired("u8") == 1)
+        TeamGauge(end);
+    }
+
+    // The items a shot spent: the slot, the team and the ghost team, then a counted list of
+    // each item and how it was spent, with no id of their own.
+    private static void SpendReport(Walk spend)
+    {
+        spend.Number("u8", "SlotIndex");
+        spend.Number("u8", "Team");
+        spend.Number("u8", "GhostTeam");
+        spend.CountedEach("Items", item =>
         {
-            end.Object("TeamGauge");
+            item.Number("u16", "ItemId");
+            item.Number("u8", "Kind");
+        });
+    }
+
+    // A box caught, or a bonus: the slot, the catch as a step with an id of its own, then a
+    // gauge change it may carry.
+    private static void ItemCatch(Walk caught)
+    {
+        caught.Number("u8", "SlotIndex");
+        caught.Object("Catch");
+        TeamGauge(caught);
+    }
+
+    // A gauge change follows a flag of 1, and nothing follows a flag of 0.
+    private static void TeamGauge(Walk walk)
+    {
+        if (walk.Unpaired("u8") == 1)
+        {
+            walk.Object("TeamGauge");
         }
         else
         {
-            end.Absent("TeamGauge");
+            walk.Absent("TeamGauge");
         }
     }
 
@@ -501,7 +534,7 @@ internal static class DeclaredLayout
 
     // The start of a turn: its slot and values, the item boxes taken off, the ghosts'
     // moves and the health changes as objects of their own, the drop quality, a share for
-    // each team number, and a mission's round.
+    // each team number, and a mission's turn count.
     private static void TurnStart(Walk turn)
     {
         turn.Number("u8", "TurnSlot");
@@ -514,7 +547,7 @@ internal static class DeclaredLayout
         turn.Objects("HpUpdates");
         turn.Number("u32", "DropQuality");
         turn.Numbers("u32", "DropQualityByTeam", 3);
-        turn.Number("u16", "MissionRound");
+        turn.Number("u16", "MissionTurnCount");
     }
 
     // A reward of experience: the fields every reward has, its kind derived by the record

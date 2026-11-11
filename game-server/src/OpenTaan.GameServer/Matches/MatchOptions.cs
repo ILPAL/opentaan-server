@@ -5,12 +5,16 @@ namespace OpenTaan.GameServer.Matches;
 
 /// <summary>Settings bound from the <c>Matches</c> configuration section.</summary>
 /// <remarks>
-/// Each is how long the server waits on players before it goes on without them, so that
-/// one client that stops answering cannot hold up everyone else.
+/// The waits are how long the server waits on players before it goes on without them, so
+/// that one client that stops answering cannot hold up everyone else. The item settings are
+/// what the start of every turn tells the clients.
 /// </remarks>
 public sealed class MatchOptions
 {
     public const string Section = "Matches";
+
+    /// <summary>The highest drop quality the client knows: it holds anything higher to this.</summary>
+    public const uint MaxDropQuality = 100;
 
     /// <summary>
     /// How long a turn waits for its character to shoot or pass before the server passes it.
@@ -49,29 +53,47 @@ public sealed class MatchOptions
     /// </summary>
     public TimeSpan ResultWait { get; set; } = TimeSpan.FromSeconds(25);
 
-    /// <summary>What is wrong with the waits, for the message the server refuses to start with; null when nothing is.</summary>
-    public string? WaitsProblem()
+    /// <summary>
+    /// How many item boxes the shot of each turn may drop. The shooter's client places them
+    /// along its missiles' paths, and the client that catches one draws its item; 0 lets no
+    /// box drop.
+    /// </summary>
+    public byte ItemBoxesPerTurn { get; set; } = 1;
+
+    /// <summary>
+    /// How good the items the clients draw are, from 0 to 100: higher makes the rarer
+    /// items likelier. The reference sessions carry 20.
+    /// </summary>
+    public uint ItemDropQuality { get; set; } = 20;
+
+    /// <summary>What is wrong with the settings, for the message the server refuses to start with; null when nothing is.</summary>
+    public string? Problem()
     {
         if (new[] { LevelReadyWait, TurnWait, ShotWait, LongestShot, ResultWait }.Any(wait => wait <= TimeSpan.Zero))
         {
             return $"Every wait in {Section} must be positive";
         }
 
-        return TurnWait > MatchRules.ClientTurnLength
-            ? null
-            : string.Create(
+        if (TurnWait <= MatchRules.ClientTurnLength)
+        {
+            return string.Create(
                 CultureInfo.InvariantCulture,
                 $"{Section}:{nameof(TurnWait)} must be longer than the client's own turn, {MatchRules.ClientTurnLength.TotalSeconds} seconds, or it cuts turns the client still counts");
+        }
+
+        return ItemDropQuality <= MaxDropQuality
+            ? null
+            : $"{Section}:{nameof(ItemDropQuality)} must be from 0 to {MaxDropQuality}";
     }
 }
 
-/// <summary>Refuses match settings whose waits <see cref="MatchOptions.WaitsProblem"/> finds wrong, naming what is wrong.</summary>
-public sealed class MatchWaitsValidation : IValidateOptions<MatchOptions>
+/// <summary>Refuses match settings <see cref="MatchOptions.Problem"/> finds wrong, naming what is wrong.</summary>
+public sealed class MatchOptionsValidation : IValidateOptions<MatchOptions>
 {
     /// <inheritdoc/>
     public ValidateOptionsResult Validate(string? name, MatchOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return options.WaitsProblem() is { } problem ? ValidateOptionsResult.Fail(problem) : ValidateOptionsResult.Success;
+        return options.Problem() is { } problem ? ValidateOptionsResult.Fail(problem) : ValidateOptionsResult.Success;
     }
 }

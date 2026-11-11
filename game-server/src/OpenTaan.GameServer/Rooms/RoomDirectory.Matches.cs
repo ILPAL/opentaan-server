@@ -318,7 +318,7 @@ public sealed partial class RoomDirectory
     {
         var slot = match.StartTurn();
         ArmTurnWaitLocked(room, match);
-        SendToRoomLocked(room, MatchRules.TurnOf(slot, round: 0));
+        SendToRoomLocked(room, MatchRules.TurnOf(slot, match.TurnCount, matchOptions.Value, match.GhostMoves(MatchRules.StartPosition)));
         LogTurnStarted(logger, room.Number, match.Levels.Current, slot);
     }
 

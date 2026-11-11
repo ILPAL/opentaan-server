@@ -135,11 +135,15 @@ public sealed partial class PacketDispatcher
             // enemies, the same ones every client in the room names.
             [PqGameSessionReportEnemies.RegistryId] = Route.ReadAndDropped<PqGameSessionReportEnemies>(PqGameSessionReportEnemies.TryRead),
 
-            // Reports this server has no use for yet: an item picked up and where a ghost
-            // stopped, from the tutorial, which the client plays alone, and from a match,
-            // whose items and ghosts are not played yet.
-            [PcGamePlayNotifyEatItem.RegistryId] = Route.ReadAndDropped<PcGamePlayNotifyEatItem>(PcGamePlayNotifyEatItem.TryRead),
-            [PcGamePlaySetGhostPos.RegistryId] = Route.ReadAndDropped<PcGamePlaySetGhostPos>(PcGamePlaySetGhostPos.TryRead),
+            [PcGamePlayUseItem.RegistryId] = Route.To<PcGamePlayUseItem>(PcGamePlayUseItem.TryRead, matches.UseItemAsync),
+            [PcGamePlaySpendItem.RegistryId] = Route.To<PcGamePlaySpendItem>(PcGamePlaySpendItem.TryRead, matches.SpendItemAsync),
+            [PcGamePlayForsakeItem.RegistryId] = Route.To<PcGamePlayForsakeItem>(PcGamePlayForsakeItem.TryRead, matches.ForsakeItemAsync),
+            [PcGamePlayForsakeActiveItem.RegistryId] = Route.To<PcGamePlayForsakeActiveItem>(PcGamePlayForsakeActiveItem.TryRead, matches.ForsakeActiveItemAsync),
+            [PcGamePlayEatItemBox.RegistryId] = Route.To<PcGamePlayEatItemBox>(PcGamePlayEatItemBox.TryRead, matches.EatItemBoxAsync),
+            [PcGamePlayEatBonusItem.RegistryId] = Route.To<PcGamePlayEatBonusItem>(PcGamePlayEatBonusItem.TryRead, matches.EatBonusItemAsync),
+            [PcGamePlayNotifyEatItem.RegistryId] = Route.To<PcGamePlayNotifyEatItem>(PcGamePlayNotifyEatItem.TryRead, matches.NotifyEatItemAsync),
+            [PcGamePlaySetGhostTarget.RegistryId] = Route.To<PcGamePlaySetGhostTarget>(PcGamePlaySetGhostTarget.TryRead, matches.SetGhostTargetAsync),
+            [PcGamePlaySetGhostPos.RegistryId] = Route.To<PcGamePlaySetGhostPos>(PcGamePlaySetGhostPos.TryRead, matches.SetGhostPosAsync),
         };
     }
 

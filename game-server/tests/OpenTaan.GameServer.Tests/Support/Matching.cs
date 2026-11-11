@@ -117,8 +117,9 @@ internal static class Matching
         }
     }
 
+    /// <summary>Each of <paramref name="players"/> is told that a level's first turn starts, the turn of the character in <paramref name="slot"/>, at a turn count of 0.</summary>
     public static Task TurnToldAsync(byte slot, params Player[] players) =>
-        EveryoneToldAsync(MatchRules.TurnOf(slot, round: 0), PcGamePlayTurnStart.TryRead, players);
+        EveryoneToldAsync(MatchRules.TurnOf(slot, turnCount: 0, SessionHarness.ShippedMatchOptions(), []), PcGamePlayTurnStart.TryRead, players);
 
     /// <summary>
     /// Starts a mission with <paramref name="host"/> and <paramref name="guest"/>, begins its
@@ -179,13 +180,31 @@ internal static class Matching
         }
     }
 
-    /// <summary>Each of <paramref name="players"/> is told the turn of the character in <paramref name="from"/> ends, then the turn of the one in <paramref name="to"/> starts.</summary>
-    public static async Task TurnPassedAsync(byte from, byte to, params Player[] players)
+    /// <summary>
+    /// Each of <paramref name="players"/> is told the turn of the character in <paramref name="from"/>
+    /// ends, then the turn of the one in <paramref name="to"/> starts, in a level no shot has
+    /// counted toward yet.
+    /// </summary>
+    public static Task TurnPassedAsync(byte from, byte to, params Player[] players) => TurnPassedAsync(from, to, turnCount: 0, ghostMoves: [], players);
+
+    /// <summary>
+    /// Each of <paramref name="players"/> is told the turn of the character in <paramref name="from"/>
+    /// ends, then the turn of the one in <paramref name="to"/> starts, at turn count
+    /// <paramref name="turnCount"/>: the shots the level's players have fired.
+    /// </summary>
+    public static Task TurnPassedAsync(byte from, byte to, ushort turnCount, params Player[] players) => TurnPassedAsync(from, to, turnCount, ghostMoves: [], players);
+
+    /// <summary>
+    /// Each of <paramref name="players"/> is told the turn of the character in <paramref name="from"/>
+    /// ends, then the turn of the one in <paramref name="to"/> starts, at turn count
+    /// <paramref name="turnCount"/>, with <paramref name="ghostMoves"/>.
+    /// </summary>
+    public static async Task TurnPassedAsync(byte from, byte to, ushort turnCount, IReadOnlyList<GhostMove> ghostMoves, params Player[] players)
     {
         foreach (var player in players)
         {
             Assert.Equal(MatchRules.TurnEndOf(from), await player.ReceiveAsync<PcGamePlayTurnEnd>(PcGamePlayTurnEnd.TryRead));
-            Assert.Equal(MatchRules.TurnOf(to, round: 0), await player.ReceiveAsync<PcGamePlayTurnStart>(PcGamePlayTurnStart.TryRead));
+            Assert.Equal(MatchRules.TurnOf(to, turnCount, SessionHarness.ShippedMatchOptions(), ghostMoves), await player.ReceiveAsync<PcGamePlayTurnStart>(PcGamePlayTurnStart.TryRead));
         }
     }
 
