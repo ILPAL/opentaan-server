@@ -241,7 +241,7 @@ moment sees each change exactly once: in the room it is sent, or after it.
   match. Any weapon is kept as the client sends it, its random pick included: the
   weapons come from the client's own files, and the match decides what a random
   pick becomes.
-- **Options:** the host changes the room's rules, chances and map, or a mission's
+- **Options:** the host changes the room's game mode, chances and map, or a mission's
   difficulty, within what the client's options dialog offers: in a room of teams a
   map the client lists for the channel's mode (`Rooms:MapsByChannelMode`), its
   random picks included, which stay as picked until the match decides them; in a
@@ -259,6 +259,20 @@ moment sees each change exactly once: in the room it is sent, or after it.
 
 The slots keep every change, so a player entering later is shown who is ready, on
 which team, with which weapon.
+
+A room's game mode sets the rules its matches are played by. The client sends it as
+a number, and the server's code names each one (`GameMode`):
+
+| Mode | Name | Rules |
+|---|---|---|
+| `0` | `Items` | Items in play. |
+| `1` | `NoItems` | No items. |
+| `2` | `CaptainItems` | Items in play, and each team has a captain. |
+| `3` | `CaptainNoItems` | No items, and each team has a captain. |
+
+A mission room plays `Items` alone, the only mode the client's mode picker offers
+it. A room of teams may have any of the four, and its matches are played in `Items`
+and `NoItems` for now: matches with captains come later.
 
 ## Matches
 
@@ -283,8 +297,9 @@ Matches with captains and missions whose enemies fight back come next.
     might not have is never started: it would leave every client in the room without
     a map, which is why the host's options take only `Rooms:Missions`.
   - A match between teams starts only between teams of the same size, as the host's
-    client checks itself, and not yet with captains: in modes 2 and 3 the client
-    asks for the captains first, which comes later. It is played on the room's map.
+    client checks itself, and not yet with captains: in `CaptainItems` and
+    `CaptainNoItems` (modes 2 and 3) the client asks for the captains first, which
+    comes later. It is played on the room's map.
     The client cannot load one of its own random picks, `200` to `203`, so a room on
     one is played on a map drawn evenly at every start from the pick's group among
     the maps of the channel's mode (`Rooms:RandomMaps`) and the extras every pick
@@ -344,7 +359,7 @@ Matches with captains and missions whose enemies fight back come next.
   client has played it back, since the shot may kill more.
 - **Items:** the clients decide every item, for now. The start of every turn tells
   them how many item boxes the turn's shot may drop, `Matches:ItemBoxesPerTurn`, or
-  none in a match without items, and how good the items are, `Matches:ItemDropQuality`; the shooter's client places the
+  none in a match without items (`NoItems` or `CaptainNoItems`, modes 1 and 3), and how good the items are, `Matches:ItemDropQuality`; the shooter's client places the
   boxes along its missiles' paths, and the client that catches one, or whose
   character is given a bonus at the end of its turn, draws the item. A box a missile
   catches is a step of its shot; a box a ghost catches is sent on its own. A client
@@ -486,7 +501,7 @@ variables, for example `GameServer__Port=2181`:
 | `Matches:ShotWait` | `00:00:05` | How long a shot waits, once the first client has played it back, for every other client to finish it. |
 | `Matches:LongestShot` | `00:01:00` | How long a shot may wait in all, from its arrival, in case no client reports it played back. |
 | `Matches:ResultWait` | `00:00:25` | How long after a match's end its room waits for every player's result card before it waits for players again. |
-| `Matches:ItemBoxesPerTurn` | `1` | How many item boxes each turn's shot may drop, as the start of the turn tells every client; the shooter's client places them. `0` lets none drop, and none drop in a match without items. |
+| `Matches:ItemBoxesPerTurn` | `1` | How many item boxes each turn's shot may drop, as the start of the turn tells every client; the shooter's client places them. `0` lets none drop, and none drop in a match without items (`NoItems` or `CaptainNoItems`, modes 1 and 3). |
 | `Matches:ItemDropQuality` | `20` | How good the items the clients draw are, from `0` to `100`, as the start of every turn tells them: higher makes the rarer items likelier. Above `100` the server refuses to start, since the client would hold it to `100`. |
 | `Portraits:Folder` | none | Where the pictures clients send of their characters are kept. A relative path is taken from the content root. |
 | `Characters:CreatorParts` | `1, 3, 5, 8` | The appearance parts the client's character creator offers; a new character keeps only these. |
