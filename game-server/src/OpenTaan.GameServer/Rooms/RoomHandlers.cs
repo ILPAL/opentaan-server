@@ -180,10 +180,7 @@ public sealed partial class RoomHandlers(
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(request);
 
-        var maps = channels.ChannelOf(session) is { } channelId && channels.ModeOf(channelId) is { } mode
-            ? options.Value.MapsFor(mode)
-            : [];
-        LogUnless(session, nameof(PqGameSessionChangeGameOption), rooms.ChangeOptions(session, request, maps));
+        LogUnless(session, nameof(PqGameSessionChangeGameOption), rooms.ChangeOptions(session, request, options.Value.MapsFor(channels.ModeOf(session))));
         return ValueTask.CompletedTask;
     }
 

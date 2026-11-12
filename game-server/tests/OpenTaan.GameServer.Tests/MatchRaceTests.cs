@@ -120,6 +120,56 @@ public sealed class MatchRaceTests
     }
 
     [Fact]
+    public async Task TheLastTwoClientsReportingAMatchBetweenTeamsLoadedAtOnceStartItsFirstTurnOnce()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            var services = Services(time: new ManualTime());
+            await using var host = await ArriveAsync(services, ChannelId, "Kimi");
+            await using var guest = await ArriveAsync(services, ChannelId, "Rồng");
+            await TeamRoomAsync(host, guest);
+            await StartedAsync(host, host, guest);
+
+            await Task.WhenAll(host.SendAsync(Loading(0)), guest.SendAsync(Loading(2)));
+
+            await TurnToldAsync(0, GameMode.Items, host, guest);
+            await QuietAsync(host, guest);
+        }
+    }
+
+    [Fact]
+    public async Task AClientLeavingAsTheLastOtherReportsAMatchBetweenTeamsLoadedStartsItsFirstTurnOnce()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            var services = Services(time: new ManualTime());
+            await using var host = await ArriveAsync(services, ChannelId, "Kimi");
+            await using var second = await ArriveAsync(services, ChannelId, "Rồng");
+            await using var third = await ArriveAsync(services, ChannelId, "Linh");
+            await using var fourth = await ArriveAsync(services, ChannelId, "Hoang");
+            await TeamRoomAsync(host, second, third, fourth);
+            await StartedAsync(host, host, second, third, fourth);
+            await host.SendAsync(Loading(0));
+            await second.SendAsync(Loading(2));
+            await QuietAsync(host, second, third, fourth);
+
+            // The third, in slot 1, leaves as the fourth, in slot 3, reports: the turn starts
+            // once both are done, whichever comes first.
+            await Task.WhenAll(third.SendAsync(new PqGameSessionLeave(0, Reason: 0)), fourth.SendAsync(Loading(3)));
+
+            Assert.Equal(LeaveResult.Left, (await third.ReceiveAsync<PrGameSessionLeave>(PrGameSessionLeave.TryRead)).Result);
+            foreach (var player in new[] { host, second, fourth })
+            {
+                Assert.Equal(new PcGamePlayLeaveUser(1), await player.ReceiveAsync<PcGamePlayLeaveUser>(PcGamePlayLeaveUser.TryRead));
+                await player.ReceiveAsync<PcGameSessionUpdateSlot>(PcGameSessionUpdateSlot.TryRead);
+            }
+
+            await TurnToldAsync(0, GameMode.Items, host, second, fourth);
+            await QuietAsync(host, second, third, fourth);
+        }
+    }
+
+    [Fact]
     public async Task TwoPlayersPickingTheSameCardAtOnceTurnItOverForOneAndRefuseItToTheOther()
     {
         var winners = new int[2];

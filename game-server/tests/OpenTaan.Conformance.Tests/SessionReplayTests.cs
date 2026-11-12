@@ -3,12 +3,14 @@ using System.Buffers.Binary;
 using System.Reflection;
 using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Characters;
+using OpenTaan.GameServer.Matches;
 using OpenTaan.GameServer.Rooms;
 using OpenTaan.Protocol;
 using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Channels;
 using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.Data;
+using OpenTaan.Protocol.GamePlay;
 using OpenTaan.Protocol.Lobby;
 using OpenTaan.Protocol.Matches;
 using OpenTaan.Protocol.Rooms;
@@ -81,13 +83,16 @@ namespace OpenTaan.Tests.Conformance;
 /// every other byte is still compared as recorded.
 /// </para>
 /// <para>
-/// Two kinds of step end the session's replay, as this server answers them differently by
-/// design. A host starting a match between teams is not answered yet. And a client
-/// reporting a mission level ready before any level was asked for is not answered: the
-/// recordings report level 0 ready first and ask for level 1 after, where a real client
-/// asks for level 1 once it has loaded, and reports a level ready once it has been told the
-/// level begins. The match's seed and its automatic card picks are drawn as the recordings
-/// have them, 0 and the first card left.
+/// Three kinds of step end the session's replay, as this server answers them differently by
+/// design. A client reporting a mission level ready before any level was asked for is not
+/// answered: the recordings report level 0 ready first and ask for level 1 after, where a
+/// real client asks for level 1 once it has loaded, and reports a level ready once it has
+/// been told the level begins. A box a ghost catches is passed on to every client, the
+/// catcher's included, where the recordings answer none. And a player giving up is not
+/// passed on, since no client has anything to do with it, and the match's end pays no
+/// reward yet, where the recordings pass it on and pay one. The match's seed and its
+/// automatic card picks are drawn as the recordings have them, 0 and the first card left,
+/// and the start of each turn lets no item box drop, as theirs do.
 /// </para>
 /// <para>
 /// One recorded answer is replaced by design: a channel move answered with a reconnect.
@@ -120,6 +125,10 @@ public sealed class SessionReplayTests
             SupportMedals = 1,
         },
     };
+
+    // The match settings the sessions were recorded with: the shipped ones, with no item
+    // box dropped by any turn's shot.
+    private static readonly MatchOptions RecordedMatchOptions = RecordedMatchSettings();
 
     // Every packet this server has a codec for, by registry id.
     private static readonly HashSet<uint> Implemented =
@@ -164,6 +173,7 @@ public sealed class SessionReplayTests
             handshakeKeys: () => new HandshakeKeys(nextHandshake!.FirstSeed, nextHandshake.SecondSeed, nextHandshake.Shift),
             characterOptions: RecordedCharacterOptions,
             channelOptions: RecordedChannelOptions(session),
+            matchOptions: RecordedMatchOptions,
             random: new RecordedChance());
 
         var connections = new Dictionary<string, Connection>(StringComparer.Ordinal);
@@ -231,7 +241,8 @@ public sealed class SessionReplayTests
                     continue;
                 }
 
-                if (IsAnsweredDifferentlyByDesign(body, services.Rooms.RoomOf(connection.Session), recordedValues))
+                var roomNumber = services.Rooms.RoomOf(connection.Session);
+                if (IsAnsweredDifferentlyByDesign(body, recordedValues))
                 {
                     break;
                 }
@@ -249,7 +260,7 @@ public sealed class SessionReplayTests
                     }
                     else
                     {
-                        Compare(failures, where, recordedValues.Adjusted(recorded), await ReceiveComparedAsync(connections[to]));
+                        Compare(failures, where, recordedValues.Adjusted(recorded, roomNumber), await ReceiveComparedAsync(connections[to]));
                     }
 
                     compared++;
@@ -352,15 +363,21 @@ public sealed class SessionReplayTests
         }
     }
 
-    // A host starting a match between teams, or a client reporting a mission level ready
-    // that no recorded step has begun; see the remarks.
-    private static bool IsAnsweredDifferentlyByDesign(byte[] body, ushort? roomNumber, RecordedValues recordedValues) =>
+    // A client reporting a mission level ready that no recorded step has begun, a box a
+    // ghost caught, or a player giving up; see the remarks.
+    private static bool IsAnsweredDifferentlyByDesign(byte[] body, RecordedValues recordedValues) =>
         RegistryIdOf(body) switch
         {
-            var id when id == PqGameSessionStartGame.RegistryId => roomNumber is not { } number || !recordedValues.IsMissionRoom(number),
             var id when id == PqGameSessionMissionLevelReady.RegistryId => !recordedValues.HasBegun(PqGameSessionMissionLevelReady.TryRead(body).Packet!.Level),
-            _ => false,
+            var id => id == PcGamePlayEatItemBox.RegistryId || id == PcGamePlayGiveUp.RegistryId,
         };
+
+    private static MatchOptions RecordedMatchSettings()
+    {
+        var options = SessionHarness.ShippedMatchOptions();
+        options.ItemBoxesPerTurn = 0;
+        return options;
+    }
 
     private static bool IsThrottleRefusal(Exchange exchange) =>
         exchange.Frames.Count == 1
@@ -430,8 +447,11 @@ public sealed class SessionReplayTests
             }
         }
 
-        /// <summary><paramref name="recorded"/>, with the adjustments the remarks above describe.</summary>
-        public byte[] Adjusted(byte[] recorded)
+        /// <summary>
+        /// <paramref name="recorded"/>, sent in answer to a request from a participant in room
+        /// <paramref name="roomNumber"/>, or in none, with the adjustments the remarks above describe.
+        /// </summary>
+        public byte[] Adjusted(byte[] recorded, ushort? roomNumber)
         {
             var adjusted = new ArrayBufferWriter<byte>();
             switch (RegistryIdOf(recorded))
@@ -471,8 +491,10 @@ public sealed class SessionReplayTests
                     new PcGameSessionUpdateSlot(update.Change, WithGender(update.Slot), update.TeamName).Write(adjusted);
                     break;
 
-                // Only a mission's start is compared: a start between teams ends the replay first.
+                // A mission's start: a start between teams lists both teams, as recorded.
                 case var id when id == PcGameSessionStartGame.RegistryId
+                                 && roomNumber is { } number
+                                 && IsMissionRoom(number)
                                  && PcGameSessionStartGame.TryRead(recorded).Packet is { } start:
                     new PcGameSessionStartGame(
                         start.MapId,

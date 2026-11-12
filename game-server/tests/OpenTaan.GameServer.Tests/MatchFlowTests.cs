@@ -71,15 +71,13 @@ public sealed class MatchFlowTests
     }
 
     [Fact]
-    public async Task AStartIsDroppedWhileAGuestIsNotReadyOrFromAGuestOrInARoomOfTeams()
+    public async Task AStartIsDroppedWhileAGuestIsNotReadyOrFromAGuest()
     {
         var services = Services();
         await using var host = await ArriveAsync(services, ChannelId, "Kimi");
         await using var guest = await ArriveAsync(services, ChannelId, "Rồng");
-        await using var teamHost = await ArriveAsync(services, ChannelId, "Linh");
         var number = (await CreatedAsync(host, Requested(gameType: GameType.Mission))).Room.RoomNumber;
         await SeatedAsync(guest, number, host);
-        await CreatedAsync(teamHost);
 
         await host.SendAsync(new PqGameSessionStartGame());
         await QuietAsync(host, guest);
@@ -88,10 +86,6 @@ public sealed class MatchFlowTests
         await ReadyToldAsync(guest, host, guest);
         await guest.SendAsync(new PqGameSessionStartGame());
         await QuietAsync(host, guest);
-
-        // Matches between teams are not played yet; its host alone in it.
-        await teamHost.SendAsync(new PqGameSessionStartGame());
-        await QuietAsync(host, guest, teamHost);
     }
 
     [Fact]

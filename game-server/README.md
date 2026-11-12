@@ -41,8 +41,9 @@ it is allowed, and the room packets: creating, entering, quick-joining and
 leaving a room, the room as a player is sent it, with its slots and its host,
 the changes a room is told of, the lobby's room list and the players in a room,
 what players do in a room: being ready, changing team and weapon, the host's
-options, opening and closing slots, and expelling a player, and a mission's match:
-starting it, how each character starts, loading it, its levels, its turns (a shot
+options, opening and closing slots, and expelling a player, and a match, a
+mission's or one between teams: starting it, how each character starts, loading it,
+a mission's levels, its turns (a shot
 and every kind of step in it, a shot played back, the end and start of a turn, a
 pass, a walk, a place, a fall and a ghost), its items and ghosts (an item used, the
 items a shot spent, an item thrown away, an item in use taken off, a box caught, a
@@ -261,8 +262,8 @@ which team, with which weapon.
 
 ## Matches
 
-A mission room's match is played from its start to its result screen, turn by
-turn. The clients play the game: the shooter's client works a shot out and plays
+A match, a mission's or one between teams, is played from its start to its result
+screen, turn by turn. The clients play the game: the shooter's client works a shot out and plays
 it, every other client plays it back from what it sends, and each client walks and
 places its own characters and reports their deaths. The server keeps the turns:
 whose turn it is, what the turn's character may do, when the turn ends and who has
@@ -270,17 +271,34 @@ the next, and when the match is over. What a client tells of how its own charact
 play goes to every other client in the match as it came, and never back to its
 sender: a client sends on any shot, pass or fall it is given that names one of its
 own slots, so a copy back would come round again. Items go the other way, as below.
-Matches between teams and missions whose enemies fight back come next.
+Matches with captains and missions whose enemies fight back come next.
 
-- **Starting:** the host starts once every guest is ready; a host alone may start.
-  Everyone in the room is told how each character starts, and only the characters,
-  in the mission the room plays, laid out from a seed drawn for this match. Every
-  client lays the mission out from that seed, so all of them lay it out alike. A
-  random weapon is played as the dragon. A mission the client might not have is
-  never started: it would leave every client in the room without a map, which is
-  why the host's options take only `Rooms:Missions`. The lobby shows the room
-  playing, and no one enters it until it waits again. A start the rules do not
-  allow is not answered: the client waits on none.
+- **Starting:** the host starts once every guest is ready. Everyone in the room is
+  told how each character starts, and only the characters. A random weapon is
+  played as the dragon. The lobby shows the room playing, and no one enters it until
+  it waits again. A start the rules do not allow is not answered: the client waits
+  on none.
+  - A mission room's host alone may start. The mission is laid out from a seed drawn
+    for this match, from which every client lays it out alike. A mission the client
+    might not have is never started: it would leave every client in the room without
+    a map, which is why the host's options take only `Rooms:Missions`.
+  - A match between teams starts only between teams of the same size, as the host's
+    client checks itself, and not yet with captains: in modes 2 and 3 the client
+    asks for the captains first, which comes later. It is played on the room's map.
+    The client cannot load one of its own random picks, `200` to `203`, so a room on
+    one is played on a map drawn evenly at every start from the pick's group among
+    the maps of the channel's mode (`Rooms:RandomMaps`) and the extras every pick
+    may draw (`Rooms:RandomMapExtras`). The room still shows the pick, and its next
+    match draws again.
+- **Loading:** a client reports a match between teams loaded once its camera has
+  toured every character, two seconds each, and a turn reaching it before that sets
+  its tour going again over the turn. So the match's first turn waits until every
+  client has reported, but no longer than `Matches:LoadWait` once the first has,
+  since every client tours the same characters at the same pace, and no longer than
+  `Matches:LongestLoad` from the start in all. It goes to the lowest character still
+  in the match. A report counts for its client whatever slots it names, since only
+  the client knows it has loaded; where it says characters stand is taken only when
+  they are its own. A mission's first turn waits for its first level instead.
 - **Levels:** every client asks for each level: the first once it has loaded, each
   next one as it finishes playing back the shot that brings its own count of kills
   to the level's target, and one past the last once the mission is cleared. Only
@@ -298,8 +316,10 @@ Matches between teams and missions whose enemies fight back come next.
   `Matches:LevelReadyWait` at most, so one stuck client cannot hold up the rest. The
   first level's goes to the lowest character still in the match, a later level's to
   the next character after the one whose shot finished the level before.
-- **Turns:** characters take turns in slot order, round again from the lowest,
-  skipping every character out of the match. The turn's character may walk and be
+- **Turns:** the teams take turns, each going through its characters still in the
+  match in slot order, round again from its lowest: two against two in slots 0 and 1
+  against 2 and 3 play 0, 2, 1, 3. A team with nobody left in play is passed over,
+  so a mission's players, all on one team, go in slot order. The turn's character may walk and be
   placed, which goes to the others, then shoot once or pass. A shot is taken only
   for the turn's character, from its own client: any other would play on every other
   screen while no turn was its. It goes to the others, and the turn ends once every
@@ -318,13 +338,13 @@ Matches between teams and missions whose enemies fight back come next.
 - **Deaths:** a character that dies in a shot is reported by its own client as it
   plays the shot back, before it reports the shot played back; one that falls while
   walking is reported by its own client, and the fall goes to the others. Everyone
-  is told the character is a ghost, once, where its client last reported it
-  standing: once loaded, walking, placed or passing. A turn whose character is out
+  is told the character is a ghost of its team, once, where its client last
+  reported it standing: once loaded, walking, placed or passing. A turn whose character is out
   of the match passes on at once, but during a shot nothing is decided until every
   client has played it back, since the shot may kill more.
 - **Items:** the clients decide every item, for now. The start of every turn tells
-  them how many item boxes the turn's shot may drop, `Matches:ItemBoxesPerTurn`, and
-  how good the items are, `Matches:ItemDropQuality`; the shooter's client places the
+  them how many item boxes the turn's shot may drop, `Matches:ItemBoxesPerTurn`, or
+  none in a match without items, and how good the items are, `Matches:ItemDropQuality`; the shooter's client places the
   boxes along its missiles' paths, and the client that catches one, or whose
   character is given a bonus at the end of its turn, draws the item. A box a missile
   catches is a step of its shot; a box a ghost catches is sent on its own. A client
@@ -346,11 +366,15 @@ Matches between teams and missions whose enemies fight back come next.
   for two minutes, for all of its characters at once; the player stays and sees
   the match end. A player leaving, or its connection closing, is taken off everyone
   else's field, then out of the room as it would be from a waiting room, and is no
-  longer waited for. Either way a turn that was theirs passes on. A match whose
-  every character has given up, left or died is lost.
+  longer waited for. Either way a turn that was theirs passes on. A team whose
+  every character has given up, left or died loses. The other clients are not told
+  of a give-up, since the client does nothing with one: the character stays on
+  their fields, and its turns pass on at once.
 - **The end:** a cleared mission is won, even by a shot that also killed the last
-  player, and a lost one is the mission's; a shot's outcome is decided once every
-  client has played it back. Everyone still
+  player, and a lost one is the mission's. A match between teams is won by the
+  other team once one has nobody left in play, and when one shot takes the last of
+  both teams out, by the team whose character fired it: the client shows no draw. A
+  shot's outcome is decided once every client has played it back. Everyone still
   in the room is sent the result screen's cards, then the result, which builds the
   screen from the cards, so the cards always come first. Nothing about the match's
   turns is answered once it is over, since the client would act on it and leave its
@@ -421,10 +445,12 @@ dotnet run --project src/OpenTaan.GameServer
 This runs in the Development environment, where any login creates the account
 it names (`Accounts:RequireRegistration` is off). A real client can log in,
 create and select a character, pick a channel, enter its lobby, create, enter and
-leave rooms, do everything a waiting room offers, start a mission and play it turn
-by turn: walk, shoot, pass, die, see each level begin, clear the mission or lose it,
-catch, use and throw away items, send its ghost about, give up or leave, and see its
-result screen and pick a card. Matches between teams are the next stage. The server
+leave rooms, do everything a waiting room offers, start a mission or a match
+between two teams of the same size and play it turn by turn: walk, shoot, pass,
+die, see each level begin, clear the mission or lose it, win or lose against the
+other team, catch, use and throw away items, send its ghost about, give up or
+leave, and see its result screen and pick a card. Matches with captains come
+later. The server
 refuses to start with registration off in any other environment. Accounts,
 characters and rooms live in memory until the database stage.
 
@@ -450,13 +476,17 @@ variables, for example `GameServer__Port=2181`:
 | `Rooms:MaxPerChannel` | `500` | Rooms one channel may hold at once; a request to create one more is refused. |
 | `Rooms:MaxNameLength` | `128` | The longest room name, in UTF-16 code units, a request to create a room may carry. At most 1000, so every room reply fits a frame. |
 | `Rooms:MapsByChannelMode` | mode `6`: maps `1` to `21` and the random picks `200` to `203` | The maps the host of a room of teams may pick, by the mode of the room's channel: those the client's own map list offers in that mode. Every mode `Channels:List` uses needs a list, or the server refuses to start. |
+| `Rooms:RandomMaps` | `200`: maps `1` to `21`; `201`: `7, 8, 12, 14, 19, 20`; `202`: maps `1` to `21` but `3, 6, 12, 15`; `203`: `3, 6, 12, 13, 15, 21` | For each of the client's random picks, its group of maps, as the client's own map table has them: a match on the pick is played on a map drawn evenly from the group's maps that the channel's mode offers, and the extras. The server refuses to start if a random pick a mode offers has no map to draw from there, if a map that is no random pick has a group, or if a group or the extras hold a random pick. |
+| `Rooms:RandomMapExtras` | `300, 500` | Maps every random pick may also be played on: maps the client can load but never offers a host. |
 | `Rooms:Missions` | mission `0`, of `4` levels | The missions a mission room may play, by number, each with its number of levels: those the client's own mission list offers. Must hold mission `0`, which every new mission room plays until its host picks another, and give each mission 1 to 254 levels. |
 | `Matches:LevelReadyWait` | `00:00:10` | How long a mission level's first turn waits for every client to report the level's opening over. |
+| `Matches:LoadWait` | `00:00:05` | How long the first turn of a match between teams waits, once the first client has reported the match loaded, for every other client to report it too. |
+| `Matches:LongestLoad` | `00:00:30` | How long the first turn of a match between teams may wait in all, from the start, in case no client reports the match loaded. Must be longer than the client's tour of a full room's characters, 16 seconds, or the server refuses to start: every full match would start before any client had loaded it. |
 | `Matches:TurnWait` | `00:00:25` | How long a turn waits for its character to shoot or pass before the server passes it. Must be longer than the client's own turn of 15.9 seconds, after which it passes for its player, or the server refuses to start: a turn cut while its client still counts would leave a last-second shot on its shooter's screen alone. |
 | `Matches:ShotWait` | `00:00:05` | How long a shot waits, once the first client has played it back, for every other client to finish it. |
 | `Matches:LongestShot` | `00:01:00` | How long a shot may wait in all, from its arrival, in case no client reports it played back. |
 | `Matches:ResultWait` | `00:00:25` | How long after a match's end its room waits for every player's result card before it waits for players again. |
-| `Matches:ItemBoxesPerTurn` | `1` | How many item boxes each turn's shot may drop, as the start of the turn tells every client; the shooter's client places them. `0` lets none drop. |
+| `Matches:ItemBoxesPerTurn` | `1` | How many item boxes each turn's shot may drop, as the start of the turn tells every client; the shooter's client places them. `0` lets none drop, and none drop in a match without items. |
 | `Matches:ItemDropQuality` | `20` | How good the items the clients draw are, from `0` to `100`, as the start of every turn tells them: higher makes the rarer items likelier. Above `100` the server refuses to start, since the client would hold it to `100`. |
 | `Portraits:Folder` | none | Where the pictures clients send of their characters are kept. A relative path is taken from the content root. |
 | `Characters:CreatorParts` | `1, 3, 5, 8` | The appearance parts the client's character creator offers; a new character keeps only these. |
