@@ -98,6 +98,7 @@ local development only; the browser client uses authorization code with PKCE.
 | | Build and test | Needs |
 |---|---|---|
 | Game server | `cd game-server && dotnet test --solution OpenTaan.GameServer.slnx` | .NET SDK 10.0.201+ |
+| Game server, run alone | `cd game-server && dotnet run --project src/OpenTaan.GameServer` (Development: any login creates its account) | .NET SDK 10.0.201+ |
 | Admin server | `cd admin-server && ./mvnw verify` | JDK 25 (integration tests also need Docker) |
 
 Each service has its own README with the details.
