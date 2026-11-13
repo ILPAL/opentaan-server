@@ -453,9 +453,25 @@ dotnet test --solution OpenTaan.GameServer.slnx
 
 ## Run
 
+From this folder (`game-server/`), with the .NET SDK named in `global.json`:
+
 ```sh
 dotnet run --project src/OpenTaan.GameServer
 ```
+
+From the repository root, the project is `game-server/src/OpenTaan.GameServer`.
+The server is up when it logs `Listening for game clients on 0.0.0.0:2180`. Just
+before that it logs the address it gives clients for the channels, for example
+`Clients are told the channels are at 192.168.1.20:2180 (Detected)`. Point the
+client at that address. Stop the server with Ctrl+C.
+
+`dotnet run` picks up `Properties/launchSettings.json`, which sets
+`DOTNET_ENVIRONMENT=Development` and with it `appsettings.Development.json`.
+Without the launch profile (`--no-launch-profile`, the published
+`OpenTaan.GameServer.dll`, or the Docker image), the server runs in Production,
+where registration is required and unhandled packets close the connection. The
+content root is the project folder, so in Development the portraits clients send
+are kept in `src/OpenTaan.GameServer/portraits/`.
 
 This runs in the Development environment, where any login creates the account
 it names (`Accounts:RequireRegistration` is off). A real client can log in,
@@ -469,8 +485,13 @@ later. The server
 refuses to start with registration off in any other environment. Accounts,
 characters and rooms live in memory until the database stage.
 
-Settings live in `appsettings.json` and can be overridden with environment
-variables, for example `GameServer__Port=2181`:
+Settings live in `appsettings.json`. You can override them with environment
+variables, or on the command line after `--`:
+
+```sh
+GameServer__Port=2181 dotnet run --project src/OpenTaan.GameServer
+dotnet run --project src/OpenTaan.GameServer -- --GameServer:Port=2181 --PlayTime:AllowedSeconds=3600
+```
 
 | Setting | Default | What it does |
 |---|---|---|
