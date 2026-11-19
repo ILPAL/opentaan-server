@@ -195,8 +195,8 @@ public sealed class ProtocolReplayTests
             0x5556)),
         Written(new PcGamePlayLoadingDone([new LoadedCharacter(0x04, 0x01020304, -0x05060708), new LoadedCharacter(0x05, 0x090A0B0C, 0x0D0E0F10)])),
 
-        // The recorded shots hold no step, or only item boxes, and no recorded end of a turn
-        // carries a gauge change: a shot with a step of every kind, in both of its lists.
+        // The recorded shots hold no step, or only item boxes, and no effect, and no recorded
+        // end of a turn carries a gauge change: a shot with a step of every kind, and effects.
         Written(new PcGamePlayScenario(
             0x01,
             0x02,
@@ -209,15 +209,14 @@ public sealed class ProtocolReplayTests
                     new GameScenarioCommandWeapon(0x21, 0x02, 0x22232425, 0x26272829, 0x2A, 0x2B, 0x2C2D2E2F, -0x30313233, 0x34353637, 1.5f, 0x38),
                     new GameScenarioCommandGuided(0x41, 0x02, 0x42434445, 0x46474849, 0x4A, 0x4B, 0x4C4D4E4F, 0x50515253, 0x54555657, -0.25f, 0x58, 0x595A5B5C, -0x5D5E5F60),
                     new GameScenarioCommandFire(0x61, 0x00, 0x62636465, 0x66676869, 0x6A, 0x6B, 0x6C6D6E6F, 0x70717273, 0x74757677, 2f, 0x78, 0x797A, 0x7B, 0x7C7D7E7F, -0x01020304, 0x05060708, 0x090A0B0C, 0x0D, 0x0E0F),
-                ],
-                [0x1112, 0x1314],
-                [
                     new GameScenarioCommandDamage(0x64, 0x04, 0x11121314, 0x15161718, 0x191A1B1C, 0x1D1E1F20, 0x2122, 0x2324),
                     new GameScenarioCommandMakeItemBox(0x02, 0x0A, 0x25262728, 0x292A2B2C, 0x2D2E2F3031323334, -0x35363738, 0x393A3B3C),
                     new GameScenarioCommandEatItemBox(0x03, 0x0B, 0x3D3E3F40, 0x41424344, 0x4546474849505152, 0x5354, 0x55565758),
                     new GameScenarioCommandTeamGauge(0x04, 0x0C, 0x595A5B5C, 0x5D5E5F60, 0x61, 0x6263, 0x6465),
                     new GameScenarioCommandUseBonusGameItem(0x05, 0x0F, 0x66676869, 0x6A6B6C6D, 0x6E6F),
                 ],
+                [0x1112, 0x1314],
+                [new WeaponEffect(0x00, 0.5f, -1.25f, 0x7172, 0x7374), new WeaponEffect(0x02, 20f, 0.75f, 0xFFFF, 0x7576)],
                 0x1516,
                 0x1718191A,
                 [0x01, 0x02],

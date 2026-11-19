@@ -5,7 +5,7 @@ using OpenTaan.Protocol.Rooms;
 namespace OpenTaan.Tests.Protocol;
 
 /// <summary>
-/// A match's turns: a shot and every kind of step in it, a shot played back, the end of a
+/// A match's turns: a shot, every kind of step in it and the effects a weapon leaves, a shot played back, the end of a
 /// turn, a pass, a walk, a place, a fall and a ghost. Every value here is invented, each
 /// field's bytes unlike its neighbours', and every expected body is written out by hand
 /// from the client's layout.
@@ -33,6 +33,10 @@ public sealed class TurnCodecTests
     private static readonly GameScenarioCommandTeamGauge TeamGauge = new(0x04, 0x0C, 0x595A5B5C, 0x5D5E5F60, 0x61, 0x6263, 0x6465);
 
     private static readonly GameScenarioCommandUseBonusGameItem UseBonusGameItem = new(0x05, 0x0F, 0x66676869, 0x6A6B6C6D, 0x6E6F);
+
+    private static readonly WeaponEffect Slowing = new(0x00, 0.5f, -1.25f, 0x7172, 0x7374);
+
+    private static readonly WeaponEffect Poison = new(0x02, 20f, 0.75f, 0xFFFF, 0x7576);
 
     private static readonly IntegrityReport Integrity = new(0x31323334, 0x35363738, 0x39, 0x3A3B3C3D, 0x3E3F4041, 0x42434445);
 
@@ -67,11 +71,12 @@ public sealed class TurnCodecTests
         var read = PcGamePlayScenario.TryRead(Encoded.Bytes(new PcGamePlayScenario(0, 0, Scenario(), 0, 0, Integrity).Write)).Packet!;
 
         Assert.Equal(
-            [typeof(GameScenarioCommand), typeof(GameScenarioCommandNormal), typeof(GameScenarioCommandWeapon), typeof(GameScenarioCommandGuided), typeof(GameScenarioCommandFire)],
+            [
+                typeof(GameScenarioCommand), typeof(GameScenarioCommandNormal), typeof(GameScenarioCommandWeapon), typeof(GameScenarioCommandGuided), typeof(GameScenarioCommandFire),
+                typeof(GameScenarioCommandDamage), typeof(GameScenarioCommandMakeItemBox), typeof(GameScenarioCommandEatItemBox), typeof(GameScenarioCommandTeamGauge), typeof(GameScenarioCommandUseBonusGameItem),
+            ],
             read.Scenario.Commands.Select(command => command.GetType()));
-        Assert.Equal(
-            [typeof(GameScenarioCommandDamage), typeof(GameScenarioCommandMakeItemBox), typeof(GameScenarioCommandEatItemBox), typeof(GameScenarioCommandTeamGauge), typeof(GameScenarioCommandUseBonusGameItem)],
-            read.Scenario.Results.Select(command => command.GetType()));
+        Assert.Equal([Slowing, Poison], read.Scenario.Effects);
     }
 
     [Fact]
@@ -102,6 +107,63 @@ public sealed class TurnCodecTests
         Encoded.UInt32(GameScenario.RegistryId).CopyTo(body, at);
 
         Assert.Equal(PacketError.WrongRegistryId, PcGamePlayScenario.TryRead(body).Error);
+    }
+
+    [Fact]
+    public void AnEffectAmongTheStepsIsRefused()
+    {
+        var body = Encoded.Bytes(new PcGamePlayScenario(0, 0, Scenario([EndMark], []), 0, 0, Integrity).Write);
+
+        // The end mark's id, after the shot's own id, the two bytes before its list and the count.
+        var at = sizeof(uint) + 2 + sizeof(uint) + 2 + sizeof(uint);
+        Encoded.UInt32(WeaponEffect.RegistryId).CopyTo(body, at);
+
+        Assert.Equal(PacketError.WrongRegistryId, PcGamePlayScenario.TryRead(body).Error);
+    }
+
+    [Fact]
+    public void AStepAmongTheEffectsIsRefused()
+    {
+        var body = Encoded.Bytes(new PcGamePlayScenario(0, 0, Scenario([], [Slowing]), 0, 0, Integrity).Write);
+
+        // The effect's id, after the shot's own id, the two bytes before its steps, their
+        // count of none, the two delays and their count, and the effects' count.
+        var at = sizeof(uint) + 2 + sizeof(uint) + 2 + sizeof(uint) + sizeof(uint) + (2 * sizeof(ushort)) + sizeof(uint);
+        Encoded.UInt32(GameScenarioCommandDamage.RegistryId).CopyTo(body, at);
+
+        Assert.Equal(PacketError.WrongRegistryId, PcGamePlayScenario.TryRead(body).Error);
+    }
+
+    [Fact]
+    public void AnEffectsValuesComeBackBitForBitWhateverFloatsTheyHold()
+    {
+        // A NaN with a payload, and a negative zero: a value passed on must keep its bits.
+        var oddEffect = new WeaponEffect(0x01, BitConverter.UInt32BitsToSingle(0x7FA00001), -0f, 0x0102, 0x0304);
+        var body = Encoded.Bytes(new PcGamePlayScenario(0, 0, Scenario([], [oddEffect]), 0, 0, Integrity).Write);
+
+        var read = PcGamePlayScenario.TryRead(body).Packet!;
+
+        Assert.Equal(0x7FA00001u, BitConverter.SingleToUInt32Bits(read.Scenario.Effects[0].Amount));
+        Assert.Equal(0x80000000u, BitConverter.SingleToUInt32Bits(read.Scenario.Effects[0].Param2));
+        Assert.Equal(body, Encoded.Bytes(read.Write));
+    }
+
+    [Fact]
+    public void ShotsDifferingOnlyInTheirEffectsAreNeverEqual()
+    {
+        Assert.NotEqual(Scenario([EndMark], [Slowing]), Scenario([EndMark], [Poison]));
+        Assert.NotEqual(Scenario([EndMark], [Slowing]), Scenario([EndMark], []));
+        Assert.Equal(Scenario([EndMark], [Slowing, Poison]), Scenario([EndMark], [Slowing, Poison]));
+    }
+
+    [Fact]
+    public void AnEffectIsReadAsItComesWhetherOrNotTheClientWouldKeepIt()
+    {
+        // A type the client has no use for, and counts of 0: the client drops it itself.
+        var unkept = new WeaponEffect(0xFF, 0f, 0f, 0, 0);
+        var shot = new PcGamePlayScenario(0, 0, Scenario([EndMark], [unkept]), 0, 0, Integrity);
+
+        Assert.Equal(shot, PcGamePlayScenario.TryRead(Encoded.Bytes(shot.Write)).Packet);
     }
 
     [Fact]
@@ -261,17 +323,17 @@ public sealed class TurnCodecTests
     // A shot with a step of every kind, the missiles' among the steps and the rest among
     // the results, and two delays and two slots reached.
     private static GameScenario Scenario() =>
-        Scenario([EndMark, Normal, Weapon, Guided, Fire], [Damage, MakeItemBox, EatItemBox, TeamGauge, UseBonusGameItem]);
+        Scenario([EndMark, Normal, Weapon, Guided, Fire, Damage, MakeItemBox, EatItemBox, TeamGauge, UseBonusGameItem], [Slowing, Poison]);
 
-    private static GameScenario Scenario(IReadOnlyList<GameScenarioCommand> commands, IReadOnlyList<GameScenarioCommand> results) =>
-        new(0x03, 0x04, commands, [0x1112, 0x1314], results, 0x1516, 0x1718191A, [0x01, 0x02], 0x1B1C1D1E);
+    private static GameScenario Scenario(IReadOnlyList<GameScenarioCommand> commands, IReadOnlyList<WeaponEffect> effects) =>
+        new(0x03, 0x04, commands, [0x1112, 0x1314], effects, 0x1516, 0x1718191A, [0x01, 0x02], 0x1B1C1D1E);
 
     private static byte[] ScenarioBytes() =>
     [
         .. Encoded.UInt32(GameScenario.RegistryId),
         0x03,
         0x04,
-        .. Encoded.UInt32(5),
+        .. Encoded.UInt32(10),
         .. Encoded.StepHead(GameScenarioCommand.RegistryId, 0x05, 0x08, 0x06070809, 0x0A0B0C0D),
         .. Encoded.StepHead(GameScenarioCommandNormal.RegistryId, 0x11, 0x0E, 0x12131415, 0x16171819),
         .. Encoded.UInt32(0x1A1B1C1D),
@@ -292,10 +354,6 @@ public sealed class TurnCodecTests
         .. Encoded.Int32(0x090A0B0C),
         0x0D,
         .. Encoded.UInt16(0x0E0F),
-        .. Encoded.UInt32(2),
-        .. Encoded.UInt16(0x1112),
-        .. Encoded.UInt16(0x1314),
-        .. Encoded.UInt32(5),
         .. Encoded.StepHead(GameScenarioCommandDamage.RegistryId, 0x64, 0x04, 0x11121314, 0x15161718),
         .. Encoded.UInt32(0x191A1B1C),
         .. Encoded.UInt32(0x1D1E1F20),
@@ -312,6 +370,12 @@ public sealed class TurnCodecTests
         .. TeamGaugeBytes(),
         .. Encoded.StepHead(GameScenarioCommandUseBonusGameItem.RegistryId, 0x05, 0x0F, 0x66676869, 0x6A6B6C6D),
         .. Encoded.UInt16(0x6E6F),
+        .. Encoded.UInt32(2),
+        .. Encoded.UInt16(0x1112),
+        .. Encoded.UInt16(0x1314),
+        .. Encoded.UInt32(2),
+        .. EffectBytes(0x00, 0.5f, -1.25f, 0x7172, 0x7374),
+        .. EffectBytes(0x02, 20f, 0.75f, 0xFFFF, 0x7576),
         .. Encoded.UInt16(0x1516),
         .. Encoded.UInt32(0x1718191A),
         .. Encoded.UInt32(2),
@@ -326,6 +390,17 @@ public sealed class TurnCodecTests
         0x61,
         .. Encoded.UInt16(0x6263),
         .. Encoded.UInt16(0x6465),
+    ];
+
+    // A weapon's effect: its id, its type, its two values as the client's floats, then its two counts.
+    private static byte[] EffectBytes(byte type, float amount, float param2, ushort turns, ushort ownTurns) =>
+    [
+        .. Encoded.UInt32(WeaponEffect.RegistryId),
+        type,
+        .. Encoded.Single(amount),
+        .. Encoded.Single(param2),
+        .. Encoded.UInt16(turns),
+        .. Encoded.UInt16(ownTurns),
     ];
 
     // The fields of a missile's flight.

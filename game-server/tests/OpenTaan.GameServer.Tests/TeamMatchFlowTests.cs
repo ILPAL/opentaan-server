@@ -464,6 +464,48 @@ public sealed class TeamMatchFlowTests
     }
 
     [Fact]
+    public async Task AShotWhoseWeaponLeavesEffectsReachesTheOtherClientByteForByteAndTheMatchGoesOn()
+    {
+        var services = Services(time: new ManualTime());
+        await using var host = await ArriveAsync(services, ChannelId, "Kimi");
+        await using var guest = await ArriveAsync(services, ChannelId, "Rồng");
+        await AtFirstTeamTurnAsync(host, guest);
+
+        // As a weapon whose missiles carry effects fires it: a missile hits the guest, which
+        // every client then gives the shot's effects. One amount is a NaN with a payload, so
+        // a value passed on with any bit changed shows.
+        var shot = Encoded.Bytes(new PcGamePlayScenario(
+            Direction: 0x01,
+            FiringSlot: 0,
+            new GameScenario(
+                SlotIndex: 0,
+                ActionType: 0x02,
+                [
+                    new GameScenarioCommandFire(0, 0x00, 0x0100, 0, 0x00, 0x03, 0x0201, 0x0302, 0x0100, 1f, 0x00, 0x0405, 0x01, 0x0201, 0x0302, 0x0201, 0x0302, 0x01, 0),
+                    new GameScenarioCommandDamage(2, 0x04, 0x0200, 0x0300, 0x0102, 0x0304, 0x0506, 0x0708),
+                    new GameScenarioCommand(0, 0x08, 0x0D0E, 0),
+                ],
+                [0x0102],
+                [new WeaponEffect(0x02, 20f, 0f, 3, 0), new WeaponEffect(0x00, BitConverter.UInt32BitsToSingle(0x7FA00001), -0f, 0, 2)],
+                WeaponFlags: 0x0F10,
+                InitialAngle: 0x11121314,
+                [2],
+                Seed: 0x15161718),
+            TotalStats: 0x191A1B1C,
+            AmmoAddition: 0x1D1E,
+            new IntegrityReport(0x1F202122, 0x23242526, 0x27, 0x28292A2B, 0x2C2D2E2F, 0x30313233)).Write);
+
+        await host.Client.SendBodyAsync(shot);
+
+        Assert.Equal(shot, await guest.Client.ReceiveBodyAsync());
+        await QuietAsync(host, guest);
+
+        await FinishedAsync(0, host, guest);
+        await TurnPassedAsync(0, 2, turnCount: 0, host, guest);
+        await QuietAsync(host, guest);
+    }
+
+    [Fact]
     public async Task AMissionsRequestsAreDroppedInAMatchBetweenTeams()
     {
         var services = Services(time: new ManualTime());

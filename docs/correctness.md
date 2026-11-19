@@ -465,6 +465,20 @@ with real tokens:
   the new check passed it. While the clients load, nothing else stops a level
   request, and it would have begun a mission's level in the middle of a match
   between teams; the test now asks there too, and the planted version fails it.
+- **A list the recordings only ever had empty.** A shot carries two lists, and
+  the codec read both as lists of steps, which every recorded shot agreed with:
+  the second list was empty in each of them. With a real client, the weapons whose
+  missiles leave an effect on the characters they hurt sent a shot the codec
+  refused, and the shooter was disconnected. The client's own code fills the
+  second list with those effects and nothing else, and every client gives them to
+  the characters the shot hurts. The codec now reads that list as effects only,
+  their two values as the floats the client keeps them as. Since the server passes
+  on what it decodes, written back again, the tests send effects whose values are
+  a NaN with a payload and a negative zero, and check the other client gets the
+  shot byte for byte; planted versions that read or write a value as a number
+  rather than as its bits, swap two fields, drop an effect, or take a step for an
+  effect fail the tests. Where every recording leaves a field empty, a passing
+  replay says nothing about it.
 
 ## The game server: bytes, not types
 

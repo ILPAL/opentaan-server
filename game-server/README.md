@@ -43,8 +43,8 @@ the changes a room is told of, the lobby's room list and the players in a room,
 what players do in a room: being ready, changing team and weapon, the host's
 options, opening and closing slots, and expelling a player, and a match, a
 mission's or one between teams: starting it, how each character starts, loading it,
-a mission's levels, its turns (a shot
-and every kind of step in it, a shot played back, the end and start of a turn, a
+a mission's levels, its turns (a shot,
+every kind of step in it and the effects its weapon leaves, a shot played back, the end and start of a turn, a
 pass, a walk, a place, a fall and a ghost), its items and ghosts (an item used, the
 items a shot spent, an item thrown away, an item in use taken off, a box caught, a
 bonus, and where a ghost is sent), giving up, a player leaving it, its end and the
@@ -64,8 +64,9 @@ Each request to create, enter or quick-join a room ends with the client's report
 on its own code, which is read and kept but not checked: checking it needs data
 from the client's own files.
 
-A shot is read in full, every step of every kind in both of its lists, and written
-back exactly as it came, because the server passes it to the other clients unchanged:
+A shot is read in full, every step of every kind in its first list and every
+effect its weapon leaves in its second, and written back exactly as it came, an
+effect's two values bit for bit as the floats the client keeps them as, because the server passes it to the other clients unchanged:
 a body the codec cannot read is refused rather than passed on to clients that would
 read it unchecked. A shot's slots are read as they come, since a mission's enemies
 sit in slots of 100 and more; every packet that names a player's character refuses
@@ -350,6 +351,14 @@ Matches with captains and missions whose enemies fight back come next.
   the level's turn count, which the client shows against the level's turn limit: it
   goes up by one with every shot a player fires, a pass adds nothing, and every level
   starts again from none.
+- **Weapon effects:** a weapon whose missiles carry an effect, as some do in the
+  client's own data, has its client put each in the shot it sends. Every client
+  playing the shot gives the effects to each character the shot hurts, other than
+  the shooter, and counts them down itself at the end of every turn, so the server
+  only passes them on. The client applies damage over time to a player's character
+  only from the health changes the start of a turn carries, which this server does
+  not send yet, and to a mission's enemies only on their turns, which come with the
+  enemy phases: until then such an effect shows but takes no health.
 - **Deaths:** a character that dies in a shot is reported by its own client as it
   plays the shot back, before it reports the shot played back; one that falls while
   walking is reported by its own client, and the fall goes to the others. Everyone
