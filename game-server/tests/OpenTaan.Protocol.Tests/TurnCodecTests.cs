@@ -138,8 +138,15 @@ public sealed class TurnCodecTests
     public void AnEffectsValuesComeBackBitForBitWhateverFloatsTheyHold()
     {
         // A NaN with a payload, and a negative zero: a value passed on must keep its bits.
-        var oddEffect = new WeaponEffect(0x01, BitConverter.UInt32BitsToSingle(0x7FA00001), -0f, 0x0102, 0x0304);
-        var body = Encoded.Bytes(new PcGamePlayScenario(0, 0, Scenario([], [oddEffect]), 0, 0, Integrity).Write);
+        // They go on the wire as bits, as a client sends them: a float built from them in
+        // code can lose them first, since an optimizing compiler may work it out ahead.
+        var body = Encoded.Bytes(new PcGamePlayScenario(0, 0, Scenario([], [new WeaponEffect(0x01, 0f, 0f, 0x0102, 0x0304)]), 0, 0, Integrity).Write);
+
+        // The effect's amount, after the shot's own id, the two bytes before its steps, their
+        // count of none, the two delays and their count, the effects' count, the effect's id and its type.
+        var at = sizeof(uint) + 2 + sizeof(uint) + 2 + sizeof(uint) + sizeof(uint) + (2 * sizeof(ushort)) + sizeof(uint) + sizeof(uint) + sizeof(byte);
+        Encoded.UInt32(0x7FA00001).CopyTo(body, at);
+        Encoded.UInt32(0x80000000).CopyTo(body, at + sizeof(float));
 
         var read = PcGamePlayScenario.TryRead(body).Packet!;
 

@@ -472,8 +472,10 @@ public sealed class TeamMatchFlowTests
         await AtFirstTeamTurnAsync(host, guest);
 
         // As a weapon whose missiles carry effects fires it: a missile hits the guest, which
-        // every client then gives the shot's effects. One amount is a NaN with a payload, so
-        // a value passed on with any bit changed shows.
+        // every client then gives the shot's effects. One effect's values are a NaN with a
+        // payload and a negative zero, so a value passed on with any bit changed shows. They
+        // go on the wire as bits, as a client sends them: a float built from them in code can
+        // lose them first, since an optimizing compiler may work it out ahead.
         var shot = Encoded.Bytes(new PcGamePlayScenario(
             Direction: 0x01,
             FiringSlot: 0,
@@ -486,7 +488,7 @@ public sealed class TeamMatchFlowTests
                     new GameScenarioCommand(0, 0x08, 0x0D0E, 0),
                 ],
                 [0x0102],
-                [new WeaponEffect(0x02, 20f, 0f, 3, 0), new WeaponEffect(0x00, BitConverter.UInt32BitsToSingle(0x7FA00001), -0f, 0, 2)],
+                [new WeaponEffect(0x02, 20f, 0f, 3, 0), new WeaponEffect(0x00, 0f, 0f, 0, 2)],
                 WeaponFlags: 0x0F10,
                 InitialAngle: 0x11121314,
                 [2],
@@ -494,6 +496,14 @@ public sealed class TeamMatchFlowTests
             TotalStats: 0x191A1B1C,
             AmmoAddition: 0x1D1E,
             new IntegrityReport(0x1F202122, 0x23242526, 0x27, 0x28292A2B, 0x2C2D2E2F, 0x30313233)).Write);
+
+        // The second effect's two values: after its id and its type, the only effect of type 0.
+        byte[] secondEffectHead = [.. Encoded.UInt32(WeaponEffect.RegistryId), 0x00];
+        var secondEffect = shot.AsSpan().IndexOf(secondEffectHead);
+        Assert.True(secondEffect > 0);
+        var amount = secondEffect + secondEffectHead.Length;
+        Encoded.UInt32(0x7FA00001).CopyTo(shot, amount);
+        Encoded.UInt32(0x80000000).CopyTo(shot, amount + sizeof(float));
 
         await host.Client.SendBodyAsync(shot);
 
