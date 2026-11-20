@@ -332,8 +332,11 @@ Missions whose enemies fight back come next.
     for this match, from which every client lays it out alike. A mission the client
     might not have is never started: it would leave every client in the room without
     a map, which is why the host's options take only `Rooms:Missions`.
-  - A match between teams starts only between teams of the same size, as the host's
-    client checks itself. It is played on the room's map.
+  - A match between teams starts whatever the size of each team, one of them even
+    empty: the host's client lets a game master start one so, and the server takes
+    any host's start alike. The teams still take turns, a team with no character is
+    passed over, and in the modes with captains such a team has none. It is played on
+    the room's map.
     The client cannot load one of its own random picks, `200` to `203`, so a room on
     one is played on a map drawn evenly at every start from the pick's group among
     the maps of the channel's mode (`Rooms:RandomMaps`) and the extras every pick
@@ -524,7 +527,7 @@ This runs in the Development environment, where any login creates the account
 it names (`Accounts:RequireRegistration` is off). A real client can log in,
 create and select a character, pick a channel, enter its lobby, create, enter and
 leave rooms, do everything a waiting room offers, start a mission or a match
-between two teams of the same size and play it turn by turn: walk, shoot, pass,
+between two teams of any size and play it turn by turn: walk, shoot, pass,
 die, see each level begin, clear the mission or lose it, win or lose against the
 other team, catch, use and throw away items, send its ghost about, give up or
 leave, and see its result screen and pick a card, with a captain for each team in

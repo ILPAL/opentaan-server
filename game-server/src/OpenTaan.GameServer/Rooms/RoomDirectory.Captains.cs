@@ -10,20 +10,21 @@ namespace OpenTaan.GameServer.Rooms;
 /// <para>
 /// In a room playing <see cref="GameMode.CaptainItems"/> or <see cref="GameMode.CaptainNoItems"/>
 /// (modes 2 and 3), the host's client asks for the captains to be chosen instead of a start,
-/// once every guest is ready. Everyone in the room is told, and every client shows the
-/// choice for five seconds: its player's team, each character with a light, and for each of
-/// the player's own characters a button to volunteer as captain and one to withdraw. The
-/// server keeps no time of its own: the host's client asks for the start when its five
-/// seconds are over, and the choice lasts until the match starts or the room's game mode
-/// changes.
+/// once every other player in the room is ready. Everyone in the room is told, and every
+/// client shows the choice for five seconds: its player's team, each character with a
+/// light, and for each of the player's own characters a button to volunteer as captain and
+/// one to withdraw. The server keeps no time of its own: the host's client asks for the
+/// start when its five seconds are over, and the choice lasts until the match starts or the
+/// room's game mode changes.
 /// </para>
 /// <para>
 /// As the match starts, each team's captain is drawn evenly from the team's characters
-/// that volunteer, or from all of its characters when none does, so both teams always have
-/// one. The client gives a captain an extra shot with every shot, and on a captain's turn
-/// lets its teammates give it their items, so one captain for each team keeps the match
-/// even. The client takes the captains from the start alone, so a team whose captain's
-/// player leaves plays on without one.
+/// that volunteer, or from all of its characters when none does, so every team with a
+/// character has one; a team with none, as a match may start with, has no captain. The
+/// client gives a captain an extra shot with every shot, and on a captain's turn lets its
+/// teammates give it their items, so one captain for each team keeps the match even. The
+/// client takes the captains from the start alone, so a team whose captain's player leaves
+/// plays on without one.
 /// </para>
 /// </remarks>
 public sealed partial class RoomDirectory
@@ -35,7 +36,7 @@ public sealed partial class RoomDirectory
     /// <remarks>
     /// Only the host of a waiting room playing a mode with captains asks. Any volunteering
     /// from before is forgotten, as every client opens the choice afresh with every light
-    /// out. Whether the guests are ready is left to the start, which checks it.
+    /// out. Whether the other players are ready is left to the start, which checks it.
     /// </remarks>
     /// <returns>Null once done; otherwise why the request was dropped, for the log.</returns>
     public string? ChooseCaptains(ClientSession session)
@@ -142,14 +143,18 @@ public sealed partial class RoomDirectory
         : null;
 
     // For each team number, the slot of the team's captain, drawn evenly from its pool: the
-    // first entry, for no team, names none.
+    // first entry, for no team, names none, and nor does a team's with no character, whose
+    // pool is empty.
     private byte[] DrawCaptainsLocked(Room room)
     {
         var captains = PcGameSessionStartGame.NoCaptains.ToArray();
         for (byte team = 1; team < captains.Length; team++)
         {
             var pool = room.CaptainPoolOf(team);
-            captains[team] = pool[random.Next(pool.Count)];
+            if (pool.Count > 0)
+            {
+                captains[team] = pool[random.Next(pool.Count)];
+            }
         }
 
         LogCaptainsDrawn(logger, room.Number, captains[1], captains[2]);

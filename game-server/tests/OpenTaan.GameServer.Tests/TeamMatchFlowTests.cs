@@ -80,23 +80,63 @@ public sealed class TeamMatchFlowTests
     }
 
     [Fact]
-    public async Task AStartIsDroppedUnlessBothTeamsHoldAsManyCharacters()
+    public async Task AHostStartsAMatchBetweenTeamsOfDifferentSizesAndTheTeamsStillTakeTurns()
+    {
+        var services = Services(time: new ManualTime());
+        await using var host = await ArriveAsync(services, ChannelId, "Kimi");
+        await using var pair = await ArriveAsync(services, ChannelId, "Rồng", "Hoang");
+
+        // One against two: the pair sits together on the other team.
+        await TeamRoomAsync(host, pair);
+        var start = await StartedAsync(host, host, pair);
+
+        Assert.Equal([(byte)0, 2, 3], start.Players.Select(player => player.SlotIndex));
+        await host.SendAsync(Loading(0));
+        await pair.SendAsync(Loading(2, 3));
+        await TurnToldAsync(0, host, pair);
+
+        // The host's character plays every other turn, between the pair's two.
+        await PassedAsync(host, 0, 2, host, pair);
+        await PassedAsync(pair, 2, 0, host, pair);
+        await PassedAsync(host, 0, 3, host, pair);
+        await QuietAsync(host, pair);
+    }
+
+    [Fact]
+    public async Task AStartIsDroppedWhileAnotherPlayerIsNotReadyWhateverTheTeamSizes()
     {
         var services = Services();
         await using var host = await ArriveAsync(services, ChannelId, "Kimi");
         await using var pair = await ArriveAsync(services, ChannelId, "Rồng", "Hoang");
         var number = (await CreatedAsync(host)).Room.RoomNumber;
 
-        // One against none.
-        await host.SendAsync(new PqGameSessionStartGame());
-        await QuietAsync(host);
-
-        // One against two: the pair sits together on the other team.
+        // One against two, the pair not ready.
         await SeatedAsync(pair, number, host);
-        await pair.SendAsync(new PqGameSessionReady(IsReady: true));
-        await ReadyToldAsync(pair, host, pair);
         await host.SendAsync(new PqGameSessionStartGame());
+
         await QuietAsync(host, pair);
+    }
+
+    [Fact]
+    public async Task AHostAloneStartsAMatchOfOneTeamThatPlaysEveryTurnAndLosesOnceItHasNobodyLeft()
+    {
+        var services = Services(time: new ManualTime());
+        await using var host = await ArriveAsync(services, ChannelId, "Kimi");
+        await TeamRoomAsync(host);
+
+        // One against none: the second team has no character, so no turn ever goes to it.
+        var start = await StartedAsync(host, host);
+
+        Assert.Equal([(byte)0], start.Players.Select(player => player.SlotIndex));
+        await host.SendAsync(Loading(0));
+        await TurnToldAsync(0, host);
+        await PassedAsync(host, 0, 0, host);
+
+        // A team that never had a character is never out, so the match ends once the first
+        // team is, and the second team wins it.
+        await host.SendAsync(new PcGamePlayGiveUp());
+        await EndToldAsync(2, [new SeatOf(host, 0)], host);
+        await QuietAsync(host);
     }
 
     [Fact]

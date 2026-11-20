@@ -36,18 +36,19 @@ public sealed partial class RoomDirectory
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The host's client asks only once every guest is ready, and does not wait for an
-    /// answer, so a start the room's rules do not allow is dropped and only logged. A
-    /// mission the client might not have is never started: it would leave every client in
-    /// the room without a map.
+    /// The host's client asks only once every other player in the room is ready, and does
+    /// not wait for an answer, so a start the room's rules do not allow is dropped and only
+    /// logged. A mission the client might not have is never started: it would leave every
+    /// client in the room without a map.
     /// </para>
     /// <para>
-    /// A match between teams starts only between teams of the same size, as the host's
-    /// client checks itself. In a mode with captains, each team's is drawn as it starts; see
-    /// <see cref="ChooseCaptains"/>. A room on one of the client's random picks is played on a
-    /// map drawn for the match from the pick's maps among <paramref name="maps"/>; see
-    /// <see cref="RoomOptions.RandomMaps"/>. Its first turn waits for every client to load
-    /// it; see <see cref="ReportLoaded"/>.
+    /// A match between teams starts whatever the size of each team, one of them even empty:
+    /// the host's client lets a game master start one so, and any host's start is taken
+    /// alike. In a mode with captains, each team's is drawn as it starts, and a team with no
+    /// character has none; see <see cref="ChooseCaptains"/>. A room on one of the client's
+    /// random picks is played on a map drawn for the match from the pick's maps among
+    /// <paramref name="maps"/>; see <see cref="RoomOptions.RandomMaps"/>. Its first turn
+    /// waits for every client to load it; see <see cref="ReportLoaded"/>.
     /// </para>
     /// </remarks>
     /// <param name="session">The connection asking.</param>
@@ -384,17 +385,11 @@ public sealed partial class RoomDirectory
         return null;
     }
 
-    // Starts a match between the room's teams, on its map or, for a random pick, on one drawn
-    // evenly from the pick's maps, with a captain drawn for each team in a mode with captains.
-    // Its first turn waits for every client to load it.
+    // Starts a match between the room's teams, whatever their sizes, on its map or, for a
+    // random pick, on one drawn evenly from the pick's maps, with a captain drawn for each
+    // team in a mode with captains. Its first turn waits for every client to load it.
     private string? StartBetweenTeamsLocked(Room room, IReadOnlyCollection<ushort> maps)
     {
-        var (first, second) = room.TeamSizes();
-        if (first != second)
-        {
-            return $"its teams hold {first} and {second} characters, and a match is between teams of the same size";
-        }
-
         var map = room.MapId;
         if (MatchRules.RandomMapPicks.Contains(map))
         {
@@ -410,6 +405,7 @@ public sealed partial class RoomDirectory
         var captains = MatchRules.HasCaptains(room.GameMode) ? DrawCaptainsLocked(room) : PcGameSessionStartGame.NoCaptains;
         var match = Match.BetweenTeams(map, room.PlayersBySlot(), captains, time.GetUtcNow());
         BeginMatchLocked(room, match);
+        var (first, second) = room.TeamSizes();
         LogTeamMatchStarted(logger, room.Number, first, second, map, room.MapId);
         return null;
     }
