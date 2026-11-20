@@ -12,11 +12,11 @@ namespace OpenTaan.Protocol.GamePlay;
 /// </remarks>
 /// <param name="SlotIndex">The slot of the character, below <see cref="GameSlotInfo.SlotCount"/>.</param>
 /// <param name="Team">The character's team, or 0xFF for none.</param>
-/// <param name="TargetIsEnemy">Not zero for an item aimed at the other team; kept as sent.</param>
-/// <param name="TargetIsAlly">Not zero for an item aimed at the character's own team; kept as sent.</param>
+/// <param name="GhostGift">Not zero to take the item off the list of ghosts' gifts to the character's team; kept as sent.</param>
+/// <param name="CaptainGift">Not zero to take the item off the list of gifts to the character's team's captain; kept as sent.</param>
 /// <param name="ItemId">The item taken off.</param>
 [WireClass("PcGamePlay_ForsakeActiveItem")]
-public sealed record PcGamePlayForsakeActiveItem(byte SlotIndex, byte Team, byte TargetIsEnemy, byte TargetIsAlly, ushort ItemId) : IPacket
+public sealed record PcGamePlayForsakeActiveItem(byte SlotIndex, byte Team, byte GhostGift, byte CaptainGift, ushort ItemId) : IPacket
 {
     /// <summary>The id that leads the body, computed from the wire name.</summary>
     public static uint RegistryId => WireIdentity<PcGamePlayForsakeActiveItem>.RegistryId;
@@ -38,8 +38,8 @@ public sealed record PcGamePlayForsakeActiveItem(byte SlotIndex, byte Team, byte
         reader.ExpectRegistryId(RegistryId);
         var slotIndex = reader.ReadByte();
         var team = reader.ReadByte();
-        var targetIsEnemy = reader.ReadByte();
-        var targetIsAlly = reader.ReadByte();
+        var ghostGift = reader.ReadByte();
+        var captainGift = reader.ReadByte();
         var itemId = reader.ReadUInt16();
         if (slotIndex >= GameSlotInfo.SlotCount || !TeamNumber.IsTeamOrNone(team))
         {
@@ -48,7 +48,7 @@ public sealed record PcGamePlayForsakeActiveItem(byte SlotIndex, byte Team, byte
             team = TeamNumber.None;
         }
 
-        return reader.Finish(new PcGamePlayForsakeActiveItem(slotIndex, team, targetIsEnemy, targetIsAlly, itemId));
+        return reader.Finish(new PcGamePlayForsakeActiveItem(slotIndex, team, ghostGift, captainGift, itemId));
     }
 
     /// <summary>Writes the body, as the client wrote it.</summary>
@@ -58,8 +58,8 @@ public sealed record PcGamePlayForsakeActiveItem(byte SlotIndex, byte Team, byte
         writer.WriteUInt32(RegistryId);
         writer.WriteByte(SlotIndex);
         writer.WriteByte(Team);
-        writer.WriteByte(TargetIsEnemy);
-        writer.WriteByte(TargetIsAlly);
+        writer.WriteByte(GhostGift);
+        writer.WriteByte(CaptainGift);
         writer.WriteUInt16(ItemId);
     }
 }

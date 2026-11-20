@@ -204,6 +204,36 @@ public sealed partial class RoomHandlers(
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>Starts choosing a room's captains as its host asks; see <see cref="RoomDirectory.ChooseCaptains"/>.</summary>
+    public ValueTask ChooseCaptainsAsync(ClientSession session, PqGameSessionChiefDecision request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(request);
+
+        LogUnless(session, nameof(PqGameSessionChiefDecision), rooms.ChooseCaptains(session));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Has a player's character volunteer as captain; see <see cref="RoomDirectory.Volunteer"/>.</summary>
+    public ValueTask VolunteerAsync(ClientSession session, PqGameSessionChallengeChief request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(request);
+
+        LogUnless(session, nameof(PqGameSessionChallengeChief), rooms.Volunteer(session, request.CharacterId));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Takes a player's character's volunteering as captain back; see <see cref="RoomDirectory.Withdraw"/>.</summary>
+    public ValueTask WithdrawAsync(ClientSession session, PqGameSessionCancelChief request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(request);
+
+        LogUnless(session, nameof(PqGameSessionCancelChief), rooms.Withdraw(session, request.CharacterId));
+        return ValueTask.CompletedTask;
+    }
+
     /// <summary>Lists the characters in a room of the connection's channel, or says it is gone.</summary>
     public ValueTask RoomInfoAsync(ClientSession session, PqLobbyViewRoomSimpleInfo request, CancellationToken cancellationToken)
     {

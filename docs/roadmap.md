@@ -61,7 +61,7 @@ What a reviewer should be able to see and run, end to end.
 | Decisions and security | Ten decision records in `docs/adr`; a threat model with each threat's control, test and status; a case study of how correctness is checked; a test that two concurrent decisions leave exactly one |
 | Security scanning | `security` workflow: both images built, scanned with Trivy on every change and weekly, failing on fixable HIGH or CRITICAL findings, with a CycloneDX SBOM kept per image; Dockerfile checks; Dependabot for Maven, NuGet, base images, compose images and actions; every action pinned to a commit hash |
 
-Tests today: game server 834, of which 21 need the reference sessions and skip without them; admin server 61 unit tests and 25 integration tests.
+Tests today: game server 855, of which 21 need the reference sessions and skip without them; admin server 61 unit tests and 25 integration tests.
 
 ## Next
 
@@ -76,11 +76,12 @@ In order. Each item is one pull request unless noted.
    waiting room (getting ready, changing team or weapon, the room's options, opening
    and closing slots, and expelling a player), and a match from its start to its
    result screen, turn by turn, a mission's or one between two teams of the same size
-   on a map drawn at each start for a random pick, with its items and ghosts as the
-   clients decide them, are done and served by real sessions. Next, one pull request
-   each: the item rules the other players' clients rely on, decided on the server,
-   missions whose enemies fight back, matches with a captain for each team, and
-   rewards that last, each paid once per match and character.
+   on a map drawn at each start for a random pick, with a captain chosen for each
+   team in the modes with captains, and its items and ghosts as the clients decide
+   them, are done and served by real sessions. Next, one pull request each: the item
+   rules the other players' clients rely on, decided on the server, missions whose
+   enemies fight back, and rewards that last, each paid once per match and
+   character.
 2. **CodeQL.** Static analysis of the Java and C# code, reported through GitHub
    code scanning.
 3. **Operator portal.** Pages served by the admin server: account lookup, requesting
@@ -93,6 +94,9 @@ In order. Each item is one pull request unless noted.
   are cards, which it never asks for itself. Every match starts its characters in
   one place and every turn has the same wind until then, as the reference sessions
   have them.
+- **Captains checked on the server.** A captain's doubled shots counted against
+  the captains the start named, and items given to a captain or by a ghost checked
+  against the turn and the team; the clients decide both until then.
 - **Arena rooms.** Rooms in arena channels, whose room reply and slot changes
   carry the names of the two teams. The room codecs carry those names already,
   and this server sends them empty until then.
