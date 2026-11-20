@@ -296,7 +296,10 @@ Matches with captains and missions whose enemies fight back come next.
 
 - **Starting:** the host starts once every guest is ready. Everyone in the room is
   told how each character starts, and only the characters. A random weapon is
-  played as the dragon. The lobby shows the room playing, and no one enters it until
+  played as the dragon. The start names no captain for either team: the client fires
+  every shot of a character named captain twice, in any game mode, so a captain named
+  outside the captain modes, or for one team alone, would give one side an edge. The
+  lobby shows the room playing, and no one enters it until
   it waits again. A start the rules do not allow is not answered: the client waits
   on none.
   - A mission room's host alone may start. The mission is laid out from a seed drawn

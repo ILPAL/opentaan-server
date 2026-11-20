@@ -1,6 +1,7 @@
 using OpenTaan.Protocol;
 using OpenTaan.Protocol.GamePlay;
 using OpenTaan.Protocol.Matches;
+using OpenTaan.Protocol.Rooms;
 
 namespace OpenTaan.Tests.Protocol;
 
@@ -71,6 +72,29 @@ public sealed class MatchCodecTests
     public void AStartHasOneCaptainEntryForEachTeamNumber()
     {
         Assert.Throws<ArgumentException>(() => new PcGameSessionStartGame(1, [], 0, 0, [0, 1], 0));
+    }
+
+    [Fact]
+    public void AStartNamingNoCaptainCarriesANumberNoSlotHasForEveryTeam()
+    {
+        Assert.Equal([(byte)0xFF, 0xFF, 0xFF], PcGameSessionStartGame.NoCaptains);
+        Assert.True(PcGameSessionStartGame.NoCaptain >= GameSlotInfo.SlotCount);
+
+        var start = new PcGameSessionStartGame(1, [FirstPlayer], 0, 0, PcGameSessionStartGame.NoCaptains, 0);
+        byte[] expected =
+        [
+            .. Encoded.UInt32(PcGameSessionStartGame.RegistryId),
+            .. Encoded.UInt16(1),
+            .. Encoded.UInt32(1),
+            .. Player(0x01, 0x01),
+            .. Encoded.UInt32(0),
+            .. Encoded.UInt16(0),
+            0xFF, 0xFF, 0xFF,
+            .. Encoded.UInt32(0),
+        ];
+
+        Assert.Equal(expected, Encoded.Bytes(start.Write));
+        Assert.Equal(start, PcGameSessionStartGame.TryRead(expected).Packet);
     }
 
     [Fact]

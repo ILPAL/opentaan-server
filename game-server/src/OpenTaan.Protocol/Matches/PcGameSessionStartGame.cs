@@ -17,11 +17,16 @@ namespace OpenTaan.Protocol.Matches;
 /// <param name="MapId">The map the match is played on, or a mission's own number in a mission room.</param>
 /// <param name="Players">How each character in the room starts, at most one entry for each slot.</param>
 /// <param name="Wind">The wind the match starts with.</param>
-/// <param name="Field24">A value the client keeps for its own use; the reference sessions carry 0.</param>
+/// <param name="Field24">
+/// A value the client keeps for the match. At 3, it fires every character's shot twice, and
+/// a captain's three times; the reference sessions carry 0.
+/// </param>
 /// <param name="CaptainSlots">
-/// For each team, by its number, the slot of the character who leads it, the first entry
-/// unused: in matches between teams, the client lets the leader use items on teammates.
-/// Always <see cref="CaptainCount"/> entries.
+/// For each team, by its number, the slot of the team's captain, or <see cref="NoCaptain"/>
+/// for none; the first entry is unused, as no team is numbered 0. Always
+/// <see cref="CaptainCount"/> entries. The client takes the character in that slot as its
+/// team's captain for the whole match, whatever the room's game mode: it fires every shot a
+/// captain fires twice, and on a captain's turn lets its teammates give it their items.
 /// </param>
 /// <param name="MissionSeed">The value every client lays a mission out from, so that all of them lay it out alike.</param>
 [WireClass("PcGameSession_StartGame")]
@@ -36,6 +41,12 @@ public sealed record PcGameSessionStartGame(
     /// <summary>How many entries <see cref="CaptainSlots"/> has: one for each team number from 0.</summary>
     public const int CaptainCount = 3;
 
+    /// <summary>The entry of a team without a captain: no slot has this number.</summary>
+    public const byte NoCaptain = 0xFF;
+
+    /// <summary>The entries of a start that names no captain for any team.</summary>
+    public static IReadOnlyList<byte> NoCaptains { get; } = [.. Enumerable.Repeat(NoCaptain, CaptainCount)];
+
     /// <summary>The id that leads the body, computed from the wire name.</summary>
     public static uint RegistryId => WireIdentity<PcGameSessionStartGame>.RegistryId;
 
@@ -44,7 +55,7 @@ public sealed record PcGameSessionStartGame(
         ? Players
         : throw new ArgumentException("No two characters start in the same slot.", nameof(Players));
 
-    /// <summary>For each team, by its number, the slot of the character who leads it.</summary>
+    /// <summary>For each team, by its number, the slot of the team's captain, or <see cref="NoCaptain"/> for none.</summary>
     public IReadOnlyList<byte> CaptainSlots { get; } = (CaptainSlots ?? throw new ArgumentNullException(nameof(CaptainSlots))).Count == CaptainCount
         ? CaptainSlots
         : throw new ArgumentException($"There is one entry for each of the {CaptainCount} team numbers.", nameof(CaptainSlots));

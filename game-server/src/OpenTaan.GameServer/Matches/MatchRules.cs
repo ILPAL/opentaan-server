@@ -80,10 +80,12 @@ public static class MatchRules
     public const string GoldRewardName = "Gold";
 
     /// <summary>
-    /// For each team number, the slot the start of a match names as the team's leader: the
-    /// values the reference sessions carry. Leaders matter only in matches between teams.
+    /// For each team number, the slot the start of a match names as the team's captain:
+    /// none, in every match. The client gives a captain an extra shot with every shot, in
+    /// any game mode (see <see cref="PcGameSessionStartGame.CaptainSlots"/>), so a captain
+    /// named outside the captain modes, or for one team alone, gives one side an edge.
     /// </summary>
-    public static IReadOnlyList<byte> CaptainSlots { get; } = [0, 1, 0];
+    public static IReadOnlyList<byte> CaptainSlots => PcGameSessionStartGame.NoCaptains;
 
     /// <summary>The weapon a character picked as it is played: a random pick becomes the dragon.</summary>
     public static ushort WeaponPlayed(ushort picked) => picked == RandomWeapon ? RandomWeaponPlayedAs : picked;

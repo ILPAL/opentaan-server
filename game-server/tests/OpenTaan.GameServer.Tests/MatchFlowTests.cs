@@ -35,7 +35,8 @@ public sealed class MatchFlowTests
         var start = await StartedAsync(host, host, guest);
 
         // The mission every new mission room plays, one entry for each character and none
-        // for the room's empty or closed slots, and the reference sessions' starting values.
+        // for the room's empty or closed slots, the reference sessions' starting values, and
+        // no captain, though the guest sits in slot 1, which the reference sessions name.
         Assert.Equal(
             new PcGameSessionStartGame(
                 MapId: 0,
@@ -46,7 +47,7 @@ public sealed class MatchFlowTests
                 ],
                 Wind: 0,
                 Field24: 0,
-                CaptainSlots: [0, 1, 0],
+                CaptainSlots: [0xFF, 0xFF, 0xFF],
                 MissionSeed: Seed),
             start);
         await QuietAsync(host, guest);

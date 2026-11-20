@@ -40,7 +40,8 @@ public sealed class TeamMatchFlowTests
         var start = await StartedAsync(host, host, guest);
 
         // The map every new room of teams has, one entry for each character on either team,
-        // the reference sessions' starting values, and no seed: only a mission has one.
+        // the reference sessions' starting values, no captain, and no seed: only a mission
+        // has one.
         Assert.Equal(
             new PcGameSessionStartGame(
                 MapId: 1,
@@ -51,10 +52,31 @@ public sealed class TeamMatchFlowTests
                 ],
                 Wind: 0,
                 Field24: 0,
-                CaptainSlots: [0, 1, 0],
+                CaptainSlots: [0xFF, 0xFF, 0xFF],
                 MissionSeed: 0),
             start);
         await QuietAsync(host, guest);
+    }
+
+    [Theory]
+    [InlineData(GameMode.Items)]
+    [InlineData(GameMode.NoItems)]
+    public async Task AMatchWithoutCaptainsNamesNoCaptainForEitherTeam(GameMode gameMode)
+    {
+        var services = Services();
+        await using var host = await ArriveAsync(services, ChannelId, "Kimi");
+        await using var second = await ArriveAsync(services, ChannelId, "Rồng");
+        await using var third = await ArriveAsync(services, ChannelId, "Linh");
+        await using var fourth = await ArriveAsync(services, ChannelId, "Hoang");
+        await TeamRoomAsync(gameMode, host, second, third, fourth);
+
+        var start = await StartedAsync(host, host, second, third, fourth);
+
+        // Every slot from 0 to 3 holds a character, so a captain named for either team
+        // would be one of them, and would fire every shot twice.
+        Assert.Equal([(byte)0, 1, 2, 3], start.Players.Select(player => player.SlotIndex));
+        Assert.Equal([(byte)0xFF, 0xFF, 0xFF], start.CaptainSlots);
+        await QuietAsync(host, second, third, fourth);
     }
 
     [Fact]
