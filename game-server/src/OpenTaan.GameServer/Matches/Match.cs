@@ -107,7 +107,7 @@ internal sealed class Match : IDisposable
     /// <summary>
     /// For each team number, the slot of the team's captain for the whole match, or
     /// <see cref="PcGameSessionStartGame.NoCaptain"/>: none in a mission, or between teams
-    /// outside the modes with captains.
+    /// outside the modes with captains, or for a team with no character.
     /// </summary>
     public IReadOnlyList<byte> CaptainSlots { get; }
 

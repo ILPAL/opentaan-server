@@ -215,7 +215,7 @@ internal sealed class Room
     /// <summary>
     /// The slots a captain of team <paramref name="team"/> may be drawn from, in rising
     /// order: those of the team's characters volunteering, or of all its characters when
-    /// none volunteers.
+    /// none volunteers; none for a team with no character.
     /// </summary>
     public IReadOnlyList<byte> CaptainPoolOf(byte team)
     {

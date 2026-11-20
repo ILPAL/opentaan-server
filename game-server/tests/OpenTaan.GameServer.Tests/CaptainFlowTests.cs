@@ -224,6 +224,21 @@ public sealed class CaptainFlowTests
     }
 
     [Fact]
+    public async Task ATeamWithNoCharacterHasNoCaptainAndNothingIsDrawnForIt()
+    {
+        var chance = new ScriptedChance(0);
+        var services = Services(random: chance);
+        await using var host = await ArriveAsync(services, ChannelId, "Kimi");
+        await TeamRoomAsync(GameMode.CaptainItems, host);
+
+        var start = await StartedAsync(host, host);
+
+        Assert.Equal([(byte)0xFF, 0, 0xFF], start.CaptainSlots);
+        Assert.Equal([1], chance.DrawnAmong);
+        await QuietAsync(host);
+    }
+
+    [Fact]
     public async Task AskingForTheCaptainsAgainForgetsEveryVolunteerBefore()
     {
         var chance = new ScriptedChance(0);
