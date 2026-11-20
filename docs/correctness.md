@@ -502,6 +502,21 @@ with real tokens:
   turn or a later one, to pass a catch or a bonus on without its gauge change, or to
   drop a catch with no item, all fail them. A rule taken from a name is a guess
   until the client's code or a real client confirms it.
+- **A captain named in every match.** The start of every match carried the
+  captains the reference sessions carry, slot 1 for the first team and slot 0 for
+  the second, and the tests checked those values, so they passed. Nothing checked
+  what the client does with them. The client takes a character whose slot is its
+  team's entry as that team's captain, in any game mode, and fires every shot a
+  captain fires twice. So whoever sat in slot 1 fired twice in every match between
+  teams and every mission, and the second team never had a captain, since slot 0
+  is on the first. A player who saw a captain fire twice in a turn asked why, and
+  the client's code answered it. The start now names no captain, with a number no
+  slot has. The tests check that a mission with a character in slot 1, and a match
+  between two teams of two in either mode without captains, name none; versions
+  planted to name the old slots, the first team's alone, slot 0 for the unused
+  entry, or a real slot as "no captain", all fail them, and so does a replay that
+  keeps the recorded captains. A value copied from a recording is a choice the
+  recording made, and needs the client's code to say what it does.
 
 ## The game server: bytes, not types
 

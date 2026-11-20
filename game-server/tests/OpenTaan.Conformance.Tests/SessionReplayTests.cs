@@ -78,6 +78,11 @@ namespace OpenTaan.Tests.Conformance;
 ///   <item>The start of a mission lists how each character starts, and only the
 ///   characters, where the recordings also list the mission's own side, closed slots the
 ///   client skips.</item>
+///   <item>The start of a match names no captain for either team, where the recordings
+///   name slot 1 for the first team and slot 0 for the second. The client gives a captain
+///   an extra shot with every shot in any game mode, so those named a captain for the first
+///   team whenever slot 1 held a character, and none for the second, as slot 0 is on the
+///   first team.</item>
 /// </list>
 /// Each recorded answer is decoded, those values set, and the answer encoded again, so
 /// every other byte is still compared as recorded.
@@ -491,17 +496,17 @@ public sealed class SessionReplayTests
                     new PcGameSessionUpdateSlot(update.Change, WithGender(update.Slot), update.TeamName).Write(adjusted);
                     break;
 
-                // A mission's start: a start between teams lists both teams, as recorded.
+                // A start names no captain. A mission's lists only the characters; a start
+                // between teams lists both teams, as recorded.
                 case var id when id == PcGameSessionStartGame.RegistryId
-                                 && roomNumber is { } number
-                                 && IsMissionRoom(number)
                                  && PcGameSessionStartGame.TryRead(recorded).Packet is { } start:
+                    var isMission = roomNumber is { } number && IsMissionRoom(number);
                     new PcGameSessionStartGame(
                         start.MapId,
-                        [.. start.Players.Where(player => Seating.TeamOf(player.SlotIndex) == 1)],
+                        isMission ? [.. start.Players.Where(player => Seating.TeamOf(player.SlotIndex) == 1)] : start.Players,
                         start.Wind,
                         start.Field24,
-                        start.CaptainSlots,
+                        PcGameSessionStartGame.NoCaptains,
                         start.MissionSeed).Write(adjusted);
                     break;
 

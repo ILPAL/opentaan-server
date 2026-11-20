@@ -61,7 +61,7 @@ What a reviewer should be able to see and run, end to end.
 | Decisions and security | Ten decision records in `docs/adr`; a threat model with each threat's control, test and status; a case study of how correctness is checked; a test that two concurrent decisions leave exactly one |
 | Security scanning | `security` workflow: both images built, scanned with Trivy on every change and weekly, failing on fixable HIGH or CRITICAL findings, with a CycloneDX SBOM kept per image; Dockerfile checks; Dependabot for Maven, NuGet, base images, compose images and actions; every action pinned to a commit hash |
 
-Tests today: game server 831, of which 21 need the reference sessions and skip without them; admin server 61 unit tests and 25 integration tests.
+Tests today: game server 834, of which 21 need the reference sessions and skip without them; admin server 61 unit tests and 25 integration tests.
 
 ## Next
 
