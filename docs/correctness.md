@@ -479,6 +479,14 @@ with real tokens:
   rather than as its bits, swap two fields, drop an effect, or take a step for an
   effect fail the tests. Where every recording leaves a field empty, a passing
   replay says nothing about it.
+- **A NaN the compiler quieted.** Those tests first built the NaN as a float in
+  code, from its bits. They passed in the Debug builds run before committing, but
+  in a Release build, as the CI runs them, the compiler worked that float out ahead
+  and set the bit that quiets a NaN, before any codec ran. The codec's test failed,
+  and the match test passed only because it then compared a quiet NaN with itself.
+  Both now put the two values on the wire as bits, as a client does, and versions
+  planted to change a value's bits as they are read or written fail both, in
+  either build.
 
 ## The game server: bytes, not types
 
