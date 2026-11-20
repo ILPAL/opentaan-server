@@ -296,7 +296,7 @@ public sealed partial class RoomDirectory
         match.HandTurnTo(next);
         ArmTurnWaitLocked(room, match);
         SendToRoomLocked(room, MatchRules.TurnEndOf(ending));
-        SendToRoomLocked(room, MatchRules.TurnOf(next, match.TurnCount, room.GameMode, matchOptions.Value, match.GhostMoves(MatchRules.StartPosition)));
+        SendToRoomLocked(room, MatchRules.TurnOf(next, match.TurnCount, matchOptions.Value, match.GhostMoves(MatchRules.StartPosition)));
         LogTurnPassed(logger, room.Number, ending, next);
     }
 

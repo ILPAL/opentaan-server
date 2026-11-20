@@ -487,6 +487,21 @@ with real tokens:
   Both now put the two values on the wire as bits, as a client does, and versions
   planted to change a value's bits as they are read or written fail both, in
   either build.
+- **A mode taken at its name.** A room's game mode is either with items or
+  without, and the server took "without items" to mean no item boxes: the start of
+  every turn in `NoItems` (mode 1) let none drop, and a test pinned that down. The
+  tests passed because they checked what the server had been told to do. Nothing
+  checked what the client does with a box in that mode, and the check with a real
+  client was planned but never done. The client's own code drops boxes in every mode, as
+  many as the start of the turn allows, and in the modes without items it turns a
+  box caught, or a bonus, into its team's gauge instead of an item, which is what
+  that mode is about. The server now lets boxes drop in every mode. The tests check
+  that the first turn and the next allow as many boxes without items as with them,
+  and that a catch and a bonus carrying a gauge change and no item reach every
+  client unchanged; versions planted to let none drop without items, on the first
+  turn or a later one, to pass a catch or a bonus on without its gauge change, or to
+  drop a catch with no item, all fail them. A rule taken from a name is a guess
+  until the client's code or a real client confirms it.
 
 ## The game server: bytes, not types
 

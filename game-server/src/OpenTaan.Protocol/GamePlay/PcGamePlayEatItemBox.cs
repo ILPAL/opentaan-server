@@ -12,7 +12,7 @@ namespace OpenTaan.Protocol.GamePlay;
 /// </remarks>
 /// <param name="SlotIndex">The slot of the character whose ghost caught the box, below <see cref="GameSlotInfo.SlotCount"/>.</param>
 /// <param name="Catch">The catch: the box, by the id it appeared with, and the item.</param>
-/// <param name="TeamGauge">A change to a team's gauge that comes with it, or null for none.</param>
+/// <param name="TeamGauge">The change to the team's gauge the catch makes in a game mode without items, where it gives no item; null with items.</param>
 [WireClass("PcGamePlay_EatItemBox")]
 public sealed record PcGamePlayEatItemBox(byte SlotIndex, GameScenarioCommandEatItemBox Catch, GameScenarioCommandTeamGauge? TeamGauge) : IPacket
 {

@@ -165,7 +165,7 @@ public sealed class TeamMatchFlowTests
         await QuietAsync(host, guest);
 
         await host.SendAsync(Loading(0));
-        await TurnToldAsync(0, GameMode.Items, host, guest);
+        await TurnToldAsync(0, host, guest);
         await QuietAsync(host, guest);
     }
 
@@ -185,7 +185,7 @@ public sealed class TeamMatchFlowTests
         await QuietAsync(host, guest);
 
         clock.Advance(Tick);
-        await TurnToldAsync(0, GameMode.Items, host, guest);
+        await TurnToldAsync(0, host, guest);
 
         // The client that reports once the turn has started changes nothing, nor does a second report.
         await host.SendAsync(Loading(0));
@@ -207,7 +207,7 @@ public sealed class TeamMatchFlowTests
         await QuietAsync(host, guest);
 
         clock.Advance(Tick);
-        await TurnToldAsync(0, GameMode.Items, host, guest);
+        await TurnToldAsync(0, host, guest);
         await QuietAsync(host, guest);
     }
 
@@ -229,7 +229,7 @@ public sealed class TeamMatchFlowTests
         clock.Advance(left - Tick);
         await QuietAsync(host, guest);
         clock.Advance(Tick);
-        await TurnToldAsync(0, GameMode.Items, host, guest);
+        await TurnToldAsync(0, host, guest);
     }
 
     [Fact]
@@ -244,7 +244,7 @@ public sealed class TeamMatchFlowTests
 
         await guest.SendAsync(new PcGamePlayLoadingDone([new LoadedCharacter(0, 0x0102, 0x0304)]));
 
-        await TurnToldAsync(0, GameMode.Items, host, guest);
+        await TurnToldAsync(0, host, guest);
 
         // Where it said the host's character stands was not taken: the host's ghost is where
         // the host's own client last put it.
@@ -278,7 +278,7 @@ public sealed class TeamMatchFlowTests
                 await player.ReceiveAsync<PcGameSessionUpdateSlot>(PcGameSessionUpdateSlot.TryRead));
         }
 
-        await TurnToldAsync(0, GameMode.Items, host, second, third);
+        await TurnToldAsync(0, host, second, third);
         await QuietAsync(host, second, third, fourth);
     }
 
@@ -297,7 +297,7 @@ public sealed class TeamMatchFlowTests
         await second.SendAsync(Loading(2));
         await third.SendAsync(Loading(1));
         await fourth.SendAsync(Loading(3));
-        await TurnToldAsync(0, GameMode.Items, everyone);
+        await TurnToldAsync(0, everyone);
 
         await PassedAsync(host, 0, 2, everyone);
         await PassedAsync(second, 2, 1, everyone);
@@ -318,7 +318,7 @@ public sealed class TeamMatchFlowTests
         Assert.Equal([(byte)0, 1, 2, 3], start.Players.Select(player => player.SlotIndex));
         await first.SendAsync(Loading(0, 1));
         await second.SendAsync(Loading(2, 3));
-        await TurnToldAsync(0, GameMode.Items, first, second);
+        await TurnToldAsync(0, first, second);
 
         await PassedAsync(first, 0, 2, first, second);
         await PassedAsync(second, 2, 1, first, second);
@@ -431,8 +431,46 @@ public sealed class TeamMatchFlowTests
         await QuietAsync(host, guest);
     }
 
+    [Theory]
+    [InlineData(GameMode.Items)]
+    [InlineData(GameMode.NoItems)]
+    public async Task EveryTurnLetsAsManyItemBoxesDropAsTheServerIsSetToWithItemsOrWithout(GameMode gameMode)
+    {
+        // Without items, a box caught fills the catcher's team gauge instead, so boxes drop
+        // just the same.
+        var matches = SessionHarness.ShippedMatchOptions();
+        matches.ItemBoxesPerTurn = 3;
+        var services = Services(time: new ManualTime(), matches: matches);
+        await using var host = await ArriveAsync(services, ChannelId, "Kimi");
+        await using var guest = await ArriveAsync(services, ChannelId, "Rồng");
+        await TeamRoomAsync(gameMode, host, guest);
+        await StartedAsync(host, host, guest);
+        await host.SendAsync(Loading(0));
+
+        await guest.SendAsync(Loading(2));
+
+        foreach (var player in new[] { host, guest })
+        {
+            var start = await player.ReceiveAsync<PcGamePlayTurnStart>(PcGamePlayTurnStart.TryRead);
+            Assert.Equal<(byte, byte)>((0, 3), (start.TurnSlot, start.ItemBoxBudget));
+        }
+
+        // The next turn too, which starts once the first has passed.
+        var pass = new PcGamePlayPassTurn(0, 0x0102, 0x0304, 0x01, 0x05060708);
+        await host.SendAsync(pass);
+        Assert.Equal(pass, await guest.ReceiveAsync<PcGamePlayPassTurn>(PcGamePlayPassTurn.TryRead));
+        foreach (var player in new[] { host, guest })
+        {
+            await player.ReceiveAsync<PcGamePlayTurnEnd>(PcGamePlayTurnEnd.TryRead);
+            var start = await player.ReceiveAsync<PcGamePlayTurnStart>(PcGamePlayTurnStart.TryRead);
+            Assert.Equal<(byte, byte)>((2, 3), (start.TurnSlot, start.ItemBoxBudget));
+        }
+
+        await QuietAsync(host, guest);
+    }
+
     [Fact]
-    public async Task AMatchWithoutItemsLetsNoItemBoxDrop()
+    public async Task WithoutItemsABoxCaughtAndABonusCarryTheirTeamsGaugeInsteadAndGoToEveryClientItsSendersToo()
     {
         var services = Services(time: new ManualTime());
         await using var host = await ArriveAsync(services, ChannelId, "Kimi");
@@ -440,13 +478,25 @@ public sealed class TeamMatchFlowTests
         await TeamRoomAsync(GameMode.NoItems, host, guest);
         await StartedAsync(host, host, guest);
         await host.SendAsync(Loading(0));
-
         await guest.SendAsync(Loading(2));
+        await TurnToldAsync(0, host, guest);
 
-        var turn = await host.ReceiveAsync<PcGamePlayTurnStart>(PcGamePlayTurnStart.TryRead);
-        Assert.Equal(0, turn.ItemBoxBudget);
-        Assert.Equal(MatchRules.TurnOf(0, turnCount: 0, GameMode.NoItems, SessionHarness.ShippedMatchOptions(), []), turn);
-        Assert.Equal(turn, await guest.ReceiveAsync<PcGamePlayTurnStart>(PcGamePlayTurnStart.TryRead));
+        // As a client sends them without items: no item, and the gauge its team gains, by
+        // what it gains for, a box caught or a bonus.
+        var caught = new PcGamePlayEatItemBox(
+            0,
+            new GameScenarioCommandEatItemBox(0, 0x0B, 0x0102, 0x0304, ItemBoxId: 0x0506070809, PickupItemId: 0, Reserved: 0x0A0B0C0D),
+            new GameScenarioCommandTeamGauge(0, 0x0C, 0x1112, 0x1314, GaugeType: 3, NewGaugeValue: 0x0015, PreviousGaugeValue: 0x0010));
+        var bonus = new PcGamePlayEatBonusItem(
+            2,
+            new GameScenarioCommandEatItemBox(2, 0x0B, 0x2122, 0x2324, ItemBoxId: ulong.MaxValue, PickupItemId: 0, Reserved: 0x2A2B2C2D),
+            new GameScenarioCommandTeamGauge(2, 0x0C, 0x3132, 0x3334, GaugeType: 4, NewGaugeValue: 0x0025, PreviousGaugeValue: 0x0020));
+
+        await host.SendAsync(caught);
+        await EveryoneToldAsync(caught, PcGamePlayEatItemBox.TryRead, host, guest);
+        await guest.SendAsync(bonus);
+        await EveryoneToldAsync(bonus, PcGamePlayEatBonusItem.TryRead, host, guest);
+        await QuietAsync(host, guest);
     }
 
     [Fact]
@@ -532,7 +582,7 @@ public sealed class TeamMatchFlowTests
         // The match's first turn still starts once both have loaded, and its turns are dropped too.
         await host.SendAsync(Loading(0));
         await guest.SendAsync(Loading(2));
-        await TurnToldAsync(0, GameMode.Items, host, guest);
+        await TurnToldAsync(0, host, guest);
         await host.SendAsync(Asking(1));
         await guest.SendAsync(new PqGameSessionMissionLevelReady(0));
         await host.SendAsync(Asking(PqGameSessionStartMissionLevel.NoNextLevel));

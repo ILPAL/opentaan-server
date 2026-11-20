@@ -111,7 +111,7 @@ public sealed record GameScenarioCommandMakeItemBox(byte SlotIndex, byte Command
 /// <param name="TimingTick">When the box is caught, in milliseconds from the start of the shot.</param>
 /// <param name="Duration">How long the step lasts, in milliseconds.</param>
 /// <param name="ItemBoxId">The box caught, by the id it appeared with.</param>
-/// <param name="PickupItemId">The item the box gives.</param>
+/// <param name="PickupItemId">The item the box gives; 0 in a game mode without items, where a catch fills the team's gauge instead.</param>
 /// <param name="Reserved">A value the client writes and never reads.</param>
 [WireClass("GameScenarioCommand_EatItemBox")]
 public sealed record GameScenarioCommandEatItemBox(byte SlotIndex, byte CommandType, uint TimingTick, uint Duration, ulong ItemBoxId, ushort PickupItemId, uint Reserved)
@@ -135,7 +135,7 @@ public sealed record GameScenarioCommandEatItemBox(byte SlotIndex, byte CommandT
     }
 }
 
-/// <summary>A change to a team's gauge, which fills as a team deals damage.</summary>
+/// <summary>A change to a team's gauge, which fills as a team deals damage and, in a game mode without items, as it catches boxes and is given bonuses.</summary>
 /// <param name="SlotIndex">The slot of the character whose team's gauge changes.</param>
 /// <param name="CommandType">What the step does, as the client numbers it.</param>
 /// <param name="TimingTick">When the gauge changes, in milliseconds from the start of the shot.</param>

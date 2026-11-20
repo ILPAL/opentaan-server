@@ -88,9 +88,6 @@ public static class MatchRules
     /// <summary>The weapon a character picked as it is played: a random pick becomes the dragon.</summary>
     public static ushort WeaponPlayed(ushort picked) => picked == RandomWeapon ? RandomWeaponPlayedAs : picked;
 
-    /// <summary>Whether a match played by <paramref name="gameMode"/> has items in play.</summary>
-    public static bool HasItems(GameMode gameMode) => gameMode is GameMode.Items or GameMode.CaptainItems;
-
     /// <summary>Whether a match played by <paramref name="gameMode"/> has a captain for each team.</summary>
     public static bool HasCaptains(GameMode gameMode) => gameMode is GameMode.CaptainItems or GameMode.CaptainNoItems;
 
@@ -100,12 +97,12 @@ public static class MatchRules
 
     /// <summary>
     /// The start of a turn for the character in slot <paramref name="slot"/>, at a mission
-    /// level's turn count <paramref name="turnCount"/>, in a match played by
-    /// <paramref name="gameMode"/>: when it has items in play, as many item boxes may drop as
-    /// <paramref name="options"/> allow, and none otherwise; the items drawn are of the
+    /// level's turn count <paramref name="turnCount"/>: as many item boxes may drop as
+    /// <paramref name="options"/> allow, whatever the game mode, since in a mode without
+    /// items a box caught fills its catcher's team gauge instead; the items drawn are of the
     /// quality they set; and every ghost in <paramref name="ghostMoves"/> moves on its way.
     /// </summary>
-    public static PcGamePlayTurnStart TurnOf(byte slot, ushort turnCount, GameMode gameMode, MatchOptions options, IReadOnlyList<GhostMove> ghostMoves)
+    public static PcGamePlayTurnStart TurnOf(byte slot, ushort turnCount, MatchOptions options, IReadOnlyList<GhostMove> ghostMoves)
     {
         ArgumentNullException.ThrowIfNull(options);
         return new(
@@ -113,7 +110,7 @@ public static class MatchRules
             Field11: 0,
             TurnWind,
             TurnAmmo,
-            HasItems(gameMode) ? options.ItemBoxesPerTurn : (byte)0,
+            options.ItemBoxesPerTurn,
             RemovedItemBoxes: [],
             ghostMoves,
             HpUpdates: [],

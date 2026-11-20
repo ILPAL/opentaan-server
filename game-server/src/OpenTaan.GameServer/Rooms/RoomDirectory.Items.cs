@@ -10,10 +10,11 @@ namespace OpenTaan.GameServer.Rooms;
 /// <para>
 /// The clients decide every item: the shooter's client places the item boxes its shot
 /// drops, as many as <see cref="MatchOptions.ItemBoxesPerTurn"/> allows, and the client that
-/// catches a box, or is given a bonus at the end of a turn, draws the item. The server
-/// passes on what each client tells of its own characters, unchanged, once it has checked
-/// that the packet names one of the sender's characters in a match still running. Deciding
-/// items on the server comes later, as its own step.
+/// catches a box, or is given a bonus at the end of a turn, draws the item; in a mode
+/// without items, it fills its team's gauge instead, and the catch or the bonus carries the
+/// gauge's change. The server passes on what each client tells of its own characters,
+/// unchanged, once it has checked that the packet names one of the sender's characters in a
+/// match still running. Deciding items on the server comes later, as its own step.
 /// </para>
 /// <para>
 /// Who is told depends on the packet. A client acts on the server's copy of an item used,

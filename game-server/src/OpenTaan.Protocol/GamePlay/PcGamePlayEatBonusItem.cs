@@ -12,7 +12,7 @@ namespace OpenTaan.Protocol.GamePlay;
 /// </remarks>
 /// <param name="SlotIndex">The slot of the character that gets the item, below <see cref="GameSlotInfo.SlotCount"/>.</param>
 /// <param name="Catch">The item, as a catch of no box.</param>
-/// <param name="TeamGauge">A change to a team's gauge that comes with it, or null for none.</param>
+/// <param name="TeamGauge">The change to the team's gauge the bonus makes in a game mode without items, where it gives no item; null with items.</param>
 [WireClass("PcGamePlay_EatBonusItem")]
 public sealed record PcGamePlayEatBonusItem(byte SlotIndex, GameScenarioCommandEatItemBox Catch, GameScenarioCommandTeamGauge? TeamGauge) : IPacket
 {
