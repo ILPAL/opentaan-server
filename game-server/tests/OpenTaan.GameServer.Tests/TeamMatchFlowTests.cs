@@ -99,21 +99,6 @@ public sealed class TeamMatchFlowTests
         await QuietAsync(host, pair);
     }
 
-    [Theory]
-    [InlineData(GameMode.CaptainItems)]
-    [InlineData(GameMode.CaptainNoItems)]
-    public async Task AStartIsDroppedInARoomWithCaptains(GameMode gameMode)
-    {
-        var services = Services();
-        await using var host = await ArriveAsync(services, ChannelId, "Kimi");
-        await using var guest = await ArriveAsync(services, ChannelId, "Rồng");
-        await TeamRoomAsync(gameMode, host, guest);
-
-        await host.SendAsync(new PqGameSessionStartGame());
-
-        await QuietAsync(host, guest);
-    }
-
     [Fact]
     public async Task AMapPickedIsPlayedAsPicked()
     {

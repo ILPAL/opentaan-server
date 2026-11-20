@@ -95,6 +95,13 @@ public sealed class ProtocolReplayTests
         [PcGameSessionOpenCloseSlot.RegistryId] = body => Replay.Of(PcGameSessionOpenCloseSlot.TryRead(body), packet => packet.Write),
         [PqGameSessionUserExpel.RegistryId] = body => Replay.Of(PqGameSessionUserExpel.TryRead(body), packet => packet.Write),
         [PcGameSessionUserExpel.RegistryId] = body => Replay.Of(PcGameSessionUserExpel.TryRead(body), packet => packet.Write),
+        [PqGameSessionChiefDecision.RegistryId] = body => Replay.Of(PqGameSessionChiefDecision.TryRead(body), packet => packet.Write),
+        [PcGameSessionChiefDecision.RegistryId] = body => Replay.Of(PcGameSessionChiefDecision.TryRead(body), packet => packet.Write),
+        [PqGameSessionChallengeChief.RegistryId] = body => Replay.Of(PqGameSessionChallengeChief.TryRead(body), packet => packet.Write),
+        [PcGameSessionChallengeChief.RegistryId] = body => Replay.Of(PcGameSessionChallengeChief.TryRead(body), packet => packet.Write),
+        [PqGameSessionCancelChief.RegistryId] = body => Replay.Of(PqGameSessionCancelChief.TryRead(body), packet => packet.Write),
+        [PcGameSessionCancelChief.RegistryId] = body => Replay.Of(PcGameSessionCancelChief.TryRead(body), packet => packet.Write),
+        [PcGameSessionFailChallengeChief.RegistryId] = body => Replay.Of(PcGameSessionFailChallengeChief.TryRead(body), packet => packet.Write),
         [PcLobbyUpdateRoomList.RegistryId] = body => Replay.Of(PcLobbyUpdateRoomList.TryRead(body), packet => packet.Write),
         [PqLobbyViewRoomSimpleInfo.RegistryId] = body => Replay.Of(PqLobbyViewRoomSimpleInfo.TryRead(body), packet => packet.Write),
         [PrLobbyViewRoomSimpleInfo.RegistryId] = body => Replay.Of(PrLobbyViewRoomSimpleInfo.TryRead(body), packet => packet.Write),
@@ -154,6 +161,7 @@ public sealed class ProtocolReplayTests
         [PcLobbyUpdateRoomList.RegistryId] = Written(new PcLobbyUpdateRoomList(
             [GameSessionInfoPack.Listing(InventedRoom), GameSessionInfoPack.Removal(0x1112), GameSessionInfoPack.Listing(InventedRoom with { Password = null })])),
         [PcGamePlayLeaveUser.RegistryId] = Written(new PcGamePlayLeaveUser(0x05)),
+        [PcGameSessionFailChallengeChief.RegistryId] = Written(new PcGameSessionFailChallengeChief(0x44332211)),
     };
 
     // Recorded packets in shapes no recording shows, written from invented values so that
@@ -316,13 +324,21 @@ public sealed class ProtocolReplayTests
             }
 
             exercised.Add(id);
-            var result = replay(body);
+
+            // A scripted request is refused as recorded, and read as the client sends it.
+            if (ScriptedRequests.IsScripted(body) && replay(body).Error != PacketError.TrailingBytes)
+            {
+                failures.Add($"{origin}: {NameOf(id)} took bytes the client never writes");
+            }
+
+            var sent = ScriptedRequests.AsTheClientSendsIt(body);
+            var result = replay(sent);
 
             if (result.Error != PacketError.None)
             {
                 failures.Add($"{origin}: {NameOf(id)} refused with {result.Error}");
             }
-            else if (!result.Written.AsSpan().SequenceEqual(body))
+            else if (!result.Written.AsSpan().SequenceEqual(sent))
             {
                 failures.Add($"{origin}: {NameOf(id)} wrote back different bytes");
             }
@@ -350,8 +366,9 @@ public sealed class ProtocolReplayTests
         var failures = new List<string>();
         var written = Unrecorded.Values.Concat(UnrecordedShapes).Select(body => ("a written body", body));
 
-        foreach (var (origin, body) in Bodies().Concat(written))
+        foreach (var (origin, recorded) in Bodies().Concat(written))
         {
+            var body = ScriptedRequests.AsTheClientSendsIt(recorded);
             var id = LeadingId(body);
             if (!Codecs.ContainsKey(id) || classes.GetValueOrDefault(id) is not { } spec
                 || !(spec.Fields.Count > 0 || DeclaredLayout.HasClientLayout(spec.WireName)))
@@ -454,6 +471,13 @@ public sealed class ProtocolReplayTests
         [PcGameSessionChangeGameOption.RegistryId] = body => PcGameSessionChangeGameOption.TryRead(body).Packet,
         [PcGameSessionOpenCloseSlot.RegistryId] = body => PcGameSessionOpenCloseSlot.TryRead(body).Packet,
         [PcGameSessionUserExpel.RegistryId] = body => PcGameSessionUserExpel.TryRead(body).Packet,
+        [PqGameSessionChiefDecision.RegistryId] = body => PqGameSessionChiefDecision.TryRead(body).Packet,
+        [PcGameSessionChiefDecision.RegistryId] = body => PcGameSessionChiefDecision.TryRead(body).Packet,
+        [PqGameSessionChallengeChief.RegistryId] = body => PqGameSessionChallengeChief.TryRead(body).Packet,
+        [PcGameSessionChallengeChief.RegistryId] = body => PcGameSessionChallengeChief.TryRead(body).Packet,
+        [PqGameSessionCancelChief.RegistryId] = body => PqGameSessionCancelChief.TryRead(body).Packet,
+        [PcGameSessionCancelChief.RegistryId] = body => PcGameSessionCancelChief.TryRead(body).Packet,
+        [PcGameSessionFailChallengeChief.RegistryId] = body => PcGameSessionFailChallengeChief.TryRead(body).Packet,
         [PcLobbyUpdateRoomList.RegistryId] = body => PcLobbyUpdateRoomList.TryRead(body).Packet,
         [PrLobbyViewRoomSimpleInfo.RegistryId] = body => PrLobbyViewRoomSimpleInfo.TryRead(body).Packet,
         [PqGameSessionStartGame.RegistryId] = body => PqGameSessionStartGame.TryRead(body).Packet,

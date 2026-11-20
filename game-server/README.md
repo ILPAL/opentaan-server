@@ -272,8 +272,35 @@ a number, and the server's code names each one (`GameMode`):
 | `3` | `CaptainNoItems` | No items, a team gauge instead, and each team has a captain. |
 
 A mission room plays `Items` alone, the only mode the client's mode picker offers
-it. A room of teams may have any of the four, and its matches are played in `Items`
-and `NoItems` for now: matches with captains come later.
+it. A room of teams may have any of the four.
+
+In `CaptainItems` and `CaptainNoItems` (modes 2 and 3), each team has a captain. The
+client fires every shot a captain fires twice, and on a captain's turn lets its
+teammates give it their items. It takes the captains from the start of the match, in
+any game mode, so the start names one for each team in these two modes, and none in
+the others: a captain for one side alone would give it an edge. The captains are
+chosen in the room before the match:
+
+- **Asking:** the host's Start asks for the captains instead, once every guest is
+  ready. Everyone in the room is told, the host included, and every client shows the
+  choice for five seconds: its player's team, each character with a light, and for
+  each of the player's own characters a button to volunteer and one to withdraw. The
+  server keeps no time of its own: the host's client asks for the start when its
+  five seconds are over. Asking again forgets every volunteer before.
+- **Volunteering:** a player volunteers or withdraws one of its own characters, and
+  everyone is told, which lights the character up or puts its light out. Both
+  characters of a two-account connection may volunteer. Volunteering anything else,
+  another player's character, or outside the choice, is not taken, and the player
+  alone is told, which leaves the light out. A withdrawal that changes nothing is
+  dropped.
+- **Drawing:** as the match starts, each team's captain is drawn evenly from its
+  characters that volunteer, or, when none does, from all of its characters, so
+  both teams always have one, even when the host started without asking. The choice
+  ends with the start, with a change of the room's game mode, and for a player's
+  characters when it leaves; the host leaving keeps everyone else's.
+- **In the match:** the client sets the captains only at the start. A team whose
+  captain's player leaves plays on without one, and a dead captain is given no turn.
+  Item gifts are passed on as the clients send them, like every item, for now.
 
 Item boxes drop in every mode. With items, a box caught, or a bonus at the end of a
 turn, gives the character an item. Without them, it fills the character's team
@@ -292,14 +319,13 @@ the next, and when the match is over. What a client tells of how its own charact
 play goes to every other client in the match as it came, and never back to its
 sender: a client sends on any shot, pass or fall it is given that names one of its
 own slots, so a copy back would come round again. Items go the other way, as below.
-Matches with captains and missions whose enemies fight back come next.
+Missions whose enemies fight back come next.
 
 - **Starting:** the host starts once every guest is ready. Everyone in the room is
   told how each character starts, and only the characters. A random weapon is
-  played as the dragon. The start names no captain for either team: the client fires
-  every shot of a character named captain twice, in any game mode, so a captain named
-  outside the captain modes, or for one team alone, would give one side an edge. The
-  lobby shows the room playing, and no one enters it until
+  played as the dragon. The start names a captain for each team in the modes with
+  captains, and none in the others, as above. The lobby shows the room playing, and
+  no one enters it until
   it waits again. A start the rules do not allow is not answered: the client waits
   on none.
   - A mission room's host alone may start. The mission is laid out from a seed drawn
@@ -307,9 +333,7 @@ Matches with captains and missions whose enemies fight back come next.
     might not have is never started: it would leave every client in the room without
     a map, which is why the host's options take only `Rooms:Missions`.
   - A match between teams starts only between teams of the same size, as the host's
-    client checks itself, and not yet with captains: in `CaptainItems` and
-    `CaptainNoItems` (modes 2 and 3) the client asks for the captains first, which
-    comes later. It is played on the room's map.
+    client checks itself. It is played on the room's map.
     The client cannot load one of its own random picks, `200` to `203`, so a room on
     one is played on a map drawn evenly at every start from the pick's group among
     the maps of the channel's mode (`Rooms:RandomMaps`) and the extras every pick
@@ -387,7 +411,10 @@ Matches with captains and missions whose enemies fight back come next.
   box its ghost caught and a bonus only when the server's copy comes back, and gives
   no item of its own accord, so each goes to everyone in the match, its sender
   included, as it came. Where an item went goes back to its sender alone, as in the
-  recorded sessions. Each is passed on only for one of the sender's own characters,
+  recorded sessions. A player may also give its items to the teammate whose turn it
+  is: a ghost to whoever has its team's turn, and in the modes with captains a living
+  character to its captain on the captain's turn. A gift names the giver's own slot.
+  Each is passed on only for one of the sender's own characters,
   the only ones the client sends them for, whoever has the turn and during a shot
   too, since a step of a shot can have a client use an item as it plays the shot
   back. Deciding items on the server comes later, as its own step.
@@ -500,8 +527,8 @@ leave rooms, do everything a waiting room offers, start a mission or a match
 between two teams of the same size and play it turn by turn: walk, shoot, pass,
 die, see each level begin, clear the mission or lose it, win or lose against the
 other team, catch, use and throw away items, send its ghost about, give up or
-leave, and see its result screen and pick a card. Matches with captains come
-later. The server
+leave, and see its result screen and pick a card, with a captain for each team in
+the modes with captains. The server
 refuses to start with registration off in any other environment. Accounts,
 characters and rooms live in memory until the database stage.
 

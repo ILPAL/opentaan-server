@@ -1,6 +1,7 @@
 using OpenTaan.GameServer.Rooms;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol.GamePlay;
+using OpenTaan.Protocol.Matches;
 
 namespace OpenTaan.GameServer.Matches;
 
@@ -53,13 +54,22 @@ internal sealed class Match : IDisposable
     private readonly TurnOrder _turns = new();
     private ITimer? _timer;
 
-    private Match(ushort mapId, MissionLevels? levels, uint seed, IReadOnlyDictionary<byte, ClientSession> players, DateTimeOffset started)
+    private Match(
+        ushort mapId,
+        MissionLevels? levels,
+        uint seed,
+        IReadOnlyDictionary<byte, ClientSession> players,
+        IReadOnlyList<byte> captainSlots,
+        DateTimeOffset started)
     {
         MapId = mapId;
         Levels = levels;
         Seed = seed;
         Started = started;
         _players = new Dictionary<byte, ClientSession>(players);
+        CaptainSlots = captainSlots.Count == PcGameSessionStartGame.CaptainCount
+            ? [.. captainSlots]
+            : throw new ArgumentException($"There is one entry for each of the {PcGameSessionStartGame.CaptainCount} team numbers.", nameof(captainSlots));
     }
 
     /// <summary>A match of mission <paramref name="missionId"/>, started by the characters in <paramref name="players"/>.</summary>
@@ -69,14 +79,15 @@ internal sealed class Match : IDisposable
     /// <param name="players">The connection playing the character in each slot, by slot.</param>
     /// <param name="started">When the match started.</param>
     public static Match OfMission(ushort missionId, byte levels, uint seed, IReadOnlyDictionary<byte, ClientSession> players, DateTimeOffset started) =>
-        new(missionId, new MissionLevels(levels), seed, players, started);
+        new(missionId, new MissionLevels(levels), seed, players, PcGameSessionStartGame.NoCaptains, started);
 
     /// <summary>A match between teams on map <paramref name="mapId"/>, started by the characters in <paramref name="players"/>.</summary>
     /// <param name="mapId">The map played on.</param>
     /// <param name="players">The connection playing the character in each slot, by slot, each on its slot's team.</param>
+    /// <param name="captainSlots">For each team number, the slot of the team's captain, or <see cref="PcGameSessionStartGame.NoCaptain"/>.</param>
     /// <param name="started">When the match started.</param>
-    public static Match BetweenTeams(ushort mapId, IReadOnlyDictionary<byte, ClientSession> players, DateTimeOffset started) =>
-        new(mapId, levels: null, MatchRules.NoMissionSeed, players, started);
+    public static Match BetweenTeams(ushort mapId, IReadOnlyDictionary<byte, ClientSession> players, IReadOnlyList<byte> captainSlots, DateTimeOffset started) =>
+        new(mapId, levels: null, MatchRules.NoMissionSeed, players, captainSlots, started);
 
     /// <summary>The map the match is played on, or a mission's own number in a mission.</summary>
     public ushort MapId { get; }
@@ -92,6 +103,13 @@ internal sealed class Match : IDisposable
 
     /// <summary>When the match started.</summary>
     public DateTimeOffset Started { get; }
+
+    /// <summary>
+    /// For each team number, the slot of the team's captain for the whole match, or
+    /// <see cref="PcGameSessionStartGame.NoCaptain"/>: none in a mission, or between teams
+    /// outside the modes with captains.
+    /// </summary>
+    public IReadOnlyList<byte> CaptainSlots { get; }
 
     /// <summary>The result screen's cards, once the match is over.</summary>
     public ResultCards Cards { get; } = new();

@@ -32,6 +32,9 @@ internal sealed class Room
     private readonly TakenSlot?[] _seats = new TakenSlot?[GameSlotInfo.SlotCount];
     private readonly bool[] _closed = new bool[GameSlotInfo.SlotCount];
 
+    // The characters volunteering as captain while the room chooses its captains.
+    private readonly HashSet<uint> _volunteers = [];
+
     /// <summary>
     /// A room numbered <paramref name="number"/> in <paramref name="host"/>'s channel, with
     /// the rules <paramref name="requested"/> asks for, and nobody in it yet.
@@ -99,6 +102,12 @@ internal sealed class Room
 
     /// <summary>Whether the room plays missions.</summary>
     public bool IsMission => GameType == GameType.Mission;
+
+    /// <summary>
+    /// Whether the room is choosing its captains: from its host's asking until its match
+    /// starts, or its game mode changes.
+    /// </summary>
+    public bool IsChoosingCaptains { get; private set; }
 
     /// <summary>Whether no slot holds a character.</summary>
     public bool IsEmpty => SeatedCount == 0;
@@ -171,11 +180,48 @@ internal sealed class Room
         return (taken.Count(slot => Seating.TeamOf(slot) == 1), taken.Count(slot => Seating.TeamOf(slot) == 2));
     }
 
-    /// <summary>Starts <paramref name="match"/>: the room plays it until <see cref="EndMatch"/>.</summary>
+    /// <summary>Starts <paramref name="match"/>: the room plays it until <see cref="EndMatch"/>, and its choice of captains is over.</summary>
     public void BeginMatch(Match match)
     {
         Match = match ?? throw new ArgumentNullException(nameof(match));
         Status = RoomStatus.Playing;
+        EndCaptainChoice();
+    }
+
+    /// <summary>Starts choosing the room's captains afresh, with no character volunteering.</summary>
+    public void ChooseCaptains()
+    {
+        _volunteers.Clear();
+        IsChoosingCaptains = true;
+    }
+
+    /// <summary>Whether character <paramref name="characterId"/> volunteers as its team's captain.</summary>
+    public bool Volunteers(uint characterId) => _volunteers.Contains(characterId);
+
+    /// <summary>Has character <paramref name="characterId"/>, which a slot must hold, volunteer as its team's captain.</summary>
+    public void Volunteer(uint characterId)
+    {
+        if (!IsChoosingCaptains || SlotOf(characterId) is null)
+        {
+            throw new InvalidOperationException("Only a character in the room volunteers, while the room chooses its captains.");
+        }
+
+        _volunteers.Add(characterId);
+    }
+
+    /// <summary>Takes character <paramref name="characterId"/>'s volunteering back.</summary>
+    public void Withdraw(uint characterId) => _volunteers.Remove(characterId);
+
+    /// <summary>
+    /// The slots a captain of team <paramref name="team"/> may be drawn from, in rising
+    /// order: those of the team's characters volunteering, or of all its characters when
+    /// none volunteers.
+    /// </summary>
+    public IReadOnlyList<byte> CaptainPoolOf(byte team)
+    {
+        var onTeam = TakenSlots().Where(slot => Seating.TeamOf(slot) == team).ToArray();
+        var volunteering = onTeam.Where(slot => _volunteers.Contains(_seats[slot]!.Character.CharacterId)).ToArray();
+        return volunteering.Length > 0 ? volunteering : onTeam;
     }
 
     /// <summary>Lets go of the match: the room waits for players again.</summary>
@@ -249,9 +295,17 @@ internal sealed class Room
         _closed[slot] = closed;
     }
 
-    /// <summary>Sets the rules the room's match is played by, its chances, its map, and a mission's difficulty.</summary>
+    /// <summary>
+    /// Sets the rules the room's match is played by, its chances, its map, and a mission's
+    /// difficulty. A change of rules ends the room's choice of captains.
+    /// </summary>
     public void SetOptions(GameMode gameMode, ChanceMode chanceMode, ushort mapId, byte difficulty)
     {
+        if (gameMode != GameMode)
+        {
+            EndCaptainChoice();
+        }
+
         GameMode = gameMode;
         ChanceMode = chanceMode;
         MapId = mapId;
@@ -275,14 +329,15 @@ internal sealed class Room
         }
     }
 
-    /// <summary>Empties every slot <paramref name="session"/> holds, and returns them in rising order.</summary>
+    /// <summary>Empties every slot <paramref name="session"/> holds, and returns them in rising order. Its characters no longer volunteer.</summary>
     public IReadOnlyList<byte> Vacate(ClientSession session)
     {
         var freed = new List<byte>();
         for (var slot = 0; slot < _seats.Length; slot++)
         {
-            if (_seats[slot]?.Member.Session == session)
+            if (_seats[slot] is { } seat && seat.Member.Session == session)
             {
+                _volunteers.Remove(seat.Character.CharacterId);
                 _seats[slot] = null;
                 freed.Add((byte)slot);
             }
@@ -357,6 +412,12 @@ internal sealed class Room
 
     private SlotUse UseOf(int slot) =>
         _seats[slot] is not null ? SlotUse.Taken : _closed[slot] ? SlotUse.Closed : SlotUse.Open;
+
+    private void EndCaptainChoice()
+    {
+        _volunteers.Clear();
+        IsChoosingCaptains = false;
+    }
 
     private byte FirstSlotOf(ClientSession session) =>
         (byte)Array.FindIndex(_seats, seat => seat?.Member.Session == session);

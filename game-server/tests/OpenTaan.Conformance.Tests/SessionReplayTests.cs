@@ -5,6 +5,7 @@ using OpenTaan.GameServer.Channels;
 using OpenTaan.GameServer.Characters;
 using OpenTaan.GameServer.Matches;
 using OpenTaan.GameServer.Rooms;
+using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol;
 using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Channels;
@@ -88,16 +89,24 @@ namespace OpenTaan.Tests.Conformance;
 /// every other byte is still compared as recorded.
 /// </para>
 /// <para>
-/// Three kinds of step end the session's replay, as this server answers them differently by
+/// Four kinds of step end the session's replay, as this server answers them differently by
 /// design. A client reporting a mission level ready before any level was asked for is not
 /// answered: the recordings report level 0 ready first and ask for level 1 after, where a
 /// real client asks for level 1 once it has loaded, and reports a level ready once it has
 /// been told the level begins. A box a ghost catches is passed on to every client, the
 /// catcher's included, where the recordings answer none. And a player giving up is not
 /// passed on, since no client has anything to do with it, and the match's end pays no
-/// reward yet, where the recordings pass it on and pay one. The match's seed and its
+/// reward yet, where the recordings pass it on and pay one. A player volunteering another
+/// player's character as captain is told alone that it was not taken, where the recordings
+/// tell everyone the character volunteers: the client offers the choice only for its
+/// player's own characters. The match's seed and its
 /// automatic card picks are drawn as the recordings have them, 0 and the first card left,
 /// and the start of each turn lets no item box drop, as theirs do.
+/// </para>
+/// <para>
+/// One recorded request is sent as the client sends it: the request for a room's captains,
+/// which the recordings send with a byte the client never writes; see
+/// <see cref="ScriptedRequests"/>.
 /// </para>
 /// <para>
 /// One recorded answer is replaced by design: a channel move answered with a reconnect.
@@ -247,12 +256,12 @@ public sealed class SessionReplayTests
                 }
 
                 var roomNumber = services.Rooms.RoomOf(connection.Session);
-                if (IsAnsweredDifferentlyByDesign(body, recordedValues))
+                if (IsAnsweredDifferentlyByDesign(body, recordedValues, connection.Session))
                 {
                     break;
                 }
 
-                await connection.Client.SendBodyAsync(body);
+                await connection.Client.SendBodyAsync(ScriptedRequests.AsTheClientSendsIt(body));
                 var reconnects = false;
                 foreach (var (to, recorded) in expected)
                 {
@@ -369,11 +378,13 @@ public sealed class SessionReplayTests
     }
 
     // A client reporting a mission level ready that no recorded step has begun, a box a
-    // ghost caught, or a player giving up; see the remarks.
-    private static bool IsAnsweredDifferentlyByDesign(byte[] body, RecordedValues recordedValues) =>
+    // ghost caught, a player giving up, or a player volunteering a character not its own
+    // as captain; see the remarks.
+    private static bool IsAnsweredDifferentlyByDesign(byte[] body, RecordedValues recordedValues, ClientSession sender) =>
         RegistryIdOf(body) switch
         {
             var id when id == PqGameSessionMissionLevelReady.RegistryId => !recordedValues.HasBegun(PqGameSessionMissionLevelReady.TryRead(body).Packet!.Level),
+            var id when id == PqGameSessionChallengeChief.RegistryId => !sender.SelectedCharacterIds.Contains(PqGameSessionChallengeChief.TryRead(body).Packet!.CharacterId),
             var id => id == PcGamePlayEatItemBox.RegistryId || id == PcGamePlayGiveUp.RegistryId,
         };
 

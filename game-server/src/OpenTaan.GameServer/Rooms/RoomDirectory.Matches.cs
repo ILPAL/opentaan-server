@@ -18,8 +18,7 @@ namespace OpenTaan.GameServer.Rooms;
 /// </para>
 /// <para>
 /// From its start until the room waits again, a room shows as playing, in the lobby and to
-/// anyone trying to enter; its waiting-room actions are dropped. Matches between teams with
-/// captains are not played yet: their host's start is not answered.
+/// anyone trying to enter; its waiting-room actions are dropped.
 /// </para>
 /// </remarks>
 public sealed partial class RoomDirectory
@@ -44,10 +43,11 @@ public sealed partial class RoomDirectory
     /// </para>
     /// <para>
     /// A match between teams starts only between teams of the same size, as the host's
-    /// client checks itself, and not yet with captains. A room on one of the client's random
-    /// picks is played on a map drawn for the match from the pick's maps among
-    /// <paramref name="maps"/>; see <see cref="RoomOptions.RandomMaps"/>. Its first turn waits
-    /// for every client to load it; see <see cref="ReportLoaded"/>.
+    /// client checks itself. In a mode with captains, each team's is drawn as it starts; see
+    /// <see cref="ChooseCaptains"/>. A room on one of the client's random picks is played on a
+    /// map drawn for the match from the pick's maps among <paramref name="maps"/>; see
+    /// <see cref="RoomOptions.RandomMaps"/>. Its first turn waits for every client to load
+    /// it; see <see cref="ReportLoaded"/>.
     /// </para>
     /// </remarks>
     /// <param name="session">The connection asking.</param>
@@ -385,14 +385,10 @@ public sealed partial class RoomDirectory
     }
 
     // Starts a match between the room's teams, on its map or, for a random pick, on one drawn
-    // evenly from the pick's maps. Its first turn waits for every client to load it.
+    // evenly from the pick's maps, with a captain drawn for each team in a mode with captains.
+    // Its first turn waits for every client to load it.
     private string? StartBetweenTeamsLocked(Room room, IReadOnlyCollection<ushort> maps)
     {
-        if (MatchRules.HasCaptains(room.GameMode))
-        {
-            return "matches with captains are not played yet";
-        }
-
         var (first, second) = room.TeamSizes();
         if (first != second)
         {
@@ -411,7 +407,8 @@ public sealed partial class RoomDirectory
             map = pool[random.Next(pool.Count)];
         }
 
-        var match = Match.BetweenTeams(map, room.PlayersBySlot(), time.GetUtcNow());
+        var captains = MatchRules.HasCaptains(room.GameMode) ? DrawCaptainsLocked(room) : PcGameSessionStartGame.NoCaptains;
+        var match = Match.BetweenTeams(map, room.PlayersBySlot(), captains, time.GetUtcNow());
         BeginMatchLocked(room, match);
         LogTeamMatchStarted(logger, room.Number, first, second, map, room.MapId);
         return null;
@@ -428,7 +425,7 @@ public sealed partial class RoomDirectory
             ArmLoadWaitLocked(room, match, matchOptions.Value.LongestLoad);
         }
 
-        SendToRoomLocked(room, new PcGameSessionStartGame(match.MapId, room.PlayData(), Wind: 0, Field24: 0, MatchRules.CaptainSlots, match.Seed));
+        SendToRoomLocked(room, new PcGameSessionStartGame(match.MapId, room.PlayData(), Wind: 0, Field24: 0, match.CaptainSlots, match.Seed));
         lobbies.Tell(room.ChannelId, new PcLobbyUpdateRoomList([room.Listing()]));
     }
 
