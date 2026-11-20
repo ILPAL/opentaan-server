@@ -267,13 +267,19 @@ a number, and the server's code names each one (`GameMode`):
 | Mode | Name | Rules |
 |---|---|---|
 | `0` | `Items` | Items in play. |
-| `1` | `NoItems` | No items. |
+| `1` | `NoItems` | No items: a team gauge instead. |
 | `2` | `CaptainItems` | Items in play, and each team has a captain. |
-| `3` | `CaptainNoItems` | No items, and each team has a captain. |
+| `3` | `CaptainNoItems` | No items, a team gauge instead, and each team has a captain. |
 
 A mission room plays `Items` alone, the only mode the client's mode picker offers
 it. A room of teams may have any of the four, and its matches are played in `Items`
 and `NoItems` for now: matches with captains come later.
+
+Item boxes drop in every mode. With items, a box caught, or a bonus at the end of a
+turn, gives the character an item. Without them, it fills the character's team
+gauge instead, as hitting well does, and the higher the gauge's grade, the more
+bonuses the team's shots get. Every client works its team's gauge out itself, from
+the shots, catches and bonuses the server passes on.
 
 ## Matches
 
@@ -367,10 +373,12 @@ Matches with captains and missions whose enemies fight back come next.
   of the match passes on at once, but during a shot nothing is decided until every
   client has played it back, since the shot may kill more.
 - **Items:** the clients decide every item, for now. The start of every turn tells
-  them how many item boxes the turn's shot may drop, `Matches:ItemBoxesPerTurn`, or
-  none in a match without items (`NoItems` or `CaptainNoItems`, modes 1 and 3), and how good the items are, `Matches:ItemDropQuality`; the shooter's client places the
+  them how many item boxes the turn's shot may drop, `Matches:ItemBoxesPerTurn`, in
+  every mode, and how good the items are, `Matches:ItemDropQuality`; the shooter's client places the
   boxes along its missiles' paths, and the client that catches one, or whose
-  character is given a bonus at the end of its turn, draws the item. A box a missile
+  character is given a bonus at the end of its turn, draws the item. In a match
+  without items (`NoItems` or `CaptainNoItems`, modes 1 and 3), the catch or the
+  bonus fills the team's gauge instead, and carries the gauge's change. A box a missile
   catches is a step of its shot; a box a ghost catches is sent on its own. A client
   acts on an item used, the items a shot spent, an item thrown away or taken off, a
   box its ghost caught and a bonus only when the server's copy comes back, and gives
@@ -531,7 +539,7 @@ dotnet run --project src/OpenTaan.GameServer -- --GameServer:Port=2181 --PlayTim
 | `Matches:ShotWait` | `00:00:05` | How long a shot waits, once the first client has played it back, for every other client to finish it. |
 | `Matches:LongestShot` | `00:01:00` | How long a shot may wait in all, from its arrival, in case no client reports it played back. |
 | `Matches:ResultWait` | `00:00:25` | How long after a match's end its room waits for every player's result card before it waits for players again. |
-| `Matches:ItemBoxesPerTurn` | `1` | How many item boxes each turn's shot may drop, as the start of the turn tells every client; the shooter's client places them. `0` lets none drop, and none drop in a match without items (`NoItems` or `CaptainNoItems`, modes 1 and 3). |
+| `Matches:ItemBoxesPerTurn` | `1` | How many item boxes each turn's shot may drop, as the start of the turn tells every client; the shooter's client places them. The same in every mode: without items, a box caught fills the team's gauge. `0` lets none drop. |
 | `Matches:ItemDropQuality` | `20` | How good the items the clients draw are, from `0` to `100`, as the start of every turn tells them: higher makes the rarer items likelier. Above `100` the server refuses to start, since the client would hold it to `100`. |
 | `Portraits:Folder` | none | Where the pictures clients send of their characters are kept. A relative path is taken from the content root. |
 | `Characters:CreatorParts` | `1, 3, 5, 8` | The appearance parts the client's character creator offers; a new character keeps only these. |

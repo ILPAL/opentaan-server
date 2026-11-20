@@ -47,7 +47,7 @@ internal static class Matching
         await StartedAsync(host, host, guest);
         await host.SendAsync(Loading(0));
         await guest.SendAsync(Loading(2));
-        await TurnToldAsync(0, GameMode.Items, host, guest);
+        await TurnToldAsync(0, host, guest);
     }
 
     /// <summary>
@@ -177,16 +177,13 @@ internal static class Matching
         }
     }
 
-    /// <summary>Each of <paramref name="players"/> is told that a level's first turn starts, the turn of the character in <paramref name="slot"/>, at a turn count of 0.</summary>
-    public static Task TurnToldAsync(byte slot, params Player[] players) => TurnToldAsync(slot, GameMode.Items, players);
-
     /// <summary>
     /// Each of <paramref name="players"/> is told that the first turn of a match, or of a
     /// mission's level, starts: the turn of the character in <paramref name="slot"/>, at a
-    /// turn count of 0, in a match played by <paramref name="gameMode"/>.
+    /// turn count of 0.
     /// </summary>
-    public static Task TurnToldAsync(byte slot, GameMode gameMode, params Player[] players) =>
-        EveryoneToldAsync(MatchRules.TurnOf(slot, turnCount: 0, gameMode, SessionHarness.ShippedMatchOptions(), []), PcGamePlayTurnStart.TryRead, players);
+    public static Task TurnToldAsync(byte slot, params Player[] players) =>
+        EveryoneToldAsync(MatchRules.TurnOf(slot, turnCount: 0, SessionHarness.ShippedMatchOptions(), []), PcGamePlayTurnStart.TryRead, players);
 
     /// <summary>
     /// Starts a mission with <paramref name="host"/> and <paramref name="guest"/>, begins its
@@ -271,7 +268,7 @@ internal static class Matching
         foreach (var player in players)
         {
             Assert.Equal(MatchRules.TurnEndOf(from), await player.ReceiveAsync<PcGamePlayTurnEnd>(PcGamePlayTurnEnd.TryRead));
-            Assert.Equal(MatchRules.TurnOf(to, turnCount, GameMode.Items, SessionHarness.ShippedMatchOptions(), ghostMoves), await player.ReceiveAsync<PcGamePlayTurnStart>(PcGamePlayTurnStart.TryRead));
+            Assert.Equal(MatchRules.TurnOf(to, turnCount, SessionHarness.ShippedMatchOptions(), ghostMoves), await player.ReceiveAsync<PcGamePlayTurnStart>(PcGamePlayTurnStart.TryRead));
         }
     }
 

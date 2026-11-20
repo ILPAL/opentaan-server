@@ -132,7 +132,7 @@ public sealed class MatchRaceTests
 
             await Task.WhenAll(host.SendAsync(Loading(0)), guest.SendAsync(Loading(2)));
 
-            await TurnToldAsync(0, GameMode.Items, host, guest);
+            await TurnToldAsync(0, host, guest);
             await QuietAsync(host, guest);
         }
     }
@@ -164,7 +164,7 @@ public sealed class MatchRaceTests
                 await player.ReceiveAsync<PcGameSessionUpdateSlot>(PcGameSessionUpdateSlot.TryRead);
             }
 
-            await TurnToldAsync(0, GameMode.Items, host, second, fourth);
+            await TurnToldAsync(0, host, second, fourth);
             await QuietAsync(host, second, third, fourth);
         }
     }

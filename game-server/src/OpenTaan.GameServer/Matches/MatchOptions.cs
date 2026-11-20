@@ -70,9 +70,9 @@ public sealed class MatchOptions
     public TimeSpan ResultWait { get; set; } = TimeSpan.FromSeconds(25);
 
     /// <summary>
-    /// How many item boxes the shot of each turn may drop. The shooter's client places them
-    /// along its missiles' paths, and the client that catches one draws its item; 0 lets no
-    /// box drop.
+    /// How many item boxes the shot of each turn may drop, in every game mode. The shooter's
+    /// client places them along its missiles' paths, and the client that catches one draws
+    /// its item, or, in a mode without items, fills its team's gauge; 0 lets no box drop.
     /// </summary>
     public byte ItemBoxesPerTurn { get; set; } = 1;
 
