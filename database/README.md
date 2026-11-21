@@ -39,3 +39,4 @@ to start otherwise.
 | `V2__economy_adjustments.sql` | Gold adjustments under four-eyes approval, enforced by constraints; the outbox for events to the game server |
 | `V3__audit_trail.sql` | The audit trail: append-only, numbered and hash-chained by triggers, so no service can change an entry or place one outside the chain |
 | `V4__accounts_kept_by_the_game_server.sql` | Accounts as the game server keeps them: ids handed out by the database from 1001 and players from 1, cash, a password always given, and every value within what the client can carry |
+| `V5__characters_kept_by_the_game_server.sql` | Characters as the game server keeps them: what it changes about each as a column of its own, the parts it wears, when it finished the tutorial, one per account, and the JSON copies of what the client was sent dropped |

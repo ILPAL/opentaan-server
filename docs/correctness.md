@@ -543,6 +543,21 @@ with real tokens:
   checked against the values RFC 7914 publishes, since a hash checked only
   against itself passes with any function; a version planted with SHA-1 fails
   that test and no other.
+- **Two rules for one name.** Names are unique whatever their case. The database
+  keeps them unique on a key the server works out, the name in capitals, since
+  its own case rules change only ASCII letters; the in-memory store compared names
+  with .NET's case-insensitive comparison. A test that tries every letter a name
+  may hold against every other found that the two disagree on one, the long s, ſ,
+  which the comparison takes as another letter than s and the capitals write as S.
+  So the in-memory store would have let a character be named Kiſi beside a Kisi
+  that the database refuses, and the flow tests, which run on that store, would
+  have spoken for a rule the deployment does not keep. The comparison is now built
+  from the key, and both stores pass a test with those two names.
+- **A requirement checked only against itself.** The tests of the startup check
+  were written against its own number, so a server that asked for an older
+  migration than its stores need would have passed them all and failed at its
+  first query. A test now builds a database migrated only up to that number, with
+  Flyway's own target, and runs every store on it.
 
 ## The game server: bytes, not types
 

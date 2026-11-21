@@ -18,8 +18,8 @@ namespace OpenTaan.GameServer.Storage;
 /// </remarks>
 public sealed partial class SchemaCheck(NpgsqlDataSource database, ILogger<SchemaCheck> logger) : IHostedService
 {
-    /// <summary>The migration this code needs: V4, the accounts as the game server keeps them.</summary>
-    public const int RequiredVersion = 4;
+    /// <summary>The migration this code needs: V5, the characters as the game server keeps them.</summary>
+    public const int RequiredVersion = 5;
 
     /// <summary>Checks the schema, and throws, which stops the server, if it is too old.</summary>
     /// <exception cref="InvalidOperationException">The database has no migration at or past <see cref="RequiredVersion"/>.</exception>
@@ -70,6 +70,6 @@ public sealed partial class SchemaCheck(NpgsqlDataSource database, ILogger<Schem
     }
 
     [LoggerMessage(Level = LogLevel.Information,
-        Message = "Accounts are kept in database {Database} on {Host}:{Port}, at migration V{Version}")]
+        Message = "Accounts and characters are kept in database {Database} on {Host}:{Port}, at migration V{Version}")]
     private static partial void LogReady(ILogger logger, string? database, string? host, int port, int version);
 }

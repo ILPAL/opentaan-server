@@ -24,4 +24,13 @@ internal static class Rows
             ? (uint)value
             : throw new InvalidDataException($"Column {reader.GetName(column)} holds {value}, which no field of the client can carry");
     }
+
+    /// <summary>A 16-bit unsigned value, as the client is sent it, from an <c>INTEGER</c> column the schema checks the same way.</summary>
+    public static ushort UnsignedShort(this NpgsqlDataReader reader, int column)
+    {
+        var value = reader.GetInt32(column);
+        return value is >= 0 and <= ushort.MaxValue
+            ? (ushort)value
+            : throw new InvalidDataException($"Column {reader.GetName(column)} holds {value}, which no field of the client can carry");
+    }
 }

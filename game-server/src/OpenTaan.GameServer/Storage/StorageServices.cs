@@ -1,4 +1,5 @@
 using OpenTaan.GameServer.Accounts;
+using OpenTaan.GameServer.Characters;
 
 namespace OpenTaan.GameServer.Storage;
 
@@ -6,9 +7,9 @@ namespace OpenTaan.GameServer.Storage;
 public static class StorageServices
 {
     /// <summary>
-    /// Keeps accounts in the PostgreSQL database <c>ConnectionStrings:Game</c> names, and
-    /// adds the check that stops the server on a schema too old for it. Call it before the
-    /// listener is added, so the check runs first.
+    /// Keeps accounts and characters in the PostgreSQL database <c>ConnectionStrings:Game</c>
+    /// names, and adds the check that stops the server on a schema too old for it. Call it
+    /// before the listener is added, so the check runs first.
     /// </summary>
     public static IServiceCollection AddPostgresStorage(this IServiceCollection services)
     {
@@ -16,6 +17,7 @@ public static class StorageServices
 
         services.AddSingleton(provider => GameDatabase.Open(provider.GetRequiredService<IConfiguration>()));
         services.AddSingleton<IAccountStore, PostgresAccountStore>();
+        services.AddSingleton<ICharacterStore, PostgresCharacterStore>();
         services.AddHostedService<SchemaCheck>();
         return services;
     }

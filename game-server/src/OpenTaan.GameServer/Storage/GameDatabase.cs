@@ -2,7 +2,7 @@ using Npgsql;
 
 namespace OpenTaan.GameServer.Storage;
 
-/// <summary>Opens the PostgreSQL database the game server keeps its accounts in.</summary>
+/// <summary>Opens the PostgreSQL database the game server keeps its accounts and characters in.</summary>
 public static class GameDatabase
 {
     /// <summary>The name of the connection string, read from <c>ConnectionStrings:Game</c>.</summary>
@@ -25,7 +25,7 @@ public static class GameDatabase
         if (string.IsNullOrWhiteSpace(named))
         {
             throw new InvalidOperationException(
-                $"ConnectionStrings:{ConnectionStringName} must name the PostgreSQL database the game server keeps its accounts in, " +
+                $"ConnectionStrings:{ConnectionStringName} must name the PostgreSQL database the game server keeps its accounts and characters in, " +
                 "such as Host=127.0.0.1;Port=5432;Database=opentaan;Username=opentaan");
         }
 

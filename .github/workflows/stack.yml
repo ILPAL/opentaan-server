@@ -82,8 +82,8 @@ jobs:
           deploy/keycloak/add-operator.sh smoke-requester economy
           deploy/keycloak/add-operator.sh smoke-approver economy
           docker compose exec -T postgres psql -U opentaan -d opentaan -c \
-            "INSERT INTO characters (character_id, account_id, slot_index, name, name_key, info_json)
-             VALUES (2001, 1, 0, 'Nova', 'nova', '{}')"
+            "INSERT INTO characters (character_id, account_id, slot_index, name, name_key)
+             VALUES (2001, 1, 0, 'Nova', 'NOVA')"
 
           token() {
             curl --silent --fail --data grant_type=password --data client_id=opentaan-cli \

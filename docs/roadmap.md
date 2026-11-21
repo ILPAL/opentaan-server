@@ -61,7 +61,7 @@ What a reviewer should be able to see and run, end to end.
 | Decisions and security | Ten decision records in `docs/adr`; a threat model with each threat's control, test and status; a case study of how correctness is checked; a test that two concurrent decisions leave exactly one |
 | Security scanning | `security` workflow: both images built, scanned with Trivy on every change and weekly, failing on fixable HIGH or CRITICAL findings, with a CycloneDX SBOM kept per image; Dockerfile checks; Dependabot for Maven, NuGet, base images, compose images and actions; every action pinned to a commit hash |
 
-Tests today: game server 931, of which 21 need the reference sessions and skip without them, and 17 need PostgreSQL, which CI always gives them; admin server 61 unit tests and 25 integration tests.
+Tests today: game server 963, of which 21 need the reference sessions and skip without them, and 37 need PostgreSQL, which CI always gives them; admin server 61 unit tests and 25 integration tests.
 
 ## Next
 
@@ -104,8 +104,9 @@ In order. Each item is one pull request unless noted.
   server: `contracts/control-channel` schemas first, then live actions such as
   disconnecting a session, and a dispatcher that delivers approved adjustments
   from the outbox.
-- **Game server stages.** PostgreSQL access (`OpenTaan.Persistence`) and game
-  logic (`OpenTaan.Game`), each checked against the reference sessions.
+- **Game server stages.** What else lasts beyond a match in PostgreSQL, as
+  accounts and characters do already, and game logic (`OpenTaan.Game`), each
+  checked against the reference sessions.
 - **The rest of the admin API.** Sessions, rooms, characters, match history,
   moderation and node operations, each with its own permission.
 - **Observability.** OpenTelemetry from both servers into Prometheus and Grafana, as

@@ -97,6 +97,29 @@ public sealed partial class PostgresServer : IAsyncLifetime
         return new TestDatabase(name, On(_server!, name), drop: ct => ExecuteAsync(_server!, $"DROP DATABASE {name} WITH (FORCE)", ct));
     }
 
+    /// <summary>
+    /// A new database with the migrations applied up to <paramref name="version"/> and no
+    /// further, as a database not yet upgraded would be. Skips the test when there is no server.
+    /// </summary>
+    public async Task<TestDatabase> DatabaseAtAsync(int version, CancellationToken cancellationToken)
+    {
+        Assert.SkipWhen(Absence is not null, Absence ?? string.Empty);
+
+        var name = $"opentaan_test_{Guid.NewGuid():N}";
+        await ExecuteAsync(_server!, $"CREATE DATABASE {name}", cancellationToken);
+        var database = new TestDatabase(name, On(_server!, name), drop: ct => ExecuteAsync(_server!, $"DROP DATABASE {name} WITH (FORCE)", ct));
+        if (_network is not null)
+        {
+            await MigrateWithFlywayAsync(name, version);
+        }
+        else
+        {
+            await MigrateByHandAsync(On(_server!, name), version);
+        }
+
+        return database;
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_postgres is null && _server is not null && _template is not null)
@@ -130,17 +153,29 @@ public sealed partial class PostgresServer : IAsyncLifetime
             .WithPassword(ContainerPassword)
             .Build();
         await _postgres.StartAsync();
+        await MigrateWithFlywayAsync("opentaan", version: null);
 
-        // Applies the migrations, then exits, as it does before the servers start in compose.
-        await using var flyway = new ContainerBuilder(FlywayImage)
+        _server = On(_postgres.GetConnectionString(), "postgres");
+        _template = "opentaan";
+    }
+
+    // Applies the migrations, up to a version or all of them, then exits, as Flyway does
+    // before the servers start in compose.
+    private async Task MigrateWithFlywayAsync(string database, int? version)
+    {
+        var builder = new ContainerBuilder(FlywayImage)
             .WithNetwork(_network)
             .WithBindMount(Migrations, "/flyway/sql", AccessMode.ReadOnly)
-            .WithEnvironment("FLYWAY_URL", "jdbc:postgresql://postgres:5432/opentaan")
+            .WithEnvironment("FLYWAY_URL", $"jdbc:postgresql://postgres:5432/{database}")
             .WithEnvironment("FLYWAY_USER", ContainerUser)
             .WithEnvironment("FLYWAY_PASSWORD", ContainerPassword)
-            .WithEnvironment("FLYWAY_LOCATIONS", "filesystem:/flyway/sql")
-            .WithCommand("migrate")
-            .Build();
+            .WithEnvironment("FLYWAY_LOCATIONS", "filesystem:/flyway/sql");
+        if (version is { } target)
+        {
+            builder = builder.WithEnvironment("FLYWAY_TARGET", target.ToString(CultureInfo.InvariantCulture));
+        }
+
+        await using var flyway = builder.WithCommand("migrate").Build();
         await flyway.StartAsync();
         var exitCode = await flyway.GetExitCodeAsync();
         if (exitCode != 0)
@@ -148,9 +183,6 @@ public sealed partial class PostgresServer : IAsyncLifetime
             var (output, errors) = await flyway.GetLogsAsync();
             throw new InvalidOperationException($"Flyway exited with {exitCode}:\n{output}\n{errors}");
         }
-
-        _server = On(_postgres.GetConnectionString(), "postgres");
-        _template = "opentaan";
     }
 
     private async Task MigrateByHandAsync(string server)
@@ -158,12 +190,18 @@ public sealed partial class PostgresServer : IAsyncLifetime
         _server = On(server, "postgres");
         _template = $"opentaan_template_{Guid.NewGuid():N}";
         await ExecuteAsync(_server, $"CREATE DATABASE {_template}", CancellationToken.None);
+        await MigrateByHandAsync(On(server, _template), upTo: null);
+    }
 
-        await using var database = NpgsqlDataSource.Create(On(server, _template));
+    // Applies the migration files in order, up to a version or all of them, and records
+    // each as Flyway would.
+    private static async Task MigrateByHandAsync(string connectionString, int? upTo)
+    {
+        await using var database = NpgsqlDataSource.Create(connectionString);
         await ExecuteAsync(database, FlywayHistory, CancellationToken.None);
 
         var rank = 0;
-        foreach (var (version, description, file) in MigrationFiles())
+        foreach (var (version, description, file) in MigrationFiles().Where(migration => upTo is null || migration.Version <= upTo))
         {
             await using var connection = await database.OpenConnectionAsync();
             await using var transaction = await connection.BeginTransactionAsync();

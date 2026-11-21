@@ -107,7 +107,6 @@ builder.Services
     .ValidateOnStart();
 
 builder.Services.AddPostgresStorage();
-builder.Services.AddSingleton<ICharacterStore, InMemoryCharacterStore>();
 builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddSingleton<AccountHandlers>();
 builder.Services.AddSingleton<CharacterHandlers>();
