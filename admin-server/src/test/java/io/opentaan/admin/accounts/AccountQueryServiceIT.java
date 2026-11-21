@@ -47,8 +47,8 @@ class AccountQueryServiceIT {
     void reads_an_account_with_its_characters_in_slot_order() {
         jdbc.update("DELETE FROM characters");
         jdbc.update("DELETE FROM accounts");
-        jdbc.update("INSERT INTO accounts (account_id, email, hashed_password) VALUES (?, ?, ?)",
-                1001L, "player@example.com", "v1$not-a-real-hash");
+        jdbc.update("INSERT INTO accounts (account_id, email, hashed_password, gender) VALUES (?, ?, ?, 1)",
+                1001L, "player@example.com", "pbkdf2-sha256$not-a-real-hash");
         insertCharacter(2002L, 1001L, 1, "Ember");
         insertCharacter(2001L, 1001L, 0, "Nova");
 
@@ -62,7 +62,7 @@ class AccountQueryServiceIT {
 
     @Test
     void each_read_of_an_account_is_audited() {
-        jdbc.update("INSERT INTO accounts (account_id, email) VALUES (1002, 'reader@example.com')");
+        jdbc.update("INSERT INTO accounts (account_id, email, hashed_password, gender) VALUES (1002, 'reader@example.com', 'x', 2)");
 
         accountQueries.getAccount(VIEWER, 1002L);
 

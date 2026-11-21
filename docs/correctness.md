@@ -137,12 +137,27 @@ drift apart, so:
   transaction that is then rolled back; DDL is transactional in PostgreSQL, so
   the trigger and the entry come back.
 
+The game server keeps accounts both in memory, for its fast tests, and in
+PostgreSQL, where they last. The hundreds of flow tests run on the first, so they
+speak for the second only if the two behave alike. One contract of tests runs
+against both stores, including creations that race for one address and reads over
+new connections, as after a restart; a store that passes it for one and fails it
+for the other has drifted.
+
 ### 6. The real database, the real migrations
 
 Integration tests start PostgreSQL 18 in Testcontainers and apply the files in
 `database/migrations`, the same ones Flyway applies in the stack. No schema is
 generated for the tests, so a mapping that disagrees with a migration fails
 the test run the way it would fail a deployment.
+
+The game server's storage tests do the same with Flyway itself, in the image the
+stack runs, and give every test a database of its own copied from the migrated
+one. They also check what only the database can refuse, such as an account with
+no gender, and the startup check that stops the server on a schema older than it
+needs. Where no Docker runs they can use a PostgreSQL named for them instead; with
+neither they skip, except in CI, where they fail, since database tests that skip
+there pass without having checked anything.
 
 ### 7. The whole stack, on every pull request
 

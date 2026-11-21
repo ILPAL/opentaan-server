@@ -58,7 +58,7 @@ jobs:
         run: |
           deploy/keycloak/add-operator.sh smoke-viewer viewer
           docker compose exec -T postgres psql -U opentaan -d opentaan -c \
-            "INSERT INTO accounts (account_id, email) VALUES (1, 'player@example.com')"
+            "INSERT INTO accounts (account_id, email, hashed_password, gender) VALUES (1, 'player@example.com', 'x', 1)"
 
           token=$(curl --silent --fail \
             --data grant_type=password --data client_id=opentaan-cli \

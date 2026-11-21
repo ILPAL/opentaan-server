@@ -8,15 +8,18 @@
 |---|---|
 | `src/OpenTaan.Transport` | Framing, encryption and handshake keys. No game logic, no database, no hosting. |
 | `src/OpenTaan.Protocol` | Packet codecs: the bytes inside a frame, read and written by hand. No framing, no game logic, no database. |
-| `src/OpenTaan.GameServer` | The executable: the listener, one session per connection, the packet dispatcher, the login handlers, and accounts held in memory until the database stage. |
+| `src/OpenTaan.GameServer` | The executable: the listener, one session per connection, the packet dispatcher, the handlers, and the stores. Accounts are kept in PostgreSQL by the code in `Storage`; characters are held in memory until they move there too. |
 | `tests/OpenTaan.Transport.Tests` | Framing, the packet cipher, the seed schedule and handshake keys, including hostile input. |
 | `tests/OpenTaan.Protocol.Tests` | Each codec's bytes, built from invented values, and hostile bodies: forged counts, broken text, leftover bytes. |
 | `tests/OpenTaan.GameServer.Tests` | Sessions on real loopback sockets: the login flows, and every way a connection is refused or closed. |
+| `tests/OpenTaan.GameServer.Storage.Tests` | The stores on a real PostgreSQL 18 with the real migrations: one contract that the in-memory and the PostgreSQL stores both pass, what only the database refuses, and the check of the schema at startup. Skips with no PostgreSQL to use, except in CI. |
 | `tests/OpenTaan.Conformance.Tests` | The reference sessions and the declared layouts, and the sessions played against real connections. Skips when the contract is absent. |
 | `tests/OpenTaan.Architecture.Tests` | Dependency rules between projects, enforced as tests. |
 
-More projects are added as the port reaches them: `OpenTaan.Persistence`
-(PostgreSQL) and `OpenTaan.Game` (handlers and game state).
+More projects are added as the port reaches them, such as `OpenTaan.Game` for the
+handlers and game state. Until then the PostgreSQL code lives in `Storage`, and an
+architecture test keeps the database driver out of every other part, which works
+through the stores' interfaces.
 
 ## Packet codecs
 
@@ -514,9 +517,33 @@ the rest of the suite runs as usual.
 dotnet test --solution OpenTaan.GameServer.slnx
 ```
 
+The storage tests need a PostgreSQL 18. Where Docker runs, as in CI, they start one
+in a container and apply `database/migrations` with Flyway, both in the images
+`docker-compose.yml` runs. Without Docker, name a server on which the tests may
+create and drop databases, and they apply the migrations to databases of their own:
+
+```sh
+OPENTAAN_TEST_POSTGRES="Host=127.0.0.1;Port=5432;Username=$USER;Database=postgres" \
+  dotnet test --solution OpenTaan.GameServer.slnx
+```
+
+With neither, they skip and say why, except in CI, where they fail instead.
+
 ## Run
 
-From this folder (`game-server/`), with the .NET SDK named in `global.json`:
+The server keeps its accounts in PostgreSQL, and starts only on a database that
+has the migrations it needs (`database/migrations`, applied by Flyway). In
+Development it uses the database `opentaan` on `127.0.0.1:5432` as the user
+`opentaan`; give that user's password once, as a user secret, and apply the
+migrations to the database:
+
+```sh
+dotnet user-secrets set db_password '<the password>' --project src/OpenTaan.GameServer
+flyway -url=jdbc:postgresql://127.0.0.1:5432/opentaan -user=opentaan \
+  -locations=filesystem:../database/migrations migrate
+```
+
+Then, from this folder (`game-server/`), with the .NET SDK named in `global.json`:
 
 ```sh
 dotnet run --project src/OpenTaan.GameServer
@@ -545,8 +572,8 @@ die, see each level begin, clear the mission or lose it, win or lose against the
 other team, catch, use and throw away items, send its ghost about, give up or
 leave, and see its result screen and pick a card, with a captain for each team in
 the modes with captains. The server
-refuses to start with registration off in any other environment. Accounts,
-characters and rooms live in memory until the database stage.
+refuses to start with registration off in any other environment. Accounts are
+kept in PostgreSQL; characters and rooms live in memory.
 
 Settings live in `appsettings.json`. You can override them with environment
 variables, or on the command line after `--`:
@@ -564,6 +591,7 @@ dotnet run --project src/OpenTaan.GameServer -- --GameServer:Port=2181 --PlayTim
 | `GameServer:SendTimeout`, `GameServer:SendQueueCapacity` | `00:00:10`, `256` | How long a frame may take to leave, and how many replies may wait, before a client that stopped reading is closed. |
 | `GameServer:PacketNamesFile` | none | A JSON file naming packets by id, so logs name packets this server does not handle. Development points it at the local reference data. |
 | `GameServer:DropUnhandledPackets` | `false` (Development: `true`) | Logs and drops a packet this server has no handler for instead of closing the connection, so one run of a real client shows everything a screen sends. Allowed only in Development: a request dropped this way is never answered. |
+| `ConnectionStrings:Game` | none (Development: `opentaan` on `127.0.0.1:5432`) | The PostgreSQL database accounts are kept in. Its password is the setting `db_password`: in a container the secret file of that name, in Development a user secret. The server does not start without one, or on a schema older than it needs. |
 | `Accounts:RequireRegistration` | `true` | Whether an account must be created, with its password, before it can log in. |
 | `Accounts:PasswordIterations` | `600000` | PBKDF2 rounds for each new password hash. The server refuses to start with fewer; raising it hashes each account again at its next login with the right password. |
 | `Accounts:GameMasters` | none | Addresses of the accounts that log in as game masters. |

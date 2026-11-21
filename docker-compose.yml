@@ -110,6 +110,16 @@ services:
   game-server:
     build:
       context: ./game-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+      flyway:
+        condition: service_completed_successfully
+    environment:
+      # The password is not here: the server reads every file in /run/secrets as a
+      # setting named after the file, so db_password comes from the secret.
+      ConnectionStrings__Game: Host=postgres;Port=5432;Database=opentaan;Username=opentaan
+    secrets: [db_password]
     ports:
       - "${GAME_PORT:-2180}:2180"
     restart: unless-stopped
