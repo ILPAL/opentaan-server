@@ -27,7 +27,6 @@ public sealed partial class CharacterHandlers(
     ILogger<CharacterHandlers> logger)
 {
     private const byte SafeSlot = 0;
-    private const ushort StartingLevel = 1;
 
     /// <summary>
     /// Answers whether a character with the name exists. A name no client could have
@@ -224,13 +223,15 @@ public sealed partial class CharacterHandlers(
     private Character NewCharacter(uint characterId, Account account, PqNewCharacter request)
     {
         var start = options.Value.Start;
+        var bar = options.Value.ExperienceBarAt(Character.StartingLevel)
+            ?? throw new InvalidOperationException("The first level's experience bar is always known");
         var info = new CharacterInfo(
             CharacterId: characterId,
             Name: request.Name,
-            Level: StartingLevel,
+            Level: Character.StartingLevel,
             CurrentExperience: 0,
-            ExperienceFloor: 0,
-            ExperienceCeiling: start.ExperienceCeiling,
+            ExperienceFloor: bar.Floor,
+            ExperienceCeiling: bar.Ceiling,
             Gold: start.Gold,
             Gender: account.Gender,
             RankPlacement: start.RankPlacement,
@@ -244,9 +245,7 @@ public sealed partial class CharacterHandlers(
             SupportMedals: start.SupportMedals,
             GuildName: string.Empty);
 
-        // The two fields the client does not read while drawing carry the character's
-        // id and level, as the reference sessions record them.
-        var appearance = new CharacterAppear(account.Gender, characterId, StartingLevel, CreatorChoices(request.Appearance));
+        var appearance = Character.AppearanceOf(account.Gender, characterId, Character.StartingLevel, CreatorChoices(request.Appearance));
         return new Character(account.AccountId, info, appearance);
     }
 

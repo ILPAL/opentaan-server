@@ -1,3 +1,4 @@
+using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Characters;
 
 namespace OpenTaan.GameServer.Characters;
@@ -13,6 +14,9 @@ namespace OpenTaan.GameServer.Characters;
 /// <param name="Appearance">How the character looks.</param>
 public sealed record Character(uint AccountId, CharacterInfo Info, CharacterAppear Appearance)
 {
+    /// <summary>The level every character starts at.</summary>
+    public const ushort StartingLevel = 1;
+
     /// <summary>The character's id.</summary>
     public uint CharacterId => Info.CharacterId;
 
@@ -25,6 +29,14 @@ public sealed record Character(uint AccountId, CharacterInfo Info, CharacterAppe
     /// coming back at every selection.
     /// </summary>
     public bool HasFinishedTutorial { get; init; }
+
+    /// <summary>
+    /// How a character with <paramref name="parts"/> looks: with its account's gender, and the
+    /// two fields the client does not read while drawing carrying the character's id and
+    /// level, as the reference sessions record them.
+    /// </summary>
+    public static CharacterAppear AppearanceOf(Gender gender, uint characterId, ushort level, IReadOnlyList<AppearanceSlot> parts) =>
+        new(gender, characterId, level, parts);
 
     /// <summary>An account's characters as the client is sent them, each with its appearance in the same position.</summary>
     public static CharacterCatalog CatalogOf(IReadOnlyCollection<Character> characters)

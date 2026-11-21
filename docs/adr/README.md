@@ -18,6 +18,7 @@ replaces it.
 | [0008](0008-audit-chain-built-by-the-database.md) | The database builds the audit trail's hash chain; the admin server checks it | Accepted |
 | [0009](0009-secrets-are-files.md) | Secrets are files, and no credentials are committed | Accepted |
 | [0010](0010-no-game-client-files.md) | No game client files in the repository | Accepted |
+| [0011](0011-the-database-is-the-game-servers-only-copy.md) | The game server keeps what lasts in PostgreSQL, as its only copy, through SQL it writes | Accepted |
 
 ## Format
 

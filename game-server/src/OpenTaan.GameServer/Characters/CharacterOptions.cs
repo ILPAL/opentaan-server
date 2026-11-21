@@ -19,6 +19,16 @@ public sealed class CharacterOptions
     /// setting rather than a constant.
     /// </remarks>
     public IReadOnlyList<int> CreatorParts { get; set; } = [];
+
+    /// <summary>The experience bar at <paramref name="level"/>, or null for a level whose bar is not known.</summary>
+    /// <remarks>
+    /// Only the first level's is known: it ends at <see cref="CharacterStart.ExperienceCeiling"/>.
+    /// Every character starts there and nothing raises one yet; the client's table of
+    /// levels comes with rewards that last. The bar is worked out from the level, never
+    /// kept, so a character and its level cannot disagree about it.
+    /// </remarks>
+    public ExperienceBar? ExperienceBarAt(ushort level) =>
+        level == Character.StartingLevel ? new ExperienceBar(0, Start.ExperienceCeiling) : null;
 }
 
 /// <summary>What a new character starts with. Every new character starts at level 1, with no experience.</summary>

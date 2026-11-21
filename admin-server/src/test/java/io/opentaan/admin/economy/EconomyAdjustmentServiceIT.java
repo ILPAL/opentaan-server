@@ -66,10 +66,10 @@ class EconomyAdjustmentServiceIT {
         jdbc.update("DELETE FROM economy_adjustments");
         jdbc.update("DELETE FROM characters");
         jdbc.update("DELETE FROM accounts");
-        jdbc.update("INSERT INTO accounts (account_id, email) VALUES (1001, 'player@example.com')");
+        jdbc.update("INSERT INTO accounts (account_id, email, hashed_password, gender) VALUES (1001, 'player@example.com', 'x', 1)");
         jdbc.update("""
-                INSERT INTO characters (character_id, account_id, slot_index, name, name_key, info_json)
-                VALUES (?, 1001, 0, 'Nova', 'nova', '{}')
+                INSERT INTO characters (character_id, account_id, slot_index, name, name_key)
+                VALUES (?, 1001, 0, 'Nova', 'NOVA')
                 """, CHARACTER);
     }
 

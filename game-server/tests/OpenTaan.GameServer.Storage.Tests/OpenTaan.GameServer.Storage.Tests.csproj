@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The migrations every test database is built from, beside the test binaries, so the
+    tests never depend on the working directory and always use the files Flyway applies.
+  -->
+  <ItemGroup>
+    <None Include="..\..\..\database\migrations\*.sql"
+          LinkBase="migrations"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The loopback client and session harness, shared with the game server's own tests. -->
+  <ItemGroup>
+    <Compile Include="..\OpenTaan.GameServer.Tests\Support\LoopbackClient.cs" Link="Support\LoopbackClient.cs" />
+    <Compile Include="..\OpenTaan.GameServer.Tests\Support\SessionHarness.cs" Link="Support\SessionHarness.cs" />
+    <Compile Include="..\OpenTaan.GameServer.Tests\Support\PlayTimeGrants.cs" Link="Support\PlayTimeGrants.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Testcontainers.PostgreSql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenTaan.GameServer\OpenTaan.GameServer.csproj" />
+    <ProjectReference Include="..\..\src\OpenTaan.Protocol\OpenTaan.Protocol.csproj" />
+    <ProjectReference Include="..\..\src\OpenTaan.Transport\OpenTaan.Transport.csproj" />
+  </ItemGroup>
+
+</Project>

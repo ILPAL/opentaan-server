@@ -2,6 +2,7 @@ package io.opentaan.admin.accounts;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.opentaan.admin.TestcontainersConfiguration;
 import io.opentaan.admin.audit.AuditActions;
@@ -44,25 +45,24 @@ class AccountQueryServiceIT {
     private JdbcTemplate jdbc;
 
     @Test
-    void reads_an_account_with_its_characters_in_slot_order() {
+    void reads_an_account_with_its_character() {
         jdbc.update("DELETE FROM characters");
         jdbc.update("DELETE FROM accounts");
-        jdbc.update("INSERT INTO accounts (account_id, email, hashed_password) VALUES (?, ?, ?)",
-                1001L, "player@example.com", "v1$not-a-real-hash");
-        insertCharacter(2002L, 1001L, 1, "Ember");
-        insertCharacter(2001L, 1001L, 0, "Nova");
+        jdbc.update("INSERT INTO accounts (account_id, email, hashed_password, gender) VALUES (?, ?, ?, 1)",
+                1001L, "player@example.com", "pbkdf2-sha256$not-a-real-hash");
+        insertCharacter(2001L, 1001L, "Nova");
 
         var account = accountQueries.getAccount(VIEWER, 1001L);
 
         assertThat(account.email()).isEqualTo("player@example.com");
         assertThat(account.characters())
-                .extracting(AccountDetails.Character::name)
-                .containsExactly("Nova", "Ember");
+                .extracting(AccountDetails.Character::name, AccountDetails.Character::slot)
+                .containsExactly(tuple("Nova", 0));
     }
 
     @Test
     void each_read_of_an_account_is_audited() {
-        jdbc.update("INSERT INTO accounts (account_id, email) VALUES (1002, 'reader@example.com')");
+        jdbc.update("INSERT INTO accounts (account_id, email, hashed_password, gender) VALUES (1002, 'reader@example.com', 'x', 2)");
 
         accountQueries.getAccount(VIEWER, 1002L);
 
@@ -81,10 +81,11 @@ class AccountQueryServiceIT {
         assertThat(audit.list(AuditFilter.subject("account", "999999"), 10)).isEmpty();
     }
 
-    private void insertCharacter(long characterId, long accountId, int slot, String name) {
+    // An account has one character, in its first slot, as the game server keeps it.
+    private void insertCharacter(long characterId, long accountId, String name) {
         jdbc.update("""
-                INSERT INTO characters (character_id, account_id, slot_index, name, name_key, info_json)
-                VALUES (?, ?, ?, ?, ?, '{}')
-                """, characterId, accountId, slot, name, name.toLowerCase());
+                INSERT INTO characters (character_id, account_id, slot_index, name, name_key)
+                VALUES (?, ?, 0, ?, ?)
+                """, characterId, accountId, name, name.toUpperCase(java.util.Locale.ROOT));
     }
 }

@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - "game-server/**"
+      - "database/**"
       - ".github/workflows/game-server.yml"
   pull_request:
     paths:
       - "game-server/**"
+      - "database/**"
       - ".github/workflows/game-server.yml"
 
 permissions:

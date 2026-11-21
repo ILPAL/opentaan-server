@@ -1,4 +1,5 @@
 using NetArchTest.Rules;
+using OpenTaan.GameServer.Storage;
 using OpenTaan.Protocol;
 using OpenTaan.Transport;
 using TestResult = NetArchTest.Rules.TestResult;
@@ -41,6 +42,21 @@ public sealed class LayeringTests
                 "OpenTaan.Game",
                 "Npgsql",
                 "Microsoft.Extensions.Hosting")
+            .GetResult();
+
+        Assert.True(result.IsSuccessful, Describe(result));
+    }
+
+    [Fact]
+    public void OnlyTheGameServersStorageTalksToTheDatabase()
+    {
+        // Every other part works through the stores' interfaces, which know no database,
+        // so the in-memory stores the tests use can stand in for the real ones.
+        var result = Types.InAssembly(typeof(StorageServices).Assembly)
+            .That()
+            .DoNotResideInNamespace("OpenTaan.GameServer.Storage")
+            .ShouldNot()
+            .HaveDependencyOn("Npgsql")
             .GetResult();
 
         Assert.True(result.IsSuccessful, Describe(result));

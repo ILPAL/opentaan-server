@@ -10,10 +10,15 @@ using OpenTaan.GameServer.Matches;
 using OpenTaan.GameServer.PlayTime;
 using OpenTaan.GameServer.Rooms;
 using OpenTaan.GameServer.Sessions;
+using OpenTaan.GameServer.Storage;
 using OpenTaan.Protocol.Characters;
 using OpenTaan.Transport;
 
 var builder = Host.CreateApplicationBuilder(args);
+
+// In a container, every secret is a file in /run/secrets, read as a setting named after
+// the file: the database password is db_password. There is no such folder elsewhere.
+builder.Configuration.AddKeyPerFile(directoryPath: "/run/secrets", optional: true);
 
 builder.Services
     .AddOptions<GameServerOptions>()
@@ -101,9 +106,7 @@ builder.Services
         "with no time allowed, the client quits at every lobby")
     .ValidateOnStart();
 
-builder.Services.AddSingleton<IAccountStore>(provider =>
-    new InMemoryAccountStore(provider.GetRequiredService<IOptions<AccountOptions>>().Value.Start.Cash));
-builder.Services.AddSingleton<ICharacterStore, InMemoryCharacterStore>();
+builder.Services.AddPostgresStorage();
 builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddSingleton<AccountHandlers>();
 builder.Services.AddSingleton<CharacterHandlers>();
