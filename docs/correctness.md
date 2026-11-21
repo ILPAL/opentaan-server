@@ -517,6 +517,17 @@ with real tokens:
   entry, or a real slot as "no captain", all fail them, and so does a replay that
   keeps the recorded captains. A value copied from a recording is a choice the
   recording made, and needs the client's code to say what it does.
+- **One password, two forms.** Keeping only a hash of a password works only if
+  the client sends the same text when it creates an account and at every login,
+  so before the server stopped keeping that text, the client's code was read for
+  both. Both build it from the same password box in the same way, 32 lower-case
+  hex digits of an MD5; only the writing differs, wide in the request to create
+  and one byte per character in the login. The test of it builds both requests
+  byte by byte, as the client writes them, rather than with this server's own
+  writers, which could share a mistake with its readers. The hash function is
+  checked against the values RFC 7914 publishes, since a hash checked only
+  against itself passes with any function; a version planted with SHA-1 fails
+  that test and no other.
 
 ## The game server: bytes, not types
 

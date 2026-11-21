@@ -30,6 +30,17 @@ internal static class SessionHarness
 {
     private static long _nextId;
 
+    /// <summary>
+    /// The rounds the harness hashes passwords with: far fewer than the server may start
+    /// with, so that the hundreds of logins in these tests stay quick. What the rounds
+    /// change is tested on its own.
+    /// </summary>
+    public const int FastPasswordIterations = 1_000;
+
+    /// <summary>A hasher whose new hashes take <see cref="FastPasswordIterations"/>, for any test that needs one.</summary>
+    public static PasswordHasher FastPasswords { get; } =
+        new(Options.Create(new AccountOptions { PasswordIterations = FastPasswordIterations }));
+
     /// <summary>The character settings the server ships with, as <c>appsettings.json</c> sets them.</summary>
     public static CharacterOptions ShippedCharacterOptions() => new()
     {
@@ -93,13 +104,15 @@ internal static class SessionHarness
         TimeProvider? time = null,
         RoomOptions? roomOptions = null,
         MatchOptions? matchOptions = null,
-        Random? random = null)
+        Random? random = null,
+        PasswordHasher? passwords = null)
     {
         characterStore ??= new InMemoryCharacterStore();
         var accounts = new AccountHandlers(
             store ?? new InMemoryAccountStore(),
             characterStore,
             Options.Create(new AccountOptions { RequireRegistration = requireRegistration, GameMasters = gameMasters ?? [] }),
+            passwords ?? FastPasswords,
             NullLogger<AccountHandlers>.Instance);
         var characters = new CharacterHandlers(
             characterStore,

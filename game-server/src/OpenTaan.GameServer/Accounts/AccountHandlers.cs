@@ -16,11 +16,16 @@ namespace OpenTaan.GameServer.Accounts;
 /// then wait for good. The reply goes to slot 0 instead.
 ///
 /// Email addresses are never logged: they identify a person.
+///
+/// A password is kept only as a hash of what the client sent (see <see cref="StoredPassword"/>).
+/// Hashing is slow by design, so it is done only when its result is needed: to create an
+/// account, and to check a login that needs its password checked.
 /// </remarks>
 public sealed partial class AccountHandlers(
     IAccountStore store,
     ICharacterStore characters,
     IOptions<AccountOptions> options,
+    PasswordHasher passwords,
     ILogger<AccountHandlers> logger)
 {
     private const int SlotCount = 2;
@@ -70,11 +75,15 @@ public sealed partial class AccountHandlers(
             return;
         }
 
-        var created = await store.CreateAsync(
-            request.EmailAddress,
-            request.PasswordHash,
-            Chosen(request.Gender),
-            cancellationToken).ConfigureAwait(false);
+        // A taken address is answered before any hashing. The store still refuses one, for
+        // two creations of one address at once.
+        var created = await store.FindAsync(request.EmailAddress, cancellationToken).ConfigureAwait(false) is null
+            ? await store.CreateAsync(
+                request.EmailAddress,
+                await passwords.HashAsync(request.PasswordHash, cancellationToken).ConfigureAwait(false),
+                Chosen(request.Gender),
+                cancellationToken).ConfigureAwait(false)
+            : null;
 
         var status = created is null ? CreateAccountStatus.AlreadyExists : CreateAccountStatus.Created;
         session.Send(new PrCreateAccount(status, request.AccountSlot));
@@ -114,7 +123,7 @@ public sealed partial class AccountHandlers(
         var accounts = new List<Account>(request.Accounts.Count);
         foreach (var credential in request.Accounts)
         {
-            var (account, refusal) = await AuthenticateAsync(credential, cancellationToken).ConfigureAwait(false);
+            var (account, refusal) = await AuthenticateAsync(session.Id, credential, cancellationToken).ConfigureAwait(false);
             if (account is null)
             {
                 LogRefused(logger, session.Id, refusal, accounts.Count);
@@ -193,28 +202,42 @@ public sealed partial class AccountHandlers(
     }
 
     private async ValueTask<(Account? Account, LoginRefusalReason Refusal)> AuthenticateAsync(
+        long connectionId,
         LoginAccountInfo credential,
         CancellationToken cancellationToken)
     {
+        var account = await store.FindAsync(credential.EmailAddress, cancellationToken).ConfigureAwait(false);
+
         if (!options.Value.RequireRegistration)
         {
-            var provisioned = await store.FindOrCreateAsync(
+            // Any password logs in, so one is hashed only for an account that is new.
+            return (account ?? await store.FindOrCreateAsync(
                 credential.EmailAddress,
-                credential.PasswordHash,
+                await passwords.HashAsync(credential.PasswordHash, cancellationToken).ConfigureAwait(false),
                 Gender.Male,
-                cancellationToken).ConfigureAwait(false);
-            return (provisioned, default);
+                cancellationToken).ConfigureAwait(false), default);
         }
 
-        var account = await store.FindAsync(credential.EmailAddress, cancellationToken).ConfigureAwait(false);
         if (account is null)
         {
             return (null, LoginRefusalReason.UnknownAccount);
         }
 
-        return account.HasPassword(credential.PasswordHash)
-            ? (account, default)
-            : (null, LoginRefusalReason.WrongPassword);
+        if (!await passwords.VerifyAsync(account.Password, credential.PasswordHash, cancellationToken).ConfigureAwait(false))
+        {
+            return (null, LoginRefusalReason.WrongPassword);
+        }
+
+        // Hashed with fewer rounds than new hashes take: the password has just been proved,
+        // so this is the one moment it can be hashed again.
+        if (passwords.NeedsRehash(account.Password))
+        {
+            var rehashed = await passwords.HashAsync(credential.PasswordHash, cancellationToken).ConfigureAwait(false);
+            account = await store.ReplacePasswordAsync(account.AccountId, rehashed, cancellationToken).ConfigureAwait(false) ?? account;
+            LogRehashed(logger, connectionId, account.AccountId, rehashed.Iterations);
+        }
+
+        return (account, default);
     }
 
     private AccountType TypeOf(Account account) =>
@@ -263,4 +286,8 @@ public sealed partial class AccountHandlers(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Connection {ConnectionId} logged in with {Accounts} account(s)")]
     private static partial void LogLoggedIn(ILogger logger, long connectionId, int accounts);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Connection {ConnectionId}: account {AccountId}'s password was hashed again, with {Iterations} rounds")]
+    private static partial void LogRehashed(ILogger logger, long connectionId, uint accountId, int iterations);
 }

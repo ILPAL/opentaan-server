@@ -37,6 +37,7 @@ builder.Services
         "Accounts:RequireRegistration can be turned off only in the Development environment: " +
         "with it off, anyone can log in to any account")
     .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<AccountOptions>, AccountOptionsValidation>();
 
 builder.Services
     .AddOptions<CharacterOptions>()
@@ -103,6 +104,7 @@ builder.Services
 builder.Services.AddSingleton<IAccountStore>(provider =>
     new InMemoryAccountStore(provider.GetRequiredService<IOptions<AccountOptions>>().Value.Start.Cash));
 builder.Services.AddSingleton<ICharacterStore, InMemoryCharacterStore>();
+builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddSingleton<AccountHandlers>();
 builder.Services.AddSingleton<CharacterHandlers>();
 builder.Services.AddSingleton<ChannelHandlers>();

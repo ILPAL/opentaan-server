@@ -1,4 +1,3 @@
-using OpenTaan.Protocol;
 using OpenTaan.Protocol.Accounts;
 
 namespace OpenTaan.GameServer.Accounts;
@@ -14,8 +13,11 @@ public interface IAccountStore
     ValueTask<Account?> FindAsync(string emailAddress, CancellationToken cancellationToken);
 
     /// <summary>Creates an account, or returns null when the address is taken.</summary>
-    ValueTask<Account?> CreateAsync(string emailAddress, Secret passwordHash, Gender gender, CancellationToken cancellationToken);
+    ValueTask<Account?> CreateAsync(string emailAddress, StoredPassword password, Gender gender, CancellationToken cancellationToken);
 
     /// <summary>The account known by <paramref name="emailAddress"/>, created with these values if there is none.</summary>
-    ValueTask<Account> FindOrCreateAsync(string emailAddress, Secret passwordHash, Gender gender, CancellationToken cancellationToken);
+    ValueTask<Account> FindOrCreateAsync(string emailAddress, StoredPassword password, Gender gender, CancellationToken cancellationToken);
+
+    /// <summary>Replaces an account's password. Returns the account as it now is, or null when there is no such account.</summary>
+    ValueTask<Account?> ReplacePasswordAsync(uint accountId, StoredPassword password, CancellationToken cancellationToken);
 }

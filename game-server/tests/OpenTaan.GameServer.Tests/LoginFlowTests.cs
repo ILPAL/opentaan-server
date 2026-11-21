@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using OpenTaan.GameServer;
 using OpenTaan.GameServer.Accounts;
 using OpenTaan.GameServer.Sessions;
@@ -92,7 +93,7 @@ public sealed class LoginFlowTests
     public async Task CreatingAnAccountThatExistsSaysSoAndChangesNothing()
     {
         var store = new InMemoryAccountStore();
-        await store.CreateAsync("taken@example.test", RightPassword, Gender.Male, Cancel);
+        await RegisterAsync(store, "taken@example.test", RightPassword, Gender.Male);
         await using var connection = await SessionHarness.ConnectAsync(SessionHarness.Services(store: store), Cancel);
 
         await connection.Client.SendAsync(new PqCreateAccount("taken@example.test", WrongPassword, Gender.Female, 0));
@@ -100,14 +101,15 @@ public sealed class LoginFlowTests
         Assert.Equal(
             new PrCreateAccount(CreateAccountStatus.AlreadyExists, 0),
             await connection.Client.ReceiveAsync<PrCreateAccount>(PrCreateAccount.TryRead));
-        Assert.True((await store.FindAsync("taken@example.test", Cancel))!.HasPassword(RightPassword));
+        var kept = (await store.FindAsync("taken@example.test", Cancel))!.Password;
+        Assert.True(await SessionHarness.FastPasswords.VerifyAsync(kept, RightPassword, Cancel));
     }
 
     [Fact]
     public async Task AWrongPasswordIsRefusedAsAWrongPasswordAndTheConnectionMayTryAgain()
     {
         var store = new InMemoryAccountStore();
-        await store.CreateAsync("player@example.test", RightPassword, Gender.Male, Cancel);
+        await RegisterAsync(store, "player@example.test", RightPassword, Gender.Male);
         await using var connection = await SessionHarness.ConnectAsync(SessionHarness.Services(store: store), Cancel);
 
         await connection.Client.SendAsync(Login(("player@example.test", WrongPassword)));
@@ -136,8 +138,8 @@ public sealed class LoginFlowTests
     public async Task OneWrongPasswordRefusesAWholeTwoAccountLogin()
     {
         var store = new InMemoryAccountStore();
-        await store.CreateAsync("first@example.test", RightPassword, Gender.Male, Cancel);
-        await store.CreateAsync("second@example.test", RightPassword, Gender.Female, Cancel);
+        await RegisterAsync(store, "first@example.test", RightPassword, Gender.Male);
+        await RegisterAsync(store, "second@example.test", RightPassword, Gender.Female);
         await using var connection = await SessionHarness.ConnectAsync(SessionHarness.Services(store: store), Cancel);
 
         await connection.Client.SendAsync(Login(("first@example.test", RightPassword), ("second@example.test", WrongPassword)));
@@ -152,8 +154,8 @@ public sealed class LoginFlowTests
     public async Task ATwoAccountLoginDescribesBothAccountsInSlotOrder()
     {
         var store = new InMemoryAccountStore();
-        var first = await store.CreateAsync("first@example.test", RightPassword, Gender.Male, Cancel);
-        var second = await store.CreateAsync("second@example.test", RightPassword, Gender.Female, Cancel);
+        var first = await RegisterAsync(store, "first@example.test", RightPassword, Gender.Male);
+        var second = await RegisterAsync(store, "second@example.test", RightPassword, Gender.Female);
         await using var connection = await SessionHarness.ConnectAsync(SessionHarness.Services(store: store), Cancel);
 
         await connection.Client.SendAsync(Login(("second@example.test", RightPassword), ("first@example.test", RightPassword)));
@@ -194,7 +196,7 @@ public sealed class LoginFlowTests
     public async Task AddressesAreComparedExactlyCaseIncluded()
     {
         var store = new InMemoryAccountStore();
-        await store.CreateAsync("Player@example.test", RightPassword, Gender.Male, Cancel);
+        await RegisterAsync(store, "Player@example.test", RightPassword, Gender.Male);
         await using var connection = await SessionHarness.ConnectAsync(SessionHarness.Services(store: store), Cancel);
 
         await connection.Client.SendAsync(new PqCheckAccount("player@example.test", 0));
@@ -283,7 +285,7 @@ public sealed class LoginFlowTests
     public async Task OneAccountInBothSlotsIsRefusedAsAlreadyInGame()
     {
         var store = new InMemoryAccountStore();
-        await store.CreateAsync("player@example.test", RightPassword, Gender.Male, Cancel);
+        await RegisterAsync(store, "player@example.test", RightPassword, Gender.Male);
         var services = SessionHarness.Services(store: store);
         await using var connection = await SessionHarness.ConnectAsync(services, Cancel);
 
@@ -367,7 +369,7 @@ public sealed class LoginFlowTests
     public async Task AWrongPasswordAgainstALiveAccountSaysWrongPassword()
     {
         var store = new InMemoryAccountStore();
-        await store.CreateAsync("player@example.test", RightPassword, Gender.Male, Cancel);
+        await RegisterAsync(store, "player@example.test", RightPassword, Gender.Male);
         var services = SessionHarness.Services(store: store);
         await using var first = await SessionHarness.ConnectAsync(services, Cancel);
         await using var second = await SessionHarness.ConnectAsync(services, Cancel);
@@ -418,6 +420,154 @@ public sealed class LoginFlowTests
         await second.Client.SendAsync(Login(("player@example.test", RightPassword)));
         Assert.IsType<PrUserLoginSucceeded>(await second.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
     }
+
+    [Fact]
+    public async Task AnAccountKeepsAHashOfItsPasswordNeverWhatTheClientSent()
+    {
+        var store = new InMemoryAccountStore();
+        await using var connection = await SessionHarness.ConnectAsync(SessionHarness.Services(store: store), Cancel);
+
+        await connection.Client.SendAsync(new PqCreateAccount("player@example.test", RightPassword, Gender.Male, 0));
+        await connection.Client.ReceiveAsync<PrCreateAccount>(PrCreateAccount.TryRead);
+
+        var stored = (await store.FindAsync("player@example.test", Cancel))!.Password;
+        Assert.StartsWith($"{StoredPassword.Scheme}${SessionHarness.FastPasswordIterations}$", stored.Format(), StringComparison.Ordinal);
+        Assert.DoesNotContain(RightPassword.Reveal(), stored.Format(), StringComparison.Ordinal);
+        Assert.True(await SessionHarness.FastPasswords.VerifyAsync(stored, RightPassword, Cancel));
+    }
+
+    [Fact]
+    public async Task TheDigestAnAccountIsCreatedWithIsTheOneItLogsInWith()
+    {
+        // The client sends one text both times, 32 lower-case hex digits of an MD5 of the
+        // password: wide in the request to create, one byte per character in the login.
+        // Both are built here byte by byte as the client writes them, so this holds
+        // whatever this server's own writers do.
+        const string Digest = "5f4dcc3b5aa765d61d8327deb882cf99";
+        var services = SessionHarness.Services(requireRegistration: true);
+
+        await using (var first = await SessionHarness.ConnectAsync(services, Cancel))
+        {
+            await first.Client.SendBodyAsync((byte[])
+            [
+                .. Encoded.UInt32(PqCreateAccount.RegistryId),
+                .. Encoded.Utf16("player@example.test"),
+                .. Encoded.Utf16(Digest),
+                (byte)Gender.Female,
+                0,
+            ]);
+            Assert.Equal(
+                new PrCreateAccount(CreateAccountStatus.Created, 0),
+                await first.Client.ReceiveAsync<PrCreateAccount>(PrCreateAccount.TryRead));
+        }
+
+        await using var second = await SessionHarness.ConnectAsync(services, Cancel);
+        await second.Client.SendBodyAsync((byte[])
+        [
+            .. Encoded.UInt32(PqUserLogin.RegistryId),
+            .. Encoded.UInt32(1),
+            .. Encoded.UInt32(LoginAccountInfo.RegistryId),
+            .. Encoded.OneBytePerCharacter("player@example.test"),
+            .. Encoded.OneBytePerCharacter(Digest),
+            .. Encoded.UInt32(0),
+            .. Encoded.Utf16(string.Empty),
+            .. Encoded.UInt32(0), 0, 0,
+            0,
+        ]);
+
+        Assert.IsType<PrUserLoginSucceeded>(await second.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+    }
+
+    [Fact]
+    public async Task ALoginWithTheRightPasswordHashesItAgainOnceTheSettingAsksForMoreRounds()
+    {
+        var store = new InMemoryAccountStore();
+        await RegisterAsync(store, "player@example.test", RightPassword, Gender.Male);
+        var stronger = Hasher(SessionHarness.FastPasswordIterations * 2);
+        var services = SessionHarness.Services(store: store, passwords: stronger);
+
+        await using (var first = await SessionHarness.ConnectAsync(services, Cancel))
+        {
+            await first.Client.SendAsync(Login(("player@example.test", RightPassword)));
+            Assert.IsType<PrUserLoginSucceeded>(await first.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+
+            await first.Client.DisposeAsync();
+            Assert.Equal(CloseReason.PeerClosed, await first.ClosedReason());
+        }
+
+        var upgraded = (await store.FindAsync("player@example.test", Cancel))!.Password;
+        Assert.Equal(stronger.Iterations, upgraded.Iterations);
+
+        // The next login is checked against the new hash, and leaves it as it is.
+        await using var second = await SessionHarness.ConnectAsync(services, Cancel);
+        await second.Client.SendAsync(Login(("player@example.test", RightPassword)));
+        Assert.IsType<PrUserLoginSucceeded>(await second.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+        Assert.Same(upgraded, (await store.FindAsync("player@example.test", Cancel))!.Password);
+    }
+
+    [Fact]
+    public async Task AWrongPasswordNeverChangesTheStoredHash()
+    {
+        var store = new InMemoryAccountStore();
+        var before = (await RegisterAsync(store, "player@example.test", RightPassword, Gender.Male))!.Password;
+        var services = SessionHarness.Services(store: store, passwords: Hasher(SessionHarness.FastPasswordIterations * 2));
+        await using var connection = await SessionHarness.ConnectAsync(services, Cancel);
+
+        await connection.Client.SendAsync(Login(("player@example.test", WrongPassword)));
+
+        Assert.Equal(
+            new PrUserLoginFailed(LoginRefusalReason.WrongPassword),
+            await connection.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+        Assert.Same(before, (await store.FindAsync("player@example.test", Cancel))!.Password);
+    }
+
+    [Fact]
+    public async Task AnAddressAlreadyTakenIsAnsweredWithoutHashingAnything()
+    {
+        var store = new InMemoryAccountStore();
+        await RegisterAsync(store, "taken@example.test", RightPassword, Gender.Male);
+        var hashes = 0;
+        var counting = new PasswordHasher(SessionHarness.FastPasswordIterations, 1, () => Interlocked.Increment(ref hashes));
+        await using var connection = await SessionHarness.ConnectAsync(SessionHarness.Services(store: store, passwords: counting), Cancel);
+
+        await connection.Client.SendAsync(new PqCreateAccount("taken@example.test", WrongPassword, Gender.Female, 0));
+
+        Assert.Equal(
+            new PrCreateAccount(CreateAccountStatus.AlreadyExists, 0),
+            await connection.Client.ReceiveAsync<PrCreateAccount>(PrCreateAccount.TryRead));
+        Assert.Equal(0, Volatile.Read(ref hashes));
+    }
+
+    [Fact]
+    public async Task WithoutRegistrationOnlyTheLoginThatCreatesAnAccountHashesItsPassword()
+    {
+        var hashes = 0;
+        var counting = new PasswordHasher(SessionHarness.FastPasswordIterations, 1, () => Interlocked.Increment(ref hashes));
+        var services = SessionHarness.Services(requireRegistration: false, passwords: counting);
+
+        await using (var first = await SessionHarness.ConnectAsync(services, Cancel))
+        {
+            await first.Client.SendAsync(Login(("player@example.test", RightPassword)));
+            Assert.IsType<PrUserLoginSucceeded>(await first.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+
+            await first.Client.DisposeAsync();
+            Assert.Equal(CloseReason.PeerClosed, await first.ClosedReason());
+        }
+
+        Assert.Equal(1, Volatile.Read(ref hashes));
+
+        await using var second = await SessionHarness.ConnectAsync(services, Cancel);
+        await second.Client.SendAsync(Login(("player@example.test", WrongPassword)));
+        Assert.IsType<PrUserLoginSucceeded>(await second.Client.ReceiveAsync<PrUserLogin>(PrUserLogin.TryRead));
+        Assert.Equal(1, Volatile.Read(ref hashes));
+    }
+
+    // An account created as a request to create one creates it: with a hash of its password.
+    private static async Task<Account?> RegisterAsync(IAccountStore store, string emailAddress, Secret digest, Gender gender) =>
+        await store.CreateAsync(emailAddress, await SessionHarness.FastPasswords.HashAsync(digest, Cancel), gender, Cancel);
+
+    private static PasswordHasher Hasher(int iterations) =>
+        new(Options.Create(new AccountOptions { PasswordIterations = iterations }));
 
     private static PqUserLogin Login(params (string EmailAddress, Secret PasswordHash)[] accounts) =>
         new(
