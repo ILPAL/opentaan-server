@@ -124,6 +124,19 @@ instead of being skipped.
 The client checks or creates an account on one connection, closes it, and logs
 in on another, so accounts belong to the server rather than to a connection.
 
+An account keeps only a hash of its password. The client never sends the
+password itself: it sends 32 hex digits of an MD5 of it, the same text when it
+creates the account and at every login, and that text is all a login needs. The
+server keeps a PBKDF2-HMAC-SHA256 hash of it instead, with a random salt for each
+account and `Accounts:PasswordIterations` rounds, 600,000 by default and at the
+least. The stored value names its scheme and its rounds
+(`pbkdf2-sha256$600000$<salt>$<hash>`), so raising the setting applies to new
+accounts at once and to each older one at its next login with the right
+password, and no stored password stops matching. A hash takes a noticeable
+fraction of a second by design, so at most half the processors' worth run at
+once, an address already taken is answered without one, and a login that
+creates no account hashes nothing.
+
 An account is live on one connection at a time. A login naming one account in
 both of the client's slots, or an account another connection holds, is refused
 as already in the game, and the client returns to its login form; the
@@ -552,6 +565,7 @@ dotnet run --project src/OpenTaan.GameServer -- --GameServer:Port=2181 --PlayTim
 | `GameServer:PacketNamesFile` | none | A JSON file naming packets by id, so logs name packets this server does not handle. Development points it at the local reference data. |
 | `GameServer:DropUnhandledPackets` | `false` (Development: `true`) | Logs and drops a packet this server has no handler for instead of closing the connection, so one run of a real client shows everything a screen sends. Allowed only in Development: a request dropped this way is never answered. |
 | `Accounts:RequireRegistration` | `true` | Whether an account must be created, with its password, before it can log in. |
+| `Accounts:PasswordIterations` | `600000` | PBKDF2 rounds for each new password hash. The server refuses to start with fewer; raising it hashes each account again at its next login with the right password. |
 | `Accounts:GameMasters` | none | Addresses of the accounts that log in as game masters. |
 | `Characters:Start` | gold and counters `0`, `ExperienceCeiling` `300` | What a new character starts with. Every character starts at level 1; `ExperienceCeiling` is where level 2 begins and must be above 0. |
 | `Accounts:Start:Cash` | `0` | The cash a new account starts with. |

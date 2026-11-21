@@ -1,12 +1,8 @@
-using OpenTaan.Protocol;
 using OpenTaan.Protocol.Accounts;
 
 namespace OpenTaan.GameServer.Accounts;
 
-/// <summary>
-/// Accounts held in memory, gone when the process stops. The store until the database
-/// stage, which also brings password hashing at rest and a login throttle.
-/// </summary>
+/// <summary>Accounts held in memory, gone when the process stops. The store until the database stage.</summary>
 /// <remarks>
 /// Addresses are compared exactly. Folding case would merge two accounts the client
 /// treats as different, and let a guess against one count against the other.
@@ -31,27 +27,45 @@ public sealed class InMemoryAccountStore(uint startingCash = 0) : IAccountStore
     }
 
     /// <inheritdoc/>
-    public ValueTask<Account?> CreateAsync(string emailAddress, Secret passwordHash, Gender gender, CancellationToken cancellationToken)
+    public ValueTask<Account?> CreateAsync(string emailAddress, StoredPassword password, Gender gender, CancellationToken cancellationToken)
     {
         lock (_lock)
         {
-            return ValueTask.FromResult(_accounts.ContainsKey(emailAddress) ? null : Add(emailAddress, passwordHash, gender));
+            return ValueTask.FromResult(_accounts.ContainsKey(emailAddress) ? null : Add(emailAddress, password, gender));
         }
     }
 
     /// <inheritdoc/>
-    public ValueTask<Account> FindOrCreateAsync(string emailAddress, Secret passwordHash, Gender gender, CancellationToken cancellationToken)
+    public ValueTask<Account> FindOrCreateAsync(string emailAddress, StoredPassword password, Gender gender, CancellationToken cancellationToken)
     {
         lock (_lock)
         {
-            return ValueTask.FromResult(_accounts.GetValueOrDefault(emailAddress) ?? Add(emailAddress, passwordHash, gender));
+            return ValueTask.FromResult(_accounts.GetValueOrDefault(emailAddress) ?? Add(emailAddress, password, gender));
         }
     }
 
-    private Account Add(string emailAddress, Secret passwordHash, Gender gender)
+    /// <inheritdoc/>
+    public ValueTask<Account?> ReplacePasswordAsync(uint accountId, StoredPassword password, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(password);
+
+        lock (_lock)
+        {
+            if (_accounts.Values.FirstOrDefault(account => account.AccountId == accountId) is not { } account)
+            {
+                return ValueTask.FromResult<Account?>(null);
+            }
+
+            var replaced = account with { Password = password };
+            _accounts[account.EmailAddress] = replaced;
+            return ValueTask.FromResult<Account?>(replaced);
+        }
+    }
+
+    private Account Add(string emailAddress, StoredPassword password, Gender gender)
     {
         var count = (uint)_accounts.Count;
-        var account = new Account(FirstAccountId + count, FirstLocalPlayerId + count, emailAddress, passwordHash, gender, startingCash);
+        var account = new Account(FirstAccountId + count, FirstLocalPlayerId + count, emailAddress, password, gender, startingCash);
         _accounts.Add(emailAddress, account);
         return account;
     }

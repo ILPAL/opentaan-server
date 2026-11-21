@@ -10,8 +10,11 @@ public sealed class LoggedInAccountsTests
 {
     private static readonly SessionServices Services = SessionHarness.Services();
 
-    private static readonly Account First = new(1001, 1, "first@example.test", new Secret("digest"), Gender.Male, Cash: 0);
-    private static readonly Account Second = new(1002, 2, "second@example.test", new Secret("digest"), Gender.Female, Cash: 0);
+    // Nothing here checks a password, so one cheap hash stands in for every account's.
+    private static readonly StoredPassword AnyPassword = StoredPassword.Derive(new Secret("digest"), new byte[StoredPassword.SaltSize], 1);
+
+    private static readonly Account First = new(1001, 1, "first@example.test", AnyPassword, Gender.Male, Cash: 0);
+    private static readonly Account Second = new(1002, 2, "second@example.test", AnyPassword, Gender.Female, Cash: 0);
 
     [Fact]
     public void AFreeAccountIsClaimedAndHeldByItsConnection()

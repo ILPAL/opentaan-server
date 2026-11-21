@@ -256,10 +256,13 @@ public sealed class SessionTests
         public ValueTask<Account?> FindAsync(string emailAddress, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("the store is down");
 
-        public ValueTask<Account?> CreateAsync(string emailAddress, Secret passwordHash, Gender gender, CancellationToken cancellationToken) =>
+        public ValueTask<Account?> CreateAsync(string emailAddress, StoredPassword password, Gender gender, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("the store is down");
 
-        public ValueTask<Account> FindOrCreateAsync(string emailAddress, Secret passwordHash, Gender gender, CancellationToken cancellationToken) =>
+        public ValueTask<Account> FindOrCreateAsync(string emailAddress, StoredPassword password, Gender gender, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("the store is down");
+
+        public ValueTask<Account?> ReplacePasswordAsync(uint accountId, StoredPassword password, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("the store is down");
     }
 }

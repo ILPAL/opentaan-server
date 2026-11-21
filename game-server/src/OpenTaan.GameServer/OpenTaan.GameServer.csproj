@@ -10,6 +10,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Lets the password tests check the hash function against published vectors, and
+         hook the hasher to count and hold its work. -->
+    <InternalsVisibleTo Include="OpenTaan.GameServer.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\OpenTaan.Protocol\OpenTaan.Protocol.csproj" />
     <ProjectReference Include="..\OpenTaan.Transport\OpenTaan.Transport.csproj" />
   </ItemGroup>

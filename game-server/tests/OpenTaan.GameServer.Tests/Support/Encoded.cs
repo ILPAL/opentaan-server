@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Text;
 
 namespace OpenTaan.Tests.GameServer;
 
@@ -21,4 +22,10 @@ internal static class Encoded
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, value);
         return bytes;
     }
+
+    /// <summary>A string written wide: a 32-bit count of UTF-16 code units, then the units.</summary>
+    public static byte[] Utf16(string value) => [.. UInt32((uint)value.Length), .. Encoding.Unicode.GetBytes(value)];
+
+    /// <summary>A string written narrow: a 32-bit count, then one byte per character.</summary>
+    public static byte[] OneBytePerCharacter(string value) => [.. UInt32((uint)value.Length), .. Encoding.Latin1.GetBytes(value)];
 }
