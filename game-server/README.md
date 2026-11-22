@@ -535,16 +535,49 @@ With neither, they skip and say why, except in CI, where they fail instead.
 The server keeps its accounts and characters in PostgreSQL, and starts only on a database that
 has the migrations it needs (`database/migrations`, applied by Flyway). In
 Development it uses the database `opentaan` on `127.0.0.1:5432` as the user
-`opentaan`; give that user's password once, as a user secret, and apply the
-migrations to the database:
+`opentaan`. Besides the .NET SDK named in `global.json`, running it needs:
+
+- a PostgreSQL 18 server on `127.0.0.1:5432`, such as [Postgres.app](https://postgresapp.com)
+  on macOS, whose command-line tools are in
+  `/Applications/Postgres.app/Contents/Versions/latest/bin` (add that folder to `PATH`);
+- Flyway, the command-line tool that applies the migrations (`brew install flyway` on macOS).
+
+Run the commands below from this folder (`game-server/`). Once on each machine,
+create the user and the database, as a PostgreSQL superuser (on Postgres.app, your
+own login):
 
 ```sh
-dotnet user-secrets set db_password '<the password>' --project src/OpenTaan.GameServer
+createuser -h 127.0.0.1 opentaan
+createdb -h 127.0.0.1 --owner=opentaan --encoding=UTF8 \
+  --locale-provider=libc --locale=C --template=template0 opentaan
+```
+
+That is the encoding and collation `docker-compose.yml` gives its database, so names
+sort the same here as in Docker and CI. Leave out `--locale-provider=libc` on a server
+that collates with ICU by default, as Postgres.app does, and it warns that `C` is no
+ICU locale and sorts by different rules.
+
+Then apply the migrations, now and again each time one is added to
+`database/migrations`:
+
+```sh
 flyway -url=jdbc:postgresql://127.0.0.1:5432/opentaan -user=opentaan \
   -locations=filesystem:../database/migrations migrate
 ```
 
-Then, from this folder (`game-server/`), with the .NET SDK named in `global.json`:
+Postgres.app lets local users in without a password. A server that asks for one,
+as PostgreSQL in Docker does, needs the user created with `createuser --pwprompt`,
+the password given to Flyway (its `-password` option, or `FLYWAY_PASSWORD`), and
+the password given to the game server once, as a user secret:
+
+```sh
+dotnet user-secrets set db_password '<the password>' --project src/OpenTaan.GameServer
+```
+
+A server that stops at startup with `role "opentaan" does not exist` or
+`database "opentaan" does not exist` is missing the user and the database; one
+that says the database has no schema, or is at an older migration, is missing
+the Flyway step. With all of that in place, start it:
 
 ```sh
 dotnet run --project src/OpenTaan.GameServer
@@ -593,7 +626,7 @@ dotnet run --project src/OpenTaan.GameServer -- --GameServer:Port=2181 --PlayTim
 | `GameServer:SendTimeout`, `GameServer:SendQueueCapacity` | `00:00:10`, `256` | How long a frame may take to leave, and how many replies may wait, before a client that stopped reading is closed. |
 | `GameServer:PacketNamesFile` | none | A JSON file naming packets by id, so logs name packets this server does not handle. Development points it at the local reference data. |
 | `GameServer:DropUnhandledPackets` | `false` (Development: `true`) | Logs and drops a packet this server has no handler for instead of closing the connection, so one run of a real client shows everything a screen sends. Allowed only in Development: a request dropped this way is never answered. |
-| `ConnectionStrings:Game` | none (Development: `opentaan` on `127.0.0.1:5432`) | The PostgreSQL database accounts and characters are kept in. Its password is the setting `db_password`: in a container the secret file of that name, in Development a user secret. The server does not start without one, or on a schema older than it needs. |
+| `ConnectionStrings:Game` | none (Development: `opentaan` on `127.0.0.1:5432`) | The PostgreSQL database accounts and characters are kept in. Its password, when the database asks for one, is the setting `db_password`: in a container the secret file of that name, in Development a user secret. The server does not start without a database named here, or on a schema older than it needs. |
 | `Accounts:RequireRegistration` | `true` | Whether an account must be created, with its password, before it can log in. |
 | `Accounts:PasswordIterations` | `600000` | PBKDF2 rounds for each new password hash. The server refuses to start with fewer; raising it hashes each account again at its next login with the right password. |
 | `Accounts:GameMasters` | none | Addresses of the accounts that log in as game masters. |
