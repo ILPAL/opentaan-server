@@ -43,6 +43,21 @@ public sealed class MatchOptions
     public TimeSpan LongestShot { get; set; } = TimeSpan.FromSeconds(60);
 
     /// <summary>
+    /// How long a mission's enemies' turn waits, once the first client has reported it over,
+    /// for every other client to report it too. Every client moves the same enemies the same
+    /// way at the same pace, from the moment the turn reaches it, so the others finish within
+    /// about the time a packet takes there and back.
+    /// </summary>
+    public TimeSpan EnemyTurnWait { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How long a mission's enemies' turn may wait in all, from the moment it is sent, in case
+    /// no client reports it over. A client reports once every enemy stands still, so this
+    /// must leave the slowest enemy time to walk its furthest.
+    /// </summary>
+    public TimeSpan LongestEnemyTurn { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
     /// How long a mission level's first turn waits for every client to report that the
     /// level's opening is over. The opening takes about two and a half seconds; a turn
     /// started while a client is still in it leaves that client without the level's
@@ -117,7 +132,7 @@ public sealed class MatchOptions
     /// <summary>What is wrong with the settings, for the message the server refuses to start with; null when nothing is.</summary>
     public string? Problem()
     {
-        if (new[] { LevelReadyWait, LoadWait, LongestLoad, TurnWait, ShotWait, LongestShot, ResultWait }.Any(wait => wait <= TimeSpan.Zero))
+        if (new[] { LevelReadyWait, LoadWait, LongestLoad, TurnWait, ShotWait, LongestShot, EnemyTurnWait, LongestEnemyTurn, ResultWait }.Any(wait => wait <= TimeSpan.Zero))
         {
             return $"Every wait in {Section} must be positive";
         }

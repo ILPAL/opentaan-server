@@ -41,7 +41,7 @@ What a reviewer should be able to see and run, end to end.
 - [x] Append-only audit trail for every operator action
 - [x] Game server transport: framing, the packet cipher and the seed schedule, with the reference sessions replayed through it
 - [x] Game server sessions: a real client connects, logs in, and creates and selects a character; the reference sessions are played against real connections
-- [ ] Packet codecs, compared byte for byte with the reference sessions (started: the handshake, the account and login packets, the character packets, the tutorial's reports, the channel and lobby packets, the room packets, and a match from its start to its result screen, turn by turn, with its items and ghosts)
+- [ ] Packet codecs, compared byte for byte with the reference sessions (started: the handshake, the account and login packets, the character packets, the tutorial's reports, the channel and lobby packets, the room packets, and a match from its start to its result screen, turn by turn, with its items and ghosts and a mission's enemies' turns)
 - [ ] Security scanning in CI: CodeQL (Dependabot, Trivy and an SBOM per image are done)
 - [x] Decision records, a threat model and a written case study in `docs/`
 
@@ -51,7 +51,7 @@ What a reviewer should be able to see and run, end to end.
 |---|---|
 | Repository setup | `.gitignore`, `.gitattributes`, `.editorconfig` |
 | Database | `V1` initial schema (11 tables); `V2` economy adjustments and the outbox, with the approval rules as constraints; `V3` the audit trail |
-| Game server | .NET 10 solution: transport framing and the packet cipher, handshake keys that can never switch encryption off, codecs for the handshake, the account and login packets, the character packets, the channel and lobby packets and the room packets, a session per connection with connection limits, idle and send timeouts, account check, creation and login with accounts in memory, one live connection per account, character naming, creation, selection and deletion with characters in memory and one character per account, rooms created, entered, quick-joined and left in each channel's lobby, with mission rooms and connections playing two accounts, what players do in a waiting room (ready, team, weapon, the host's options with the maps and missions the client lists, slots, expulsions), and a match from its start to its result screen, a mission's (each level begun once, its first turn once every client is ready) or one between two teams of any size (a random map drawn at each start, the first turn once every client has loaded, a team losing once it has nobody left in play), with turns of shots every client plays back before the next, the teams taking turns, passes, walks, deaths and ghosts, giving up, leaving, the end and the result cards, and items and ghosts, a mission's as the clients decide them and between teams the boxes on the field, the server's own boxes and the items of ghosts' catches and bonuses decided on the server from the client's drop table kept locally, each passed on to the clients that act on it, the reference sessions replayed through the codecs and played against real connections, architecture rules |
+| Game server | .NET 10 solution: transport framing and the packet cipher, handshake keys that can never switch encryption off, codecs for the handshake, the account and login packets, the character packets, the channel and lobby packets and the room packets, a session per connection with connection limits, idle and send timeouts, account check, creation and login with accounts in memory, one live connection per account, character naming, creation, selection and deletion with characters in memory and one character per account, rooms created, entered, quick-joined and left in each channel's lobby, with mission rooms and connections playing two accounts, what players do in a waiting room (ready, team, weapon, the host's options with the maps and missions the client lists, slots, expulsions), and a match from its start to its result screen, a mission's (each level begun once, its first turn once every client is ready) or one between two teams of any size (a random map drawn at each start, the first turn once every client has loaded, a team losing once it has nobody left in play), with turns of shots every client plays back before the next, a mission's enemies taking a turn of their own after every shot, the teams taking turns, passes, walks, deaths and ghosts, giving up, leaving, the end and the result cards, and items and ghosts, a mission's as the clients decide them and between teams the boxes on the field, the server's own boxes and the items of ghosts' catches and bonuses decided on the server from the client's drop table kept locally, each passed on to the clients that act on it, the reference sessions replayed through the codecs and played against real connections, architecture rules |
 | Admin server | Contract-first API, Keycloak token validation, role-to-permission mapping, read-only account data, problem-details errors |
 | Local stack | docker-compose with PostgreSQL 18, Flyway, Keycloak and both servers; secrets as files; operator script with no committed credentials |
 | CI | `game-server`, `admin-server` and `stack` workflows; the stack job signs operators in, takes an adjustment through four-eyes approval and checks the audit trail it left |
@@ -61,7 +61,7 @@ What a reviewer should be able to see and run, end to end.
 | Decisions and security | Ten decision records in `docs/adr`; a threat model with each threat's control, test and status; a case study of how correctness is checked; a test that two concurrent decisions leave exactly one |
 | Security scanning | `security` workflow: both images built, scanned with Trivy on every change and weekly, failing on fixable HIGH or CRITICAL findings, with a CycloneDX SBOM kept per image; Dockerfile checks; Dependabot for Maven, NuGet, base images, compose images and actions; every action pinned to a commit hash |
 
-Tests today: game server 1008, of which 21 need the reference sessions and skip without them, and 37 need PostgreSQL, which CI always gives them; admin server 61 unit tests and 25 integration tests.
+Tests today: game server 1029, of which 21 need the reference sessions and skip without them, and 37 need PostgreSQL, which CI always gives them; admin server 61 unit tests and 25 integration tests.
 
 ## Next
 
@@ -77,14 +77,15 @@ In order. Each item is one pull request unless noted.
    and closing slots, and expelling a player), and a match from its start to its
    result screen, turn by turn, a mission's or one between two teams of any size
    on a map drawn at each start for a random pick, with a captain chosen for each
-   team in the modes with captains, and its items and ghosts, a mission's as the
-   clients decide them and, between teams, the item boxes on the field and the items
-   of ghosts' catches and bonuses decided on the server, are done and served by real
-   sessions. Next, one pull request each: the rest of the item rules between teams,
-   decided on the server (the items each character holds and uses, the team gauge of
-   the modes without items, and the damage poison does, which needs each character's
-   health), missions whose enemies fight back, and rewards that last, each paid once
-   per match and character.
+   team in the modes with captains, a mission's enemies taking a turn of their own
+   after every shot, and its items and ghosts, a mission's as the clients decide them
+   and, between teams, the item boxes on the field and the items of ghosts' catches
+   and bonuses decided on the server, are done and served by real sessions. Next, one
+   pull request each: a mission lost once a level runs out of turns, the rest of the
+   item rules between teams, decided on the server (the items each character holds
+   and uses, the team gauge of the modes without items, and the damage poison does,
+   which needs each character's health), and rewards that last, each paid once per
+   match and character.
 2. **CodeQL.** Static analysis of the Java and C# code, reported through GitHub
    code scanning.
 3. **Operator portal.** Pages served by the admin server: account lookup, requesting

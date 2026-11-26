@@ -158,11 +158,15 @@ public sealed partial class RoomDirectory
     /// </para>
     /// <para>
     /// A level that begins waits for its first turn until every client in the match reports
-    /// it ready, or for <see cref="MatchOptions.LevelReadyWait"/> at most.
+    /// it ready, or for <see cref="MatchOptions.LevelReadyWait"/> at most. Whether its enemies
+    /// take turns is the request's say; see <see cref="FinishEnemyTurn"/>.
     /// </para>
     /// </remarks>
+    /// <param name="session">The connection asking.</param>
+    /// <param name="level">The level asked for, or <see cref="PqGameSessionStartMissionLevel.NoNextLevel"/> for the clear.</param>
+    /// <param name="wantsEnemyTurns">Whether the level's enemies take a turn after every shot, as the request says.</param>
     /// <returns>Null once done; otherwise why the request changed nothing, for the log.</returns>
-    public string? AskForLevel(ClientSession session, byte level)
+    public string? AskForLevel(ClientSession session, byte level, bool wantsEnemyTurns)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -180,12 +184,12 @@ public sealed partial class RoomDirectory
             }
 
             var advances = level == levels.Current + 1 || level == PqGameSessionStartMissionLevel.NoNextLevel;
-            if (advances && match.Phase is MatchPhase.Opening or MatchPhase.Turn)
+            if (advances && match.Phase is MatchPhase.Opening or MatchPhase.Turn or MatchPhase.EnemyTurn)
             {
                 return $"level {level} was asked for while no shot is played";
             }
 
-            switch (levels.Ask(level, out var reason))
+            switch (levels.Ask(level, wantsEnemyTurns, out var reason))
             {
                 case LevelAnswer.Announce when match.Phase == MatchPhase.Shot:
                     match.HoldLevel();

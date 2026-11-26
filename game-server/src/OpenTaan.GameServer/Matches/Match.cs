@@ -23,6 +23,12 @@ internal enum MatchPhase
 
     /// <summary>The turn's character has shot, and the turn waits for every client to play the shot back.</summary>
     Shot,
+
+    /// <summary>
+    /// After a shot in a mission level whose enemies take turns, the turn has ended, and the
+    /// next waits for every client to move the level's enemies; no character has the turn.
+    /// </summary>
+    EnemyTurn,
 }
 
 /// <summary>A room's match, a mission or a match between teams, from its start until the room waits for players again. Changed only under the room directory's lock.</summary>
@@ -30,15 +36,15 @@ internal enum MatchPhase
 /// <para>
 /// The match keeps every character that started it, by slot, and which of them are out of
 /// it: given up, gone with their player, or dead. A player out of the match still sees it
-/// to its end, and its client still plays every level's opening and every shot, so it is
-/// still waited for. Each character plays for the team of its slot; see <see cref="Winner"/>
-/// for when that ends the match.
+/// to its end, and its client still plays every level's opening, every shot and every turn
+/// of a mission's enemies, so it is still waited for. Each character plays for the team of
+/// its slot; see <see cref="Winner"/> for when that ends the match.
 /// </para>
 /// <para>
 /// One timer at a time stands for the wait in progress: for the clients to load a match
 /// between teams, or to play a mission level's opening, for the turn's character to shoot
-/// or pass, for the clients to play a shot, then for the players to pick their result
-/// cards. Every change of phase, and every new turn, moves <see cref="Step"/> on, and a
+/// or pass, for the clients to play a shot, and in a mission to move its enemies, then for
+/// the players to pick their result cards. Every change of phase, and every new turn, moves <see cref="Step"/> on, and a
 /// timer that fires for a step that is over finds nothing left to do.
 /// </para>
 /// </remarks>
@@ -49,6 +55,7 @@ internal sealed class Match : IDisposable
     private readonly HashSet<byte> _dead = [];
     private readonly HashSet<ClientSession> _ready = [];
     private readonly HashSet<ClientSession> _finished = [];
+    private readonly HashSet<ClientSession> _answered = [];
     private readonly Dictionary<byte, (int X, int Y)> _positions = [];
     private readonly Dictionary<byte, (int X, int Y)> _ghostTargets = [];
     private readonly HashSet<byte> _bonusOwed = [];
@@ -151,6 +158,12 @@ internal sealed class Match : IDisposable
 
     /// <summary>When the shot being played arrived.</summary>
     public DateTimeOffset ShotArrived { get; private set; }
+
+    /// <summary>When the enemies' turn running was sent.</summary>
+    public DateTimeOffset EnemyTurnSent { get; private set; }
+
+    /// <summary>Whether the enemies of the mission level running take a turn after every shot; never in a match between teams.</summary>
+    public bool WantsEnemyTurns => Levels is { WantsEnemyTurns: true };
 
     /// <summary>
     /// The turn count the start of each turn carries, which the client shows in a mission:
@@ -291,6 +304,51 @@ internal sealed class Match : IDisposable
     /// <summary>The members of <paramref name="members"/> that have not reported the shot being played back.</summary>
     public IReadOnlyList<ClientSession> NotFinished(IEnumerable<ClientSession> members) => [.. members.Where(member => !_finished.Contains(member))];
 
+    /// <summary>
+    /// Starts waiting for every client to move the level's enemies, after the turn's shot,
+    /// and returns the counter that tells them which turn of the enemies it is: the level's
+    /// turn count, which a shot has raised above 0, since a counter of 0 would place the
+    /// level's first enemies again.
+    /// </summary>
+    /// <param name="now">When the enemies' turn is sent.</param>
+    /// <exception cref="InvalidOperationException">No shot has been fired in the level.</exception>
+    public uint BeginEnemyTurn(DateTimeOffset now)
+    {
+        if (TurnCount == 0)
+        {
+            throw new InvalidOperationException("The enemies take a turn only after a shot of the level.");
+        }
+
+        Phase = MatchPhase.EnemyTurn;
+        Step++;
+        EnemyTurnSent = now;
+        _answered.Clear();
+        return TurnCount;
+    }
+
+    /// <summary>Records that <paramref name="session"/>'s client reports the enemies' turn over on its screen.</summary>
+    /// <param name="session">The connection reporting, which reports once however many characters it plays.</param>
+    /// <param name="counter">The counter its report carries.</param>
+    /// <param name="reason">Why the report changes nothing, for the log, when it does not.</param>
+    /// <returns>Whether the report counts.</returns>
+    public bool Answered(ClientSession session, uint counter, out string? reason)
+    {
+        reason = IsOver || Phase != MatchPhase.EnemyTurn ? "the enemies are taking no turn"
+            : counter != TurnCount ? $"it reports the enemies' turn {counter} over while turn {TurnCount} is theirs"
+            : !_answered.Add(session) ? $"it reported the enemies' turn {counter} over already"
+            : null;
+        return reason is null;
+    }
+
+    /// <summary>Whether any client has reported the enemies' turn running over.</summary>
+    public bool AnyAnswered => _answered.Count > 0;
+
+    /// <summary>Whether the enemies are taking their turn and every one of <paramref name="members"/> has reported it over.</summary>
+    public bool EveryoneAnswered(IEnumerable<ClientSession> members) => !IsOver && Phase == MatchPhase.EnemyTurn && members.All(_answered.Contains);
+
+    /// <summary>The members of <paramref name="members"/> that have not reported the enemies' turn over.</summary>
+    public IReadOnlyList<ClientSession> NotAnswered(IEnumerable<ClientSession> members) => [.. members.Where(member => !_answered.Contains(member))];
+
     /// <summary>Holds the mission level that has just begun, which is announced once every client has played the shot.</summary>
     public void HoldLevel() => HeldLevel = Levels?.Current;
 
@@ -388,6 +446,7 @@ internal sealed class Match : IDisposable
 
         _ready.Remove(session);
         _finished.Remove(session);
+        _answered.Remove(session);
     }
 
     /// <summary>Marks the match over, and stops any wait in progress.</summary>

@@ -122,6 +122,7 @@ public sealed partial class PacketDispatcher
             [PqGameSessionStartGame.RegistryId] = Route.To<PqGameSessionStartGame>(PqGameSessionStartGame.TryRead, matches.StartGameAsync),
             [PqGameSessionStartMissionLevel.RegistryId] = Route.To<PqGameSessionStartMissionLevel>(PqGameSessionStartMissionLevel.TryRead, matches.StartMissionLevelAsync),
             [PqGameSessionMissionLevelReady.RegistryId] = Route.To<PqGameSessionMissionLevelReady>(PqGameSessionMissionLevelReady.TryRead, matches.MissionLevelReadyAsync),
+            [PcGameSessionFinishMissionEnemyTurn.RegistryId] = Route.To<PcGameSessionFinishMissionEnemyTurn>(PcGameSessionFinishMissionEnemyTurn.TryRead, matches.FinishMissionEnemyTurnAsync),
             [PcGamePlayGiveUp.RegistryId] = Route.To<PcGamePlayGiveUp>(PcGamePlayGiveUp.TryRead, matches.GiveUpAsync),
             [PqResultRandSelect.RegistryId] = Route.To<PqResultRandSelect>(PqResultRandSelect.TryRead, matches.RandSelectAsync),
             [PqResultSelectCard.RegistryId] = Route.To<PqResultSelectCard>(PqResultSelectCard.TryRead, matches.SelectCardAsync),

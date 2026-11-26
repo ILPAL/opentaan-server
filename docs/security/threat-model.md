@@ -10,7 +10,7 @@ before any deployment beyond a local machine.
 
 The stack in `docker-compose.yml`: the admin server, Keycloak, PostgreSQL,
 Flyway and the game server, plus the CI that builds them. The game server
-serves the login, character, tutorial, channel and lobby stages, rooms, and a match, a mission's or one between two teams, from its start to its result screen, turn by turn, with its items and ghosts as the clients decide them; its threats are listed
+serves the login, character, tutorial, channel and lobby stages, rooms, and a match, a mission's or one between two teams, from its start to its result screen, turn by turn, with a mission's enemies' turns and its items and ghosts as the clients decide them; its threats are listed
 with the controls in place and those planned for the stages still to come. A production
 deployment (TLS termination, networks, backups, monitoring) is not designed
 yet and is out of scope, except where the local setup would be unsafe to copy.
@@ -153,6 +153,7 @@ does not exist yet; the control comes with it).
 | T-G32 | One side plays with a captain and the other without: the client fires every shot of a captain twice, in any game mode, so a match naming a captain outside the modes with captains, or for one team alone, gives that side an edge. A modified client volunteers another player's character, asks for the captains as a guest, or starts without asking, to steer who captains | The start names a captain for each team in `CaptainItems` and `CaptainNoItems` (modes 2 and 3) and none in the others; each is drawn evenly from its team's volunteers, or from all its characters when none volunteers, so a start without asking still names one for each team with a character, and a team with none has none. Only the host asks for the choice, only in those modes, and only a player's own characters volunteer or withdraw, while the choice lasts; anything else is refused or dropped and logged | Mitigated: `CaptainFlowTests`, `TeamMatchFlowTests`, `MatchFlowTests` |
 | T-G33 | A modified client fires extra shots, or uses items given to a captain, as if its character captained its team | A shot is the shooter's client's own work (T-G26), and its client decides whose shots are doubled from the captains the start named; the server names them, but does not yet count a shot's missiles or check an item gift against the turn, the team and the captain | Accepted for now: checking shots and gifts on the server is a later step |
 | T-G34 | A client is told that what it did was kept when it was not: an account, a character or a finished tutorial that a restart, a failed write or a database outage loses | The database is the game server's only copy of what lasts beyond a connection: every request reads it and waits for each write, and a write that fails ends the request and its connection, so no answer reports anything the database did not keep; ids are handed out by the database; the server does not start on a schema older than it needs | Mitigated: `AccountStoreContract` and `CharacterStoreContract` on the in-memory and PostgreSQL stores, each read again over new connections; `ProgressAcrossARestartTests`, where a second server over the same database lists the account's character with its tutorial finished; `SessionTests` for a store that fails; `SchemaCheckTests` |
+| T-G35 | A mission's enemies stand in different places on different clients, so one shot hits other enemies on each screen, and the clients' counts of the enemies killed, by which each asks for the next level, drift apart: a client is sent an enemies' turn twice, misses one, or is sent one that places the level's first enemies again; or a client that never reports the enemies' turn over holds up every turn | Every client moves its own copy of the enemies, alike only if each is sent every enemies' turn once: each goes to every connection in the match exactly once, however many characters it plays, ghosts and players who gave up included, after every shot in a level whose enemies take turns, and never after a pass, a turn the server passes, a shot that begins the next level or one that clears the mission; it carries the level's turn count, which a shot has raised above 0, never the 0 that places a level's first enemies; a report counts once for each connection and only for the enemies' turn running; no character has the turn meanwhile; the next turn waits for every client, but no longer than `Matches:EnemyTurnWait` once the first has reported and `Matches:LongestEnemyTurn` in all, and a player who leaves is no longer waited for | Mitigated: `EnemyTurnFlowTests` (on a manual clock), `MatchRaceTests`, `MissionLevelsTests`; whether a level's enemies take turns is what the request that began the level says, so a modified client can stop them for everyone, as it can clear a level early (T-G21) |
 
 ### Supply chain and CI
 
@@ -181,8 +182,10 @@ does not exist yet; the control comes with it).
 9. **T-G20:** weapons are kept as the client sends them, so a modified client
    can send its room one that the other players' clients do not have, until the
    server reads the client's own data.
-10. **T-G21:** a mission's levels end on kills the server cannot see, so a
-    modified client can clear a level early. It earns nothing until rewards last.
+10. **T-G21 and T-G35:** a mission's levels end on kills the server cannot see,
+    and the request that begins a level says whether its enemies take turns, so a
+    modified client can clear a level early, or stop the enemies taking turns. It
+    earns nothing until rewards last.
 11. **T-G26:** a shot is the shooter's client's own work, so a modified client
     can deal any damage it likes, or none. The server passes it on as every client
     expects; checking a shot's hits needs the health rules the server does not keep

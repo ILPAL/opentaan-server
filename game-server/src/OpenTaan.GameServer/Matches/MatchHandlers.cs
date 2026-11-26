@@ -40,7 +40,17 @@ public sealed partial class MatchHandlers(
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(request);
 
-        LogUnless(session, nameof(PqGameSessionStartMissionLevel), rooms.AskForLevel(session, request.Level));
+        LogUnless(session, nameof(PqGameSessionStartMissionLevel), rooms.AskForLevel(session, request.Level, request.WantsEnemyTurns));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Records the enemies' turn reported over; see <see cref="RoomDirectory.FinishEnemyTurn"/>.</summary>
+    public ValueTask FinishMissionEnemyTurnAsync(ClientSession session, PcGameSessionFinishMissionEnemyTurn report, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(report);
+
+        LogUnless(session, nameof(PcGameSessionFinishMissionEnemyTurn), rooms.FinishEnemyTurn(session, report));
         return ValueTask.CompletedTask;
     }
 

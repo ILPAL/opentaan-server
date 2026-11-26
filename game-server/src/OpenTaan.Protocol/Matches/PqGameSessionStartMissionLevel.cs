@@ -12,17 +12,20 @@ namespace OpenTaan.Protocol.Matches;
 /// <see cref="NoNextLevel"/>: the mission is cleared.
 /// </para>
 /// <para>
-/// The three values after the level come from the client's copy of the mission, and depend
-/// on the mission's difficulty and on how many players are in the match. They are kept as
-/// read; the server does not use them.
+/// The three values after the level come from the client's copy of the mission: how many
+/// turns the level allows, from its settings scaled by the mission's difficulty, with more
+/// turns for each player up to four; how many enemies must be killed to clear it; and
+/// whether its enemies take a turn after every shot, see
+/// <see cref="PqGameSessionStartMissionEnemyTurn"/>. Every level the client ships wants
+/// enemy turns. The client itself ends nothing when a level runs out of turns.
 /// </para>
 /// </remarks>
 /// <param name="Level">The level asked for, from 1, or <see cref="NoNextLevel"/> once the last level is cleared.</param>
-/// <param name="TileIndex">A value from the level's settings, or <see cref="NoValue"/> when there is no next level.</param>
-/// <param name="EndValue">A value from the level's settings, or <see cref="NoValue"/> when there is no next level.</param>
-/// <param name="IsDynamic">A flag from the level's settings, false when there is no next level.</param>
+/// <param name="TurnLimit">How many turns the level allows, or <see cref="NoValue"/> when there is no next level.</param>
+/// <param name="KillTarget">How many enemies must be killed to clear the level, or <see cref="NoValue"/> when there is no next level.</param>
+/// <param name="WantsEnemyTurns">Whether the level's enemies take a turn after every shot; false when there is no next level.</param>
 [WireClass("PqGameSession_StartMissionLevel")]
-public sealed record PqGameSessionStartMissionLevel(byte Level, uint TileIndex, uint EndValue, bool IsDynamic) : IPacket
+public sealed record PqGameSessionStartMissionLevel(byte Level, uint TurnLimit, uint KillTarget, bool WantsEnemyTurns) : IPacket
 {
     /// <summary>The level a client asks for when the mission has no next one: the mission is cleared.</summary>
     public const byte NoNextLevel = 0xFF;
@@ -39,10 +42,10 @@ public sealed record PqGameSessionStartMissionLevel(byte Level, uint TileIndex, 
         var reader = new PacketReader(body);
         reader.ExpectRegistryId(RegistryId);
         var level = reader.ReadByte();
-        var tileIndex = reader.ReadUInt32();
-        var endValue = reader.ReadUInt32();
-        var isDynamic = reader.ReadBoolean();
-        return reader.Finish(new PqGameSessionStartMissionLevel(level, tileIndex, endValue, isDynamic));
+        var turnLimit = reader.ReadUInt32();
+        var killTarget = reader.ReadUInt32();
+        var wantsEnemyTurns = reader.ReadBoolean();
+        return reader.Finish(new PqGameSessionStartMissionLevel(level, turnLimit, killTarget, wantsEnemyTurns));
     }
 
     /// <summary>Writes the body, as the client would.</summary>
@@ -51,8 +54,8 @@ public sealed record PqGameSessionStartMissionLevel(byte Level, uint TileIndex, 
         var writer = new PacketWriter(destination);
         writer.WriteUInt32(RegistryId);
         writer.WriteByte(Level);
-        writer.WriteUInt32(TileIndex);
-        writer.WriteUInt32(EndValue);
-        writer.WriteBoolean(IsDynamic);
+        writer.WriteUInt32(TurnLimit);
+        writer.WriteUInt32(KillTarget);
+        writer.WriteBoolean(WantsEnemyTurns);
     }
 }

@@ -46,7 +46,7 @@ the changes a room is told of, the lobby's room list and the players in a room,
 what players do in a room: being ready, changing team and weapon, the host's
 options, opening and closing slots, and expelling a player, and a match, a
 mission's or one between teams: starting it, how each character starts, loading it,
-a mission's levels, its turns (a shot,
+a mission's levels and its enemies' turns, its turns (a shot,
 every kind of step in it and the effects its weapon leaves, a shot played back, the end and start of a turn, a
 pass, a walk, a place, a fall and a ghost), its items and ghosts (an item used, the
 items a shot spent, an item thrown away, an item in use taken off, a box caught, a
@@ -335,7 +335,7 @@ the next, and when the match is over. What a client tells of how its own charact
 play goes to every other client in the match as it came, and never back to its
 sender: a client sends on any shot, pass or fall it is given that names one of its
 own slots, so a copy back would come round again. Items go the other way, as below.
-Missions whose enemies fight back come next.
+A mission's enemies never attack, but take a turn of their own after every shot.
 
 - **Starting:** the host starts once every guest is ready. Everyone in the room is
   told how each character starts, and only the characters. A random weapon is
@@ -399,18 +399,39 @@ Missions whose enemies fight back come next.
   for its player after a turn of 15.9 seconds; a turn with neither a shot nor a pass
   within `Matches:TurnWait` is passed by the server, for a client that has stopped
   answering. A turn ends with the end of the turn, then the start of the next
-  character's, both to everyone. In a mission, the start of every turn also carries
+  character's, both to everyone; in a mission, the enemies' turn comes between the
+  two after a shot, as below. In a mission, the start of every turn also carries
   the level's turn count, which the client shows against the level's turn limit: it
   goes up by one with every shot a player fires, a pass adds nothing, and every level
-  starts again from none.
+  starts again from none. Losing a level that runs out of turns comes later: the
+  client ends nothing itself when it does.
+- **Enemies' turns:** a mission's enemies never attack. After every shot in a level
+  whose enemies take turns, as the request that began the level says and every
+  level the client ships does, the shooter's turn ends once every client has played
+  the shot back, then the enemies take their turn: not after a pass or a turn the
+  server passes, and not after a shot that begins the next level or clears the
+  mission. Each client moves its own copy of the enemies: most walk a little only if
+  a shot hit them since their last turn, some walk every turn, each by an amount
+  drawn from the match's seed. It also places the level's next wave of enemies, if
+  it has one for that turn, and applies the damage over time the enemies carry.
+  Every client moves them alike only if it is sent every enemies' turn exactly once,
+  so each goes to every connection in the match once, however many characters it
+  plays, the players who gave up or whose characters are ghosts included: their
+  clients still show the field. It carries the level's turn count, which a shot has
+  raised above 0: the client keeps the two in one place, and 0 would place the
+  level's first enemies again. Each client reports it over once its enemies stand
+  still, once however many characters it plays, and the next character's turn
+  starts once every client in the room has, or `Matches:EnemyTurnWait` after the
+  first did, or `Matches:LongestEnemyTurn` after it was sent. Meanwhile no character
+  has the turn: shots, passes, walks and requests for a level are dropped.
 - **Weapon effects:** a weapon whose missiles carry an effect, as some do in the
   client's own data, has its client put each in the shot it sends. Every client
   playing the shot gives the effects to each character the shot hurts, other than
   the shooter, and counts them down itself at the end of every turn, so the server
-  only passes them on. The client applies damage over time to a player's character
-  only from the health changes the start of a turn carries, which this server does
-  not send yet, and to a mission's enemies only on their turns, which come with the
-  enemy phases: until then such an effect shows but takes no health.
+  only passes them on. The client applies damage over time to a mission's enemies
+  on their turns, and to a player's character only from the health changes the
+  start of a turn carries, which this server does not send yet: on a player's
+  character such an effect shows but takes no health.
 - **Deaths:** a character that dies in a shot is reported by its own client as it
   plays the shot back, before it reports the shot played back; one that falls while
   walking is reported by its own client, and the fall goes to the others. Everyone
@@ -679,6 +700,8 @@ dotnet run --project src/OpenTaan.GameServer -- --GameServer:Port=2181 --PlayTim
 | `Matches:TurnWait` | `00:00:25` | How long a turn waits for its character to shoot or pass before the server passes it. Must be longer than the client's own turn of 15.9 seconds, after which it passes for its player, or the server refuses to start: a turn cut while its client still counts would leave a last-second shot on its shooter's screen alone. |
 | `Matches:ShotWait` | `00:00:05` | How long a shot waits, once the first client has played it back, for every other client to finish it. |
 | `Matches:LongestShot` | `00:01:00` | How long a shot may wait in all, from its arrival, in case no client reports it played back. |
+| `Matches:EnemyTurnWait` | `00:00:05` | How long a mission's enemies' turn waits, once the first client has reported it over, for every other client to report it too. |
+| `Matches:LongestEnemyTurn` | `00:00:30` | How long a mission's enemies' turn may wait in all, from the moment it is sent, in case no client reports it over. |
 | `Matches:ResultWait` | `00:00:25` | How long after a match's end its room waits for every player's result card before it waits for players again. |
 | `Matches:ItemBoxesPerTurn` | `1` | How many item boxes each turn's shot may drop, as the start of the turn tells every client; the shooter's client places them. The same in every mode: without items, a box caught fills the team's gauge. `0` lets none drop. Between teams, the start of a turn lets fewer drop once the field is nearly full: see `Matches:MostItemBoxes`. |
 | `Matches:PlacedItemBoxesPerTurn` | `3` | How many item boxes the server places before every start of a turn in a match between teams, as many as the field has room for. `0` places none. |

@@ -112,6 +112,8 @@ public sealed class ProtocolReplayTests
         [PqGameSessionStartMissionLevel.RegistryId] = body => Replay.Of(PqGameSessionStartMissionLevel.TryRead(body), packet => packet.Write),
         [PcGameSessionStartMissionLevel.RegistryId] = body => Replay.Of(PcGameSessionStartMissionLevel.TryRead(body), packet => packet.Write),
         [PqGameSessionMissionLevelReady.RegistryId] = body => Replay.Of(PqGameSessionMissionLevelReady.TryRead(body), packet => packet.Write),
+        [PqGameSessionStartMissionEnemyTurn.RegistryId] = body => Replay.Of(PqGameSessionStartMissionEnemyTurn.TryRead(body), packet => packet.Write),
+        [PcGameSessionFinishMissionEnemyTurn.RegistryId] = body => Replay.Of(PcGameSessionFinishMissionEnemyTurn.TryRead(body), packet => packet.Write),
         [PcGamePlayTurnStart.RegistryId] = body => Replay.Of(PcGamePlayTurnStart.TryRead(body), packet => packet.Write),
         [PcGamePlayGiveUp.RegistryId] = body => Replay.Of(PcGamePlayGiveUp.TryRead(body), packet => packet.Write),
         [PcGamePlayLeaveUser.RegistryId] = body => Replay.Of(PcGamePlayLeaveUser.TryRead(body), packet => packet.Write),
@@ -162,6 +164,7 @@ public sealed class ProtocolReplayTests
             [GameSessionInfoPack.Listing(InventedRoom), GameSessionInfoPack.Removal(0x1112), GameSessionInfoPack.Listing(InventedRoom with { Password = null })])),
         [PcGamePlayLeaveUser.RegistryId] = Written(new PcGamePlayLeaveUser(0x05)),
         [PcGameSessionFailChallengeChief.RegistryId] = Written(new PcGameSessionFailChallengeChief(0x44332211)),
+        [PqGameSessionStartMissionEnemyTurn.RegistryId] = Written(new PqGameSessionStartMissionEnemyTurn(0x44332211)),
     };
 
     // Recorded packets in shapes no recording shows, written from invented values so that
@@ -487,6 +490,8 @@ public sealed class ProtocolReplayTests
         [PqGameSessionStartMissionLevel.RegistryId] = body => PqGameSessionStartMissionLevel.TryRead(body).Packet,
         [PcGameSessionStartMissionLevel.RegistryId] = body => PcGameSessionStartMissionLevel.TryRead(body).Packet,
         [PqGameSessionMissionLevelReady.RegistryId] = body => PqGameSessionMissionLevelReady.TryRead(body).Packet,
+        [PqGameSessionStartMissionEnemyTurn.RegistryId] = body => PqGameSessionStartMissionEnemyTurn.TryRead(body).Packet,
+        [PcGameSessionFinishMissionEnemyTurn.RegistryId] = body => PcGameSessionFinishMissionEnemyTurn.TryRead(body).Packet,
         [PcGamePlayTurnStart.RegistryId] = body => PcGamePlayTurnStart.TryRead(body).Packet,
         [PcGamePlayGiveUp.RegistryId] = body => PcGamePlayGiveUp.TryRead(body).Packet,
         [PcGamePlayLeaveUser.RegistryId] = body => PcGamePlayLeaveUser.TryRead(body).Packet,

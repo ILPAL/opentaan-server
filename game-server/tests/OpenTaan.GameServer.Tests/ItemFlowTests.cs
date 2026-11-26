@@ -64,6 +64,27 @@ public sealed class ItemFlowTests
     }
 
     [Fact]
+    public async Task ABonusTheShootersClientDrawsAsItsTurnEndsIsPassedOnWhileTheEnemiesTakeTheirs()
+    {
+        var services = Services(time: new ManualTime());
+        await using var host = await ArriveAsync(services, ChannelId, "Kimi");
+        await using var guest = await ArriveAsync(services, ChannelId, "Rồng");
+        await AtFirstTurnAsync(host, guest);
+        await ShotAsync(host, 0, guest);
+        await FinishedAsync(0, host, guest);
+        await EnemiesTurnToldAsync(0, 1, host, guest);
+
+        // The client draws the bonus as it is told the shooter's turn ended, which comes before the enemies' turn.
+        var bonus = new PcGamePlayEatBonusItem(0, CatchOf(0, box: 0, item: 0x0809), TeamGauge: null);
+        await host.SendAsync(bonus);
+        await EveryoneToldAsync(bonus, PcGamePlayEatBonusItem.TryRead, host, guest);
+
+        await EnemiesTurnOverAsync(1, host, guest);
+        await TurnStartedAsync(1, turnCount: 1, [], host, guest);
+        await QuietAsync(host, guest);
+    }
+
+    [Fact]
     public async Task WhereAnItemWentGoesBackToItsSenderAlone()
     {
         var services = Services(time: new ManualTime());
@@ -98,7 +119,7 @@ public sealed class ItemFlowTests
 
         // The shot ends as any other.
         await FinishedAsync(0, host, guest);
-        await TurnPassedAsync(0, 1, turnCount: 1, host, guest);
+        await TurnPassedAfterEnemiesAsync(0, 1, turnCount: 1, host, guest);
         await QuietAsync(host, guest);
     }
 
@@ -183,7 +204,7 @@ public sealed class ItemFlowTests
         await guest.SendAsync(aim);
         await EveryoneToldAsync(aim, PcGamePlaySetGhostTarget.TryRead, host, guest);
         await FinishedAsync(0, host, guest);
-        await TurnPassedAsync(0, 0, turnCount: 1, [new GhostMove(1, 0x0102, -0x0304, 0x0506, -0x0708)], host, guest);
+        await TurnPassedAfterEnemiesAsync(0, 0, turnCount: 1, [new GhostMove(1, 0x0102, -0x0304, 0x0506, -0x0708)], host, guest);
 
         // The ghost stops short, and the next turn sends it on from there.
         var stopped = new PcGamePlaySetGhostPos(1, 0x0405, -0x0607, 0x01);
@@ -222,7 +243,7 @@ public sealed class ItemFlowTests
 
         await EveryoneToldAsync(aim, PcGamePlaySetGhostTarget.TryRead, host, guest);
         await FinishedAsync(0, host, guest);
-        await TurnPassedAsync(0, 0, turnCount: 1, host, guest);
+        await TurnPassedAfterEnemiesAsync(0, 0, turnCount: 1, host, guest);
         await QuietAsync(host, guest);
     }
 
@@ -243,7 +264,7 @@ public sealed class ItemFlowTests
         }
 
         await FinishedAsync(0, host, guest);
-        await TurnPassedAsync(0, 0, turnCount: 1, [new GhostMove(1, x, y, -0x0506, 0x0708)], host, guest);
+        await TurnPassedAfterEnemiesAsync(0, 0, turnCount: 1, [new GhostMove(1, x, y, -0x0506, 0x0708)], host, guest);
         await QuietAsync(host, guest);
     }
 
@@ -271,7 +292,7 @@ public sealed class ItemFlowTests
 
         // No ghost was sent anywhere, so the next turn moves none.
         await FinishedAsync(0, host, guest);
-        await TurnPassedAsync(0, 1, turnCount: 1, host, guest);
+        await TurnPassedAfterEnemiesAsync(0, 1, turnCount: 1, host, guest);
         await QuietAsync(host, guest);
     }
 
@@ -304,7 +325,7 @@ public sealed class ItemFlowTests
         await guest.SendAsync(aim);
         await EveryoneToldAsync(aim, PcGamePlaySetGhostTarget.TryRead, host, guest);
         await FinishedAsync(0, host, guest);
-        await TurnPassedAsync(0, 0, turnCount: 1, [new GhostMove(1, x, y, 0x0102, 0x0304)], host, guest);
+        await TurnPassedAfterEnemiesAsync(0, 0, turnCount: 1, [new GhostMove(1, x, y, 0x0102, 0x0304)], host, guest);
 
         Assert.Equal(LeaveResult.Left, await LeaveAsync(guest));
         Assert.Equal(new PcGamePlayLeaveUser(1), await host.ReceiveAsync<PcGamePlayLeaveUser>(PcGamePlayLeaveUser.TryRead));

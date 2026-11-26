@@ -177,9 +177,9 @@ public sealed class MatchCodecTests
     }
 
     [Fact]
-    public void ALevelRequestIsTheLevelTwoValuesThenAFlag()
+    public void ALevelRequestIsTheLevelItsTurnLimitAndKillTargetThenWhetherItsEnemiesTakeTurns()
     {
-        var request = new PqGameSessionStartMissionLevel(0x02, 0x03040506, 0x0708090A, true);
+        var request = new PqGameSessionStartMissionLevel(0x02, TurnLimit: 0x03040506, KillTarget: 0x0708090A, WantsEnemyTurns: true);
 
         byte[] expected =
         [
@@ -210,7 +210,7 @@ public sealed class MatchCodecTests
     }
 
     [Fact]
-    public void ALevelRequestsFlagOtherThanZeroOrOneIsRefused()
+    public void ALevelRequestSayingWhetherItsEnemiesTakeTurnsOtherThanByZeroOrOneIsRefused()
     {
         byte[] body = [.. Encoded.UInt32(PqGameSessionStartMissionLevel.RegistryId), 0x01, .. new byte[8], 0x02];
 
@@ -227,6 +227,28 @@ public sealed class MatchCodecTests
         Assert.Equal(new PcGameSessionStartMissionLevel(0x03), PcGameSessionStartMissionLevel.TryRead(announced).Packet);
         Assert.Equal(ready, Encoded.Bytes(new PqGameSessionMissionLevelReady(0x03).Write));
         Assert.Equal(new PqGameSessionMissionLevelReady(0x03), PqGameSessionMissionLevelReady.TryRead(ready).Packet);
+    }
+
+    [Fact]
+    public void AnEnemiesTurnAndItsReportAreTheCounterAlone()
+    {
+        byte[] turn = [.. Encoded.UInt32(PqGameSessionStartMissionEnemyTurn.RegistryId), .. Encoded.UInt32(0x01020304)];
+        byte[] report = [.. Encoded.UInt32(PcGameSessionFinishMissionEnemyTurn.RegistryId), .. Encoded.UInt32(0x05060708)];
+
+        Assert.Equal(turn, Encoded.Bytes(new PqGameSessionStartMissionEnemyTurn(0x01020304).Write));
+        Assert.Equal(new PqGameSessionStartMissionEnemyTurn(0x01020304), PqGameSessionStartMissionEnemyTurn.TryRead(turn).Packet);
+        Assert.Equal(report, Encoded.Bytes(new PcGameSessionFinishMissionEnemyTurn(0x05060708).Write));
+        Assert.Equal(new PcGameSessionFinishMissionEnemyTurn(0x05060708), PcGameSessionFinishMissionEnemyTurn.TryRead(report).Packet);
+    }
+
+    [Fact]
+    public void AnEnemiesTurnIsNotReadAsItsReportNorTheReverse()
+    {
+        byte[] turn = [.. Encoded.UInt32(PqGameSessionStartMissionEnemyTurn.RegistryId), .. Encoded.UInt32(1)];
+        byte[] report = [.. Encoded.UInt32(PcGameSessionFinishMissionEnemyTurn.RegistryId), .. Encoded.UInt32(1)];
+
+        Assert.Equal(PacketError.WrongRegistryId, PcGameSessionFinishMissionEnemyTurn.TryRead(turn).Error);
+        Assert.Equal(PacketError.WrongRegistryId, PqGameSessionStartMissionEnemyTurn.TryRead(report).Error);
     }
 
     [Fact]
@@ -312,6 +334,9 @@ public sealed class MatchCodecTests
 
         Assert.Equal(PacketError.Truncated, PqGameSessionMissionLevelReady.TryRead(ready.AsSpan(0, ready.Length - 1)).Error);
         Assert.Equal(PacketError.TrailingBytes, PqGameSessionMissionLevelReady.TryRead([.. ready, 0x00]).Error);
+        byte[] report = [.. Encoded.UInt32(PcGameSessionFinishMissionEnemyTurn.RegistryId), .. Encoded.UInt32(1)];
+        Assert.Equal(PacketError.Truncated, PcGameSessionFinishMissionEnemyTurn.TryRead(report.AsSpan(0, report.Length - 1)).Error);
+        Assert.Equal(PacketError.TrailingBytes, PcGameSessionFinishMissionEnemyTurn.TryRead([.. report, 0x00]).Error);
         Assert.Equal(PacketError.TrailingBytes, PcGamePlayGiveUp.TryRead([.. Encoded.UInt32(PcGamePlayGiveUp.RegistryId), 0x00]).Error);
     }
 
