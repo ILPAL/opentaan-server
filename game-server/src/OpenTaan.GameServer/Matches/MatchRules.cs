@@ -1,3 +1,4 @@
+using OpenTaan.GameServer.Characters;
 using OpenTaan.GameServer.Rooms;
 using OpenTaan.Protocol.GamePlay;
 using OpenTaan.Protocol.Matches;
@@ -170,16 +171,45 @@ public static class MatchRules
     public static (int X, int Y) StartPosition => (StartX, StartY);
 
     /// <summary>
-    /// The result of a match <paramref name="winningTeam"/> won, with a row for each slot:
-    /// for a slot holding a character, its level, and nothing earned.
+    /// The row of a character paid <paramref name="earned"/>, in slot <paramref name="slot"/>,
+    /// from where it stood, <paramref name="before"/>: its experience bar from there to where
+    /// the experience takes it, a step at the beginning of each level it passes on the way,
+    /// and the experience and gold earned, which the result screen shows rising from it.
     /// </summary>
-    /// <param name="winningTeam">The team that won.</param>
-    /// <param name="levels">The level of the character in each slot, null for a slot with none, by slot.</param>
-    public static GameResult ResultOf(byte winningTeam, IReadOnlyList<ushort?> levels) => new(
-        winningTeam,
-        [.. levels.Select((level, slot) => level is { } held ? GameResultSlot.NothingEarned((byte)slot, held) : GameResultSlot.Empty((byte)slot))],
-        WinnerPointDelta: 0,
-        LoserPointDelta: 0);
+    /// <remarks>
+    /// The client counts the experience earned as the last step's less the first's, and a
+    /// level gained when the last step's level is above the first's, so there are always two
+    /// steps at least. It also puts the last step's level in the room, for everyone in it.
+    /// The kills, damage, support and hit rate are not counted yet, and show 0.
+    /// </remarks>
+    public static GameResultSlot PaidRow(byte slot, CharacterProgress before, Earning earned)
+    {
+        var after = before.WithExperience(earned.Experience);
+        var steps = new List<ExpResult> { StepAt(before.Level, before.Experience) };
+        for (var level = (ushort)(before.Level + 1); level < after.Level; level++)
+        {
+            steps.Add(StepAt(level, LevelTable.BarAt(level)!.Value.Floor));
+        }
+
+        steps.Add(StepAt(after.Level, after.Experience));
+        return new GameResultSlot(
+            slot,
+            after.Level,
+            (int)earned.Experience,
+            steps,
+            earned.Gold,
+            KillStat: 0,
+            ForceStat: 0,
+            HitRate: 0,
+            SupportStat: 0,
+            Bonuses: [],
+            ForceMedalAward: 0,
+            KillMedalAward: 0,
+            SupportMedalAward: 0,
+            HasReward: true,
+            ExpReward: earned.Experience,
+            GoldReward: earned.Gold);
+    }
 
     /// <summary>
     /// The result screen's cards: for each slot holding a character, a card of no gold
@@ -193,4 +223,11 @@ public static class MatchRules
             ? new GameRewardGold(GoldRewardName, id, Amount: 0, HasPcRoomBonusCard: false, PcRoomBonusGold: 0)
             : new GameRewardGold(EmptyRewardName, CharacterId: 0, Amount: 0, HasPcRoomBonusCard: false, PcRoomBonusGold: 0)),
     ]);
+
+    // A step of the experience bar: the level, the experience, and the level's bar.
+    private static ExpResult StepAt(ushort level, uint experience)
+    {
+        var bar = LevelTable.BarAt(level) ?? throw new ArgumentOutOfRangeException(nameof(level), $"There is no level {level}.");
+        return new ExpResult(level, experience, bar.Floor, bar.Ceiling);
+    }
 }

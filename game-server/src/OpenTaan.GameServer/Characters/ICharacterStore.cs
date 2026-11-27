@@ -1,3 +1,5 @@
+using OpenTaan.GameServer.Matches;
+
 namespace OpenTaan.GameServer.Characters;
 
 /// <summary>Where characters are kept. Shared by every connection.</summary>
@@ -39,6 +41,18 @@ public interface ICharacterStore
     /// false when it was already recorded, or there is no such character.
     /// </summary>
     ValueTask<bool> FinishTutorialAsync(uint characterId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Keeps a match that has ended, and pays each character that started it what the
+    /// record says: its experience and gold added, and the match counted as won or lost.
+    /// </summary>
+    /// <remarks>
+    /// Each character is paid for a match once, however many times the match is kept and
+    /// however many keep it at once, and all of it is paid or none. A character the store no
+    /// longer has is not paid, and the rest still are.
+    /// </remarks>
+    /// <returns>The progress of each of the match's characters the store has, as it is kept now, by character id.</returns>
+    ValueTask<IReadOnlyDictionary<uint, CharacterProgress>> KeepMatchAsync(MatchRecord match, CancellationToken cancellationToken);
 }
 
 /// <summary>How a creation ended.</summary>

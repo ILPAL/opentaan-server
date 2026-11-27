@@ -223,8 +223,8 @@ public sealed partial class CharacterHandlers(
     private Character NewCharacter(uint characterId, Account account, PqNewCharacter request)
     {
         var start = options.Value.Start;
-        var bar = options.Value.ExperienceBarAt(Character.StartingLevel)
-            ?? throw new InvalidOperationException("The first level's experience bar is always known");
+        var bar = LevelTable.BarAt(Character.StartingLevel)
+            ?? throw new InvalidOperationException("The first level is in the table of levels");
         var info = new CharacterInfo(
             CharacterId: characterId,
             Name: request.Name,

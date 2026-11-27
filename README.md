@@ -91,7 +91,7 @@ local development only; the browser client uses authorization code with PKCE.
 | Permission tests | `AccountsControllerTest`, `AuditControllerTest`, `OperatorRolesTest` | 401 and 403 paths, role-to-permission mapping, secrets in responses |
 | Architecture rules | ArchUnit, NetArchTest | An endpoint without a permission check, a controller reaching a repository, transport code depending on game code |
 | Real database | Testcontainers | Mappings that do not match the schema the migrations produce; a retry racing the original request |
-| Database constraints | `database/migrations` | A code path that lets an operator approve their own adjustment, a zero amount, a rejection with no reason |
+| Database constraints | `database/migrations` | A code path that lets an operator approve their own adjustment, a zero amount, a rejection with no reason, pay for a match a player gave up or left |
 | Audit trail | `AuditTrailIT`, `AuditChainTest` | An audit entry changed or removed, even with the database trigger switched off; concurrent writers forking the chain; the Java verifier and the database disagreeing on a hash |
 | Whole stack | `.github/workflows/stack.yml` | Wiring, on every pull request: operators sign in through Keycloak, read an account, take a large adjustment through four-eyes approval into the outbox, and an auditor checks the trail those actions left |
 | Security scanning | `.github/workflows/security.yml`, `.github/dependabot.yml` | A fixable HIGH or CRITICAL vulnerability in either image, on every change and weekly; a HIGH or CRITICAL Dockerfile misconfiguration; outdated dependencies, base images and actions. Each image's SBOM is kept with the build |

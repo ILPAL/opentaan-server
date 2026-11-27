@@ -30,9 +30,9 @@ namespace OpenTaan.Protocol.Results;
 /// <param name="ForceMedalAward">Force medals awarded, which the client adds to the character's own count.</param>
 /// <param name="KillMedalAward">Kill medals awarded, which the client adds to the character's own count.</param>
 /// <param name="SupportMedalAward">Support medals awarded, which the client adds to the character's own count.</param>
-/// <param name="HasReward">Whether the character earned a reward beyond the match's.</param>
-/// <param name="ExpReward">The experience that reward gives.</param>
-/// <param name="GoldReward">The gold that reward gives.</param>
+/// <param name="HasReward">Whether the result screen shows <paramref name="ExpReward"/> and <paramref name="GoldReward"/> rising from the character.</param>
+/// <param name="ExpReward">The experience the result screen shows rising from the character.</param>
+/// <param name="GoldReward">The gold the result screen shows rising from the character.</param>
 [WireClass("GameResultSlot")]
 public sealed record GameResultSlot(
     byte SlotIndex,

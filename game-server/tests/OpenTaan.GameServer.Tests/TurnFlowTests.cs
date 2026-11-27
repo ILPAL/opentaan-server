@@ -462,7 +462,7 @@ public sealed class TurnFlowTests
         await guest.SendAsync(new PcGamePlayGiveUp());
         await QuietAsync(host, guest);
         await host.SendAsync(new PcGamePlayGiveUp());
-        await EndToldAsync(MatchRules.MissionsTeam, [host, guest], host, guest);
+        await EndAfterGivingUpToldAsync([host, guest], host, guest);
 
         await host.SendAsync(Shot(0));
         await host.SendAsync(new PcGamePlayPassTurn(0, 0, 0, 0, 0));

@@ -1,6 +1,7 @@
 using OpenTaan.GameServer;
 using OpenTaan.GameServer.Accounts;
 using OpenTaan.GameServer.Channels;
+using OpenTaan.GameServer.Characters;
 using OpenTaan.GameServer.Matches;
 using OpenTaan.GameServer.Rooms;
 using OpenTaan.GameServer.Sessions;
@@ -73,16 +74,20 @@ internal static class Playing
         GameServerOptions? options = null,
         TimeProvider? time = null,
         Random? random = null,
-        MatchOptions? matches = null) =>
+        MatchOptions? matches = null,
+        RewardOptions? rewards = null,
+        ICharacterStore? characters = null) =>
         SessionHarness.Services(
             requireRegistration: false,
             store: new InMemoryAccountStore(0),
             options: options,
+            characterStore: characters,
             channelOptions: Channels(),
             time: time,
             roomOptions: rooms,
             matchOptions: matches,
-            random: random);
+            random: random,
+            rewardOptions: rewards);
 
     /// <summary>
     /// Connects, logs in with one new account for each name, creates a character with that

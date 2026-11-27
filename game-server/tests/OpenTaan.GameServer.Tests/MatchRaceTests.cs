@@ -51,7 +51,7 @@ public sealed class MatchRaceTests
 
             await Task.WhenAll(host.SendAsync(new PcGamePlayGiveUp()), guest.SendAsync(new PcGamePlayGiveUp()));
 
-            await EndToldAsync(MatchRules.MissionsTeam, [host, guest], host, guest);
+            await EndAfterGivingUpToldAsync([host, guest], host, guest);
             await QuietAsync(host, guest);
         }
     }

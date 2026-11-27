@@ -1,3 +1,5 @@
+using OpenTaan.GameServer.Matches;
+
 namespace OpenTaan.GameServer.Characters;
 
 /// <summary>Characters held in memory, gone when the process stops. The store until the database stage.</summary>
@@ -9,6 +11,9 @@ public sealed class InMemoryCharacterStore : ICharacterStore
     private readonly Dictionary<uint, Character> _characters = [];
     private readonly Dictionary<string, uint> _names = new(CharacterNames.Comparer);
     private readonly Dictionary<uint, uint> _accounts = [];
+
+    // Each character paid for each match, so that keeping a match again pays no one twice.
+    private readonly HashSet<(Guid MatchId, uint CharacterId)> _paid = [];
     private readonly Lock _lock = new();
     private uint _nextId = FirstCharacterId;
 
@@ -98,6 +103,35 @@ public sealed class InMemoryCharacterStore : ICharacterStore
 
             _characters[characterId] = character with { HasFinishedTutorial = true };
             return ValueTask.FromResult(true);
+        }
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<IReadOnlyDictionary<uint, CharacterProgress>> KeepMatchAsync(MatchRecord match, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(match);
+
+        lock (_lock)
+        {
+            var kept = new Dictionary<uint, CharacterProgress>();
+            foreach (var payment in match.Payments)
+            {
+                if (!_characters.TryGetValue(payment.CharacterId, out var character))
+                {
+                    continue;
+                }
+
+                if (_paid.Add((match.MatchId, payment.CharacterId)))
+                {
+                    character = character.WithProgress(
+                        CharacterProgress.Of(character.Info).After(payment.Experience, payment.Gold, payment.Won));
+                    _characters[payment.CharacterId] = character;
+                }
+
+                kept[payment.CharacterId] = CharacterProgress.Of(character.Info);
+            }
+
+            return ValueTask.FromResult<IReadOnlyDictionary<uint, CharacterProgress>>(kept);
         }
     }
 }

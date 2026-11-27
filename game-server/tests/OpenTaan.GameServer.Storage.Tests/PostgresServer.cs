@@ -30,6 +30,11 @@ namespace OpenTaan.Tests.Storage;
 /// With neither, the tests skip, except in CI, where they fail: database tests that
 /// skipped there would let every check of the database pass without one of them running.
 /// </para>
+/// <para>
+/// The test classes that use it are one collection, <see cref="PostgresTests"/>, and run
+/// one after another: the server takes 100 connections, and a race of one class opens 64,
+/// which a race of another running alongside could take past the server's limit.
+/// </para>
 /// </remarks>
 public sealed partial class PostgresServer : IAsyncLifetime
 {
@@ -273,3 +278,7 @@ public sealed partial class PostgresServer : IAsyncLifetime
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }
+
+/// <summary>The test classes that use the one <see cref="PostgresServer"/>, run one after another; see its remarks.</summary>
+[CollectionDefinition(nameof(PostgresServer))]
+public sealed class PostgresTests;

@@ -135,7 +135,7 @@ public sealed class TeamMatchFlowTests
         // A team that never had a character is never out, so the match ends once the first
         // team is, and the second team wins it.
         await host.SendAsync(new PcGamePlayGiveUp());
-        await EndToldAsync(2, [new SeatOf(host, 0)], host);
+        await EndToldAsync(2, [new SeatOf(host, 0, GaveUp: true)], host);
         await QuietAsync(host);
     }
 
@@ -187,7 +187,7 @@ public sealed class TeamMatchFlowTests
         await MapPickedAsync(host, 201, host, guest);
         Assert.Equal(7, (await StartedAsync(host, host, guest)).MapId);
         await guest.SendAsync(new PcGamePlayGiveUp());
-        await EndToldAsync(1, [new SeatOf(host, 0), new SeatOf(guest, 2)], host, guest);
+        await EndToldAsync(1, [new SeatOf(host, 0), new SeatOf(guest, 2, GaveUp: true)], host, guest);
         await PickAsync(host, host, guest, card: 0, slot: 0);
         await PickAsync(guest, host, guest, card: 1, slot: 2);
         await guest.SendAsync(new PqGameSessionReady(IsReady: true));
@@ -456,7 +456,7 @@ public sealed class TeamMatchFlowTests
         await QuietAsync(everyone);
 
         await host.SendAsync(new PcGamePlayGiveUp());
-        await EndToldAsync(2, [new SeatOf(host, 0), new SeatOf(second, 2), new SeatOf(third, 1), new SeatOf(fourth, 3)], everyone);
+        await EndToldAsync(2, [new SeatOf(host, 0, GaveUp: true), new SeatOf(second, 2), new SeatOf(third, 1, GaveUp: true), new SeatOf(fourth, 3)], everyone);
         await QuietAsync(everyone);
     }
 

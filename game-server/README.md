@@ -12,7 +12,7 @@
 | `tests/OpenTaan.Transport.Tests` | Framing, the packet cipher, the seed schedule and handshake keys, including hostile input. |
 | `tests/OpenTaan.Protocol.Tests` | Each codec's bytes, built from invented values, and hostile bodies: forged counts, broken text, leftover bytes. |
 | `tests/OpenTaan.GameServer.Tests` | Sessions on real loopback sockets: the login flows, and every way a connection is refused or closed. |
-| `tests/OpenTaan.GameServer.Storage.Tests` | The stores on a real PostgreSQL 18 with the real migrations: one contract that the in-memory and the PostgreSQL stores both pass, what only the database refuses, and the check of the schema at startup. Skips with no PostgreSQL to use, except in CI. |
+| `tests/OpenTaan.GameServer.Storage.Tests` | The stores on a real PostgreSQL 18 with the real migrations: one contract that the in-memory and the PostgreSQL stores both pass, what a match pays kept once however many keep it at once among them, what only the database refuses, and the check of the schema at startup. Skips with no PostgreSQL to use, except in CI. |
 | `tests/OpenTaan.Conformance.Tests` | The reference sessions and the declared layouts, and the sessions played against real connections. Skips when the contract is absent. |
 | `tests/OpenTaan.Architecture.Tests` | Dependency rules between projects, enforced as tests. |
 
@@ -508,8 +508,37 @@ A mission's enemies never attack, but take a turn of their own after every shot.
   screen from the cards, so the cards always come first. Nothing about the match's
   turns is answered once it is over, since the client would act on it and leave its
   result screen. Every guest is no longer ready, as the client shows by itself.
-  Rewards that last come later, so a card shows no gold and grants none, and the
-  wins and losses the client adds on its own screen are not stored yet.
+- **What a match pays:** the result shows, for each character still in the room,
+  the experience and gold the match pays it: its experience bar from where it stood
+  to where the pay takes it, a level gained included, which the client also puts in
+  the room for everyone in it. A character whose player saw the match to its end is
+  paid, alive or a ghost. Between teams, the losing team's characters are paid
+  `Rewards:TeamMatchExperience` and `Rewards:TeamMatchGold`, and the winners that
+  times `Rewards:WinMultiplier`. A mission pays every player alike, by its own
+  number and difficulty (`Rewards:MissionExperience`), a share of that when lost
+  (`Rewards:MissionLostShare`), and gold for each unit of experience
+  (`Rewards:MissionGoldPerExperience`). Fractions are dropped, and no match pays
+  more experience than the first level takes, so none moves a character up more than
+  one level. A player who gave up is paid nothing and counts its team's result, as
+  its client does; one who left is paid nothing and counts the match lost, since its
+  client counts nothing. The client keeps the wins and losses itself from the
+  result, and experience and gold only from what the server tells it after.
+- **Keeping it:** the result is sent at once, as the client times its result screen
+  from it, and what the match paid is kept after, away from the rooms' lock, in one
+  transaction: the match, and a payment row for each character that started it,
+  keyed by the match and the character, so that keeping it again, or twice at once,
+  pays no one twice, and each character's row is locked while it is paid, so that
+  two matches paying it at once both count. A try that fails is made again,
+  `Rewards:PayoutAttempts` times in all, `Rewards:PayoutRetryDelay` apart, and a
+  payment never kept is logged with what it would have paid. Once it is kept, each
+  character still in a room is put back there as it is kept now, so a player
+  entering later sees its level, and each character paid is told its experience and
+  gold, as its account's slot on the connection, which the client keeps in place of
+  its own. A character's level is the one its experience reaches in the table of
+  levels (`LevelTable`): 109 of them, the first taking 300 and each more than the
+  last, 17,519,999 in all to reach the last. The client has no such table: it draws
+  the bar from what it is told. The cards still give nothing; paying them is the next
+  step.
 - **The cards:** each character turns over one card of the first eight, which then
   belongs to no one else; everyone sees each one turned. A card the player picked
   that another took first is refused to that player alone, who may pick again; a
@@ -682,7 +711,7 @@ dotnet run --project src/OpenTaan.GameServer -- --GameServer:Port=2181 --PlayTim
 | `Accounts:RequireRegistration` | `true` | Whether an account must be created, with its password, before it can log in. |
 | `Accounts:PasswordIterations` | `600000` | PBKDF2 rounds for each new password hash. The server refuses to start with fewer; raising it hashes each account again at its next login with the right password. |
 | `Accounts:GameMasters` | none | Addresses of the accounts that log in as game masters. |
-| `Characters:Start` | gold and counters `0`, `ExperienceCeiling` `300` | What a new character starts with. Every character starts at level 1; `ExperienceCeiling` is where level 2 begins and must be above 0. |
+| `Characters:Start` | gold and counters `0` | What a new character starts with. Every character starts at level 1 with no experience, its bar that of the table of levels. |
 | `Accounts:Start:Cash` | `0` | The cash a new account starts with. |
 | `Channels:Server:Name`, `Channels:Server:Type` | `Alpha`, `1` | The group the channels are listed under. The client uses the type only to pick the group it shows first, by level. |
 | `Channels:Server:PublicAddress`, `Channels:Server:PublicPort` | none, `GameServer:Port` | The IPv4 address and port the client is told the channels are at; see above for what is used when none is set. |
@@ -709,5 +738,11 @@ dotnet run --project src/OpenTaan.GameServer -- --GameServer:Port=2181 --PlayTim
 | `Matches:ItemBoxLowest`, `Matches:ItemBoxHighest` | `100`, `300` | How high above the character nearest to it the server places an item box: a height drawn from this range. Heights from 0 to 1000, the lowest first, or the server refuses to start. |
 | `Matches:ItemDropsFile` | `client-data/item-drops.json` | The JSON file of the client's item drop table, which every box a ghost catches and every bonus in a match between teams gives its item from, each item as likely as another. A relative path is looked for from the server's folder up. The server does not start without it; see [`client-data/README.md`](../client-data/README.md). |
 | `Matches:ItemDropQuality` | `20` | How good the items the clients draw are, from `0` to `100`, as the start of every turn tells them: higher makes the rarer items likelier. Above `100` the server refuses to start, since the client would hold it to `100`. The server's own draws, between teams, take every item as likely as another, whatever the quality. |
+| `Rewards:TeamMatchExperience`, `Rewards:TeamMatchGold` | `40`, `120` | What a match between teams pays each character of the losing team that played it to the end. |
+| `Rewards:WinMultiplier` | `1.5` | What a win multiplies those by, any fraction dropped. From 0 up. |
+| `Rewards:MissionExperience` | `0`: `40`, `50`, `60` | For each mission `Rooms:Missions` lists, and only those, the experience clearing it pays at each difficulty, easiest first, one for each. The server refuses to start otherwise. |
+| `Rewards:MissionLostShare` | `0.25` | The share of a clear's experience a lost mission pays, from 0 to 1. |
+| `Rewards:MissionGoldPerExperience` | `1.5` | The gold a mission pays for each unit of experience it pays. From 0 up. |
+| `Rewards:PayoutAttempts`, `Rewards:PayoutRetryDelay` | `3`, `00:00:02` | How many times the server tries to keep what a match paid, and how long it waits between tries, before it gives up and logs the payment as lost. |
 | `Portraits:Folder` | none | Where the pictures clients send of their characters are kept. A relative path is taken from the content root. |
 | `Characters:CreatorParts` | `1, 3, 5, 8` | The appearance parts the client's character creator offers; a new character keeps only these. |

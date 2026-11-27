@@ -128,7 +128,6 @@ public sealed class SessionReplayTests
         CreatorParts = SessionHarness.ShippedCharacterOptions().CreatorParts,
         Start = new CharacterStart
         {
-            ExperienceCeiling = 300,
             Gold = 1_000_000,
             RankPlacement = 1,
             RankScore = 1,

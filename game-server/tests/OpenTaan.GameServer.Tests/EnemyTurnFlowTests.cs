@@ -340,7 +340,7 @@ public sealed class EnemyTurnFlowTests
         await QuietAsync(host, guest);
 
         await guest.SendAsync(new PcGamePlayGiveUp());
-        await EndToldAsync(MatchRules.MissionsTeam, [host, guest], host, guest);
+        await EndAfterGivingUpToldAsync([host, guest], host, guest);
         await EnemiesTurnOverAsync(1, host);
         await QuietAsync(host, guest);
     }

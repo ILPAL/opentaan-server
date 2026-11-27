@@ -15,6 +15,7 @@ namespace OpenTaan.Tests.Storage;
 /// finished tutorial, so the player neither creates them again nor replays the tutorial.
 /// Every value here is invented.
 /// </summary>
+[Collection(nameof(PostgresServer))]
 public sealed class ProgressAcrossARestartTests(PostgresServer server)
 {
     private static readonly Secret Password = new("5f4dcc3b5aa765d61d8327deb882cf99");
@@ -84,7 +85,7 @@ public sealed class ProgressAcrossARestartTests(PostgresServer server)
     private static SessionServices Started(TestDatabase database) => SessionHarness.Services(
         requireRegistration: true,
         store: new PostgresAccountStore(database.Open(), Options.Create(new AccountOptions())),
-        characterStore: new PostgresCharacterStore(database.Open(), Options.Create(SessionHarness.ShippedCharacterOptions())));
+        characterStore: new PostgresCharacterStore(database.Open()));
 
     private static PqUserLogin Login(Secret password) => new(
         [new LoginAccountInfo("player@example.test", password, 0, string.Empty)],
