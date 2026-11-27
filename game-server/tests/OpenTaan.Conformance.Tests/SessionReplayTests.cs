@@ -101,7 +101,8 @@ namespace OpenTaan.Tests.Conformance;
 /// tell everyone the character volunteers: the client offers the choice only for its
 /// player's own characters. The match's seed and its
 /// automatic card picks are drawn as the recordings have them, 0 and the first card left,
-/// and the start of each turn lets no item box drop, as theirs do.
+/// and the start of each turn lets no item box drop, as theirs do, nor does the server place
+/// any of its own before it, as theirs never do.
 /// </para>
 /// <para>
 /// One recorded request is sent as the client sends it: the request for a room's captains,
@@ -392,6 +393,7 @@ public sealed class SessionReplayTests
     {
         var options = SessionHarness.ShippedMatchOptions();
         options.ItemBoxesPerTurn = 0;
+        options.PlacedItemBoxesPerTurn = 0;
         return options;
     }
 

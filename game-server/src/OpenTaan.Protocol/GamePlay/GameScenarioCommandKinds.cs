@@ -87,6 +87,9 @@ public sealed record GameScenarioCommandDamage(
 public sealed record GameScenarioCommandMakeItemBox(byte SlotIndex, byte CommandType, uint TimingTick, uint Duration, ulong ItemBoxId, int SpawnX, int SpawnY)
     : GameScenarioCommand(SlotIndex, CommandType, TimingTick, Duration)
 {
+    /// <summary>The <see cref="GameScenarioCommand.CommandType"/> the client gives a step that drops a box, and plays one by.</summary>
+    public const byte Type = 10;
+
     /// <summary>The id that leads it, computed from the wire name.</summary>
     public static new uint RegistryId => WireIdentity<GameScenarioCommandMakeItemBox>.RegistryId;
 

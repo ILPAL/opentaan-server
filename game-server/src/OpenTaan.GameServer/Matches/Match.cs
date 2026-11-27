@@ -51,6 +51,7 @@ internal sealed class Match : IDisposable
     private readonly HashSet<ClientSession> _finished = [];
     private readonly Dictionary<byte, (int X, int Y)> _positions = [];
     private readonly Dictionary<byte, (int X, int Y)> _ghostTargets = [];
+    private readonly HashSet<byte> _bonusOwed = [];
     private readonly TurnOrder _turns = new();
     private ITimer? _timer;
 
@@ -113,6 +114,12 @@ internal sealed class Match : IDisposable
 
     /// <summary>The result screen's cards, once the match is over.</summary>
     public ResultCards Cards { get; } = new();
+
+    /// <summary>The item boxes on the field of a match between teams; a mission's are left to its clients.</summary>
+    public ItemField Field { get; } = new();
+
+    /// <summary>How many item boxes the start of the turn running let its shot drop.</summary>
+    public byte ShotBoxes { get; set; }
 
     /// <summary>Where the match stands, until it is over.</summary>
     public MatchPhase Phase { get; private set; } = MatchPhase.Loading;
@@ -210,14 +217,25 @@ internal sealed class Match : IDisposable
         return TurnSlot!.Value;
     }
 
-    /// <summary>Starts the turn of the character in <paramref name="slot"/>.</summary>
+    /// <summary>
+    /// Starts the turn of the character in <paramref name="slot"/>. A bonus still owed to it
+    /// for a shot of its last turn is owed no more: its client asks for one only as that turn
+    /// ends.
+    /// </summary>
     public void HandTurnTo(byte slot)
     {
         TurnSlot = slot;
         Phase = MatchPhase.Turn;
         Step++;
         _turns.Played(slot);
+        _bonusOwed.Remove(slot);
     }
+
+    /// <summary>Owes the character in <paramref name="slot"/> the bonus its client asks for as the turn in which it shot ends.</summary>
+    public void OweBonus(byte slot) => _bonusOwed.Add(slot);
+
+    /// <summary>Settles the bonus owed to the character in <paramref name="slot"/>, and returns whether one was.</summary>
+    public bool TakeBonus(byte slot) => _bonusOwed.Remove(slot);
 
     /// <summary>Hands the next turn to the character in <paramref name="slot"/>, to start once the level about to begin has been played open.</summary>
     public void HandNextTurnTo(byte slot) => TurnSlot = slot;
@@ -294,6 +312,9 @@ internal sealed class Match : IDisposable
 
     /// <summary>Where the character in <paramref name="slot"/> was last reported standing, or <paramref name="start"/> before any report.</summary>
     public (int X, int Y) PositionOf(byte slot, (int X, int Y) start) => _positions.GetValueOrDefault(slot, start);
+
+    /// <summary>Where each character still in the match was last reported standing, or <paramref name="start"/> before any report, in slot order.</summary>
+    public IReadOnlyList<(int X, int Y)> InPlayPositions((int X, int Y) start) => [.. InPlayOrdered().Select(slot => PositionOf(slot, start))];
 
     /// <summary>Records where the ghost of the character in <paramref name="slot"/> is to go.</summary>
     public void AimGhost(byte slot, int x, int y) => _ghostTargets[slot] = (x, y);

@@ -5,16 +5,25 @@ using OpenTaan.Protocol.GamePlay;
 
 namespace OpenTaan.GameServer.Rooms;
 
-/// <summary>A mission's items and ghosts, as the clients decide them, passed on to the others.</summary>
+/// <summary>A match's items and ghosts: passed on to the others, and, between teams, the items decided on the server.</summary>
 /// <remarks>
 /// <para>
-/// The clients decide every item: the shooter's client places the item boxes its shot
-/// drops, as many as <see cref="MatchOptions.ItemBoxesPerTurn"/> allows, and the client that
-/// catches a box, or is given a bonus at the end of a turn, draws the item; in a mode
-/// without items, it fills its team's gauge instead, and the catch or the bonus carries the
-/// gauge's change. The server passes on what each client tells of its own characters,
+/// In a mission, the clients decide every item: the shooter's client places the item boxes
+/// its shot drops, as many as <see cref="MatchOptions.ItemBoxesPerTurn"/> allows, and the
+/// client that catches a box, or is given a bonus at the end of a turn, draws the item; in a
+/// mode without items, it fills its team's gauge instead, and the catch or the bonus carries
+/// the gauge's change. The server passes on what each client tells of its own characters,
 /// unchanged, once it has checked that the packet names one of the sender's characters in a
-/// match still running. Deciding items on the server comes later, as its own step.
+/// match still running.
+/// </para>
+/// <para>
+/// Between teams, the server keeps the boxes on the field, places boxes of its own at the
+/// start of every turn, and draws the item of every box a ghost catches and of every bonus,
+/// from <see cref="ItemDrops"/>: a client gives either only from the server's copy, so
+/// every screen gives the item the server drew. A ghost's catch counts only for a box on the
+/// field, and a bonus only for the turn's shooter, once a shot: anything else is dropped,
+/// and no screen gives it. A box a missile catches is drawn by the shooter's client, which
+/// has played its shot before the server sees it; see <see cref="Shoot"/>.
 /// </para>
 /// <para>
 /// Who is told depends on the packet. A client acts on the server's copy of an item used,
@@ -57,20 +66,76 @@ public sealed partial class RoomDirectory
         return PassOn(session, forsake.SlotIndex, forsake, toSenderOnly: false);
     }
 
-    /// <summary>Passes a box a ghost caught to everyone in the match, the sender included, whose clients give the item then.</summary>
+    /// <summary>
+    /// Passes a box a ghost caught to everyone in the match, the sender included, whose clients
+    /// give the item then. Between teams, only a ghost's catch of a box on the field counts,
+    /// which takes it off the field, and in a mode with items the server draws the item.
+    /// </summary>
     /// <returns>Null once passed on; otherwise why it was dropped, for the log.</returns>
     public string? EatItemBox(ClientSession session, PcGamePlayEatItemBox caught)
     {
+        ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(caught);
-        return PassOn(session, caught.SlotIndex, caught, toSenderOnly: false);
+
+        lock (_lock)
+        {
+            if (PlayingRoomLocked(session) is { Match.IsMission: true })
+            {
+                return PassOnLocked(session, caught.SlotIndex, caught, toSenderOnly: false);
+            }
+
+            if (GhostRoomLocked(session, caught.SlotIndex, out var why) is not { } room)
+            {
+                return why;
+            }
+
+            if (!room.Match!.Field.Caught(caught.Catch.ItemBoxId))
+            {
+                return $"item box {caught.Catch.ItemBoxId:X16} is not on the field";
+            }
+
+            SendToRoomLocked(room, new PcGamePlayEatItemBox(caught.SlotIndex, DrawnLocked(room, caught.Catch), caught.TeamGauge));
+            return null;
+        }
     }
 
-    /// <summary>Passes a bonus item to everyone in the match, the sender included, whose clients give the item then.</summary>
+    /// <summary>
+    /// Passes a bonus item to everyone in the match, the sender included, whose clients give
+    /// the item then. Between teams, only the bonus owed to a shooter for its shot counts, and
+    /// in a mode with items the server draws the item.
+    /// </summary>
     /// <returns>Null once passed on; otherwise why it was dropped, for the log.</returns>
     public string? EatBonusItem(ClientSession session, PcGamePlayEatBonusItem bonus)
     {
+        ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(bonus);
-        return PassOn(session, bonus.SlotIndex, bonus, toSenderOnly: false);
+
+        lock (_lock)
+        {
+            if (PlayingRoomLocked(session) is not { } room)
+            {
+                return NotInMatch;
+            }
+
+            var match = room.Match!;
+            if (match.IsMission)
+            {
+                return PassOnLocked(session, bonus.SlotIndex, bonus, toSenderOnly: false);
+            }
+
+            if (!match.IsPlayedBy(bonus.SlotIndex, session))
+            {
+                return $"slot {bonus.SlotIndex} is not one of its characters";
+            }
+
+            if (!match.TakeBonus(bonus.SlotIndex))
+            {
+                return $"no bonus is owed to slot {bonus.SlotIndex}";
+            }
+
+            SendToRoomLocked(room, new PcGamePlayEatBonusItem(bonus.SlotIndex, DrawnLocked(room, bonus.Catch), bonus.TeamGauge));
+            return null;
+        }
     }
 
     /// <summary>Sends where an item went back to its sender alone, as the reference sessions do.</summary>
@@ -132,28 +197,41 @@ public sealed partial class RoomDirectory
 
         lock (_lock)
         {
-            if (PlayingRoomLocked(session) is not { } room)
-            {
-                return NotInMatch;
-            }
-
-            if (!room.Match!.IsPlayedBy(slot, session))
-            {
-                return $"slot {slot} is not one of its characters";
-            }
-
-            if (toSenderOnly)
-            {
-                session.Send(packet);
-            }
-            else
-            {
-                SendToRoomLocked(room, packet);
-            }
-
-            return null;
+            return PassOnLocked(session, slot, packet, toSenderOnly);
         }
     }
+
+    private string? PassOnLocked(ClientSession session, byte slot, IPacket packet, bool toSenderOnly)
+    {
+        if (PlayingRoomLocked(session) is not { } room)
+        {
+            return NotInMatch;
+        }
+
+        if (!room.Match!.IsPlayedBy(slot, session))
+        {
+            return $"slot {slot} is not one of its characters";
+        }
+
+        if (toSenderOnly)
+        {
+            session.Send(packet);
+        }
+        else
+        {
+            SendToRoomLocked(room, packet);
+        }
+
+        return null;
+    }
+
+    // The catch with the item the server draws, in a match between teams whose mode gives
+    // items; as its client sent it otherwise, or when it names no item, as a client's catch
+    // gives none in a mode without items.
+    private GameScenarioCommandEatItemBox DrawnLocked(Room room, GameScenarioCommandEatItemBox caught) =>
+        MatchRules.GivesItems(room.GameMode) && caught.PickupItemId != ItemDrops.NoItem
+            ? caught with { PickupItemId = itemDrops.Draw(random) }
+            : caught;
 
     // The room of a match still running in which the connection plays the character in slot,
     // and that character is out of the match: only a ghost moves.

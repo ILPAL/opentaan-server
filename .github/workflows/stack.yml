@@ -30,6 +30,12 @@ jobs:
           openssl rand -base64 32 | tr -d '\n' > secrets/db_password
           openssl rand -base64 32 | tr -d '\n' > secrets/keycloak_admin_password
 
+      # The game server needs data from the game client, which CI has none of: a table of
+      # made-up items is enough for it to start. See client-data/README.md.
+      - name: Create client data
+        run: |
+          echo '{"drops": [{"itemId": 2561, "minQuality": 0, "maxQuality": 100, "weightAtMin": 1, "weightAtMax": 1}]}' > client-data/item-drops.json
+
       - name: Start the stack
         run: docker compose up --detach --build
 

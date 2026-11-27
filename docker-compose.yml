@@ -120,6 +120,10 @@ services:
       # setting named after the file, so db_password comes from the secret.
       ConnectionStrings__Game: Host=postgres;Port=5432;Database=opentaan;Username=opentaan
     secrets: [db_password]
+    # What the server needs from the game client, never in the image or in git; see
+    # client-data/README.md. The server does not start without it.
+    volumes:
+      - ./client-data:/app/client-data:ro
     ports:
       - "${GAME_PORT:-2180}:2180"
     restart: unless-stopped

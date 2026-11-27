@@ -558,6 +558,17 @@ with real tokens:
   migration than its stores need would have passed them all and failed at its
   first query. A test now builds a database migrated only up to that number, with
   Flyway's own target, and runs every store on it.
+- **An expectation the code under test wrote.** Before every turn between teams,
+  the server places item boxes in a shot of its own, and the tests read that shot.
+  At first they checked it against the server's own builder of it, given the boxes
+  they had read, so a bug in that builder, such as steps naming no character, would
+  have been in the expected shot as well as the sent one, and the tests would have
+  passed. They now check what the client needs, written out: the shot sent for
+  slot 0xFE, which no character has, and every step of the type the client plays as
+  a box, naming the character whose turn starts, at the shot's start. Versions
+  planted to send the shot for the turn's slot, to have its steps name no character,
+  or to give them another type all fail them. An expectation comes from what the
+  client does, never from the code it checks.
 
 ## The game server: bytes, not types
 

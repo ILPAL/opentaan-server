@@ -87,7 +87,20 @@ internal static class SessionHarness
         ResultWait = TimeSpan.FromSeconds(25),
         ItemBoxesPerTurn = 1,
         ItemDropQuality = 20,
+        PlacedItemBoxesPerTurn = 3,
+        MostItemBoxes = 28,
+        ItemBoxLowest = 100,
+        ItemBoxHighest = 300,
+        ItemDropsFile = "client-data/item-drops.json",
     };
+
+    /// <summary>A drop table of invented items, in place of the client's, which the tests never read.</summary>
+    public static ItemDrops TestItemDrops { get; } = new(
+    [
+        new ItemDropRow(0x0A01, MinQuality: 0, MaxQuality: 100, WeightAtMin: 10, WeightAtMax: 20),
+        new ItemDropRow(0x0A02, MinQuality: 30, MaxQuality: 100, WeightAtMin: 5, WeightAtMax: 15),
+        new ItemDropRow(0x0A03, MinQuality: 60, MaxQuality: 100, WeightAtMin: 1, WeightAtMax: 9),
+    ]);
 
     /// <summary>What sessions share, with stores and settings a test may choose.</summary>
     public static SessionServices Services(
@@ -105,7 +118,8 @@ internal static class SessionHarness
         RoomOptions? roomOptions = null,
         MatchOptions? matchOptions = null,
         Random? random = null,
-        PasswordHasher? passwords = null)
+        PasswordHasher? passwords = null,
+        ItemDrops? itemDrops = null)
     {
         characterStore ??= new InMemoryCharacterStore();
         var accounts = new AccountHandlers(
@@ -136,6 +150,7 @@ internal static class SessionHarness
             Options.Create(matchOptions ?? ShippedMatchOptions()),
             time ?? TimeProvider.System,
             random ?? new Random(1),
+            itemDrops ?? TestItemDrops,
             NullLogger<RoomDirectory>.Instance);
 
         var names = new PacketNames();
