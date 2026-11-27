@@ -24,12 +24,14 @@ namespace OpenTaan.GameServer.Rooms;
 /// plays the shot. Two waits keep one client that stops answering from holding up the rest:
 /// <see cref="MatchOptions.TurnWait"/> for a turn's shot or pass, and
 /// <see cref="MatchOptions.ShotWait"/> and <see cref="MatchOptions.LongestShot"/> for a
-/// shot to be played back.
+/// shot to be played back. In a mission, a shot is followed by its enemies' turn; see
+/// <see cref="FinishEnemyTurn"/>.
 /// </para>
 /// </remarks>
 public sealed partial class RoomDirectory
 {
     private const string NoTurn = "no turn has started";
+    private const string EnemiesTurn = "the enemies are taking their turn";
 
     /// <summary>
     /// Passes the shot of the character whose turn it is to every other client in the match,
@@ -196,6 +198,7 @@ public sealed partial class RoomDirectory
     // Why a shot or a pass for the character in slot is not taken from the connection.
     private static string WhyNotTurn(Match match, ClientSession session, byte slot) =>
         match.Phase == MatchPhase.Shot ? "a shot is being played"
+        : match.Phase == MatchPhase.EnemyTurn ? EnemiesTurn
         : match.Phase != MatchPhase.Turn ? NoTurn
         : !match.IsPlayedBy(slot, session) ? $"slot {slot} is not one of its characters"
         : match.TurnSlot != slot ? $"it is slot {match.TurnSlot}'s turn, not slot {slot}'s"
@@ -217,7 +220,8 @@ public sealed partial class RoomDirectory
             }
 
             var match = room.Match!;
-            var why = match.Phase is not (MatchPhase.Turn or MatchPhase.Shot) ? NoTurn
+            var why = match.Phase == MatchPhase.EnemyTurn ? EnemiesTurn
+                : match.Phase is not (MatchPhase.Turn or MatchPhase.Shot) ? NoTurn
                 : !match.IsPlayedBy(slot, session) ? $"slot {slot} is not one of its characters"
                 : match.TurnSlot != slot ? $"it is slot {match.TurnSlot}'s turn, not slot {slot}'s"
                 : !match.InPlay(slot) ? $"the character in slot {slot} is out of the match"
@@ -276,7 +280,9 @@ public sealed partial class RoomDirectory
     // cleared mission is won even by a shot that also killed the last player; a level that
     // began is announced, with no end or start of a turn, since the client changes level by
     // itself and either would break it, and its first turn goes to the next character once
-    // every client has played the level's opening; otherwise the next character has the turn.
+    // every client has played the level's opening; in a mission level whose enemies take
+    // turns, the turn ends and the enemies take theirs; otherwise the next character has the
+    // turn.
     private void EndShotLocked(Room room, Match match)
     {
         if (match.Winner() is { } winner)
@@ -290,6 +296,12 @@ public sealed partial class RoomDirectory
         {
             match.HandNextTurnTo(next);
             BeginLevelLocked(room, match, levels);
+            return;
+        }
+
+        if (match.WantsEnemyTurns)
+        {
+            BeginEnemyTurnLocked(room, match);
             return;
         }
 
@@ -386,8 +398,9 @@ public sealed partial class RoomDirectory
     // What a match does once a character is out of it, having given up, left or died. During
     // a shot nothing is decided until every client has played it back, since the shot may
     // take more out, but a client gone is no longer waited for. Otherwise a match with a
-    // team that has nobody left in play is over, a turn whose character is out passes on,
-    // and a first turn starts if the client gone was the last one it waited for.
+    // team that has nobody left in play is over, the enemies' turn ends if the client gone
+    // was the last one it waited for, a turn whose character is out passes on, and a first
+    // turn starts if the client gone was the last one it waited for.
     private void ContinueAfterOutLocked(Room room, Match match)
     {
         if (match.Phase == MatchPhase.Shot)
@@ -400,6 +413,13 @@ public sealed partial class RoomDirectory
         else if (match.Winner() is { } winner)
         {
             EndLocked(room, match, winner);
+        }
+        else if (match.Phase == MatchPhase.EnemyTurn)
+        {
+            if (match.EveryoneAnswered(MembersOf(room)))
+            {
+                EndEnemyTurnLocked(room, match);
+            }
         }
         else if (match.Phase == MatchPhase.Turn && !match.InPlay(match.TurnSlot!.Value))
         {

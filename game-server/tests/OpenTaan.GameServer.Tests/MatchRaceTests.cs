@@ -69,7 +69,7 @@ public sealed class MatchRaceTests
 
             await Task.WhenAll(FinishedAsync(0, host), FinishedAsync(0, guest));
 
-            await TurnPassedAsync(0, 1, turnCount: 1, host, guest);
+            await EnemiesTurnToldAsync(0, 1, host, guest);
             await QuietAsync(host, guest);
         }
     }
@@ -114,8 +114,63 @@ public sealed class MatchRaceTests
             // In either order the guest's leave is told first, since the turn waits for it.
             Assert.Equal(new PcGamePlayLeaveUser(1), await host.ReceiveAsync<PcGamePlayLeaveUser>(PcGamePlayLeaveUser.TryRead));
             Assert.NotNull(await host.ReceiveAsync<PcGameSessionUpdateSlot>(PcGameSessionUpdateSlot.TryRead));
-            await TurnPassedAsync(0, 0, turnCount: 1, host);
+            await EnemiesTurnToldAsync(0, 1, host);
             await QuietAsync(host, guest);
+        }
+    }
+
+    [Fact]
+    public async Task TwoClientsReportingTheEnemiesTurnOverAtOnceStartTheNextTurnOnce()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            var services = Services(time: new ManualTime());
+            await using var host = await ArriveAsync(services, ChannelId, "Kimi");
+            await using var guest = await ArriveAsync(services, ChannelId, "Rồng");
+            await AtFirstTurnAsync(host, guest);
+            await ShotAsync(host, 0, guest);
+            await FinishedAsync(0, host, guest);
+            await EnemiesTurnToldAsync(0, 1, host, guest);
+
+            await Task.WhenAll(EnemiesTurnOverAsync(1, host), EnemiesTurnOverAsync(1, guest));
+
+            await TurnStartedAsync(1, turnCount: 1, [], host, guest);
+            await QuietAsync(host, guest);
+        }
+    }
+
+    [Fact]
+    public async Task AClientLeavingAsTheLastOtherReportsTheEnemiesTurnOverStartsTheNextTurnOnce()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            var services = Services(time: new ManualTime());
+            await using var host = await ArriveAsync(services, ChannelId, "Kimi");
+            await using var second = await ArriveAsync(services, ChannelId, "Rồng");
+            await using var third = await ArriveAsync(services, ChannelId, "Linh");
+            await MissionRoomAsync(host, second, third);
+            await StartedAsync(host, host, second, third);
+            await LevelBegunAsync(1, host, second, third);
+            await FirstTurnAsync(1, 0, host, second, third);
+            await ShotAsync(host, 0, second, third);
+            await FinishedAsync(0, host, second, third);
+            await EnemiesTurnToldAsync(0, 1, host, second, third);
+            await EnemiesTurnOverAsync(1, host);
+            await QuietAsync(host, second, third);
+
+            // The third, in slot 4, leaves as the second reports: the next turn starts once
+            // both are done, whichever comes first.
+            await Task.WhenAll(third.SendAsync(new PqGameSessionLeave(0, Reason: 0)), EnemiesTurnOverAsync(1, second));
+
+            Assert.Equal(LeaveResult.Left, (await third.ReceiveAsync<PrGameSessionLeave>(PrGameSessionLeave.TryRead)).Result);
+            foreach (var player in new[] { host, second })
+            {
+                Assert.Equal(new PcGamePlayLeaveUser(4), await player.ReceiveAsync<PcGamePlayLeaveUser>(PcGamePlayLeaveUser.TryRead));
+                await player.ReceiveAsync<PcGameSessionUpdateSlot>(PcGameSessionUpdateSlot.TryRead);
+            }
+
+            await TurnStartedAsync(1, turnCount: 1, [], host, second);
+            await QuietAsync(host, second, third);
         }
     }
 

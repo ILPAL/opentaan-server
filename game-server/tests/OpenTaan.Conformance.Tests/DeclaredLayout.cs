@@ -526,13 +526,14 @@ internal static class DeclaredLayout
         });
     }
 
-    // A client's request for a mission level: the level, two values from its settings and a flag.
+    // A client's request for a mission level: the level, its turn limit and kill target, and
+    // whether its enemies take turns.
     private static void LevelRequest(Walk request)
     {
         request.Number("u8", "Level");
-        request.Number("u32", "TileIndex");
-        request.Number("u32", "EndValue");
-        request.Number("u8", "IsDynamic");
+        request.Number("u32", "TurnLimit");
+        request.Number("u32", "KillTarget");
+        request.Number("u8", "WantsEnemyTurns");
     }
 
     // The start of a turn: its slot and values, the item boxes taken off, the ghosts'

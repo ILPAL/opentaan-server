@@ -11,19 +11,19 @@ public sealed class MissionLevelsTests
     {
         var levels = new MissionLevels(4);
 
-        Assert.Equal(LevelAnswer.Ignore, levels.Ask(0, out _));
-        Assert.Equal(LevelAnswer.Ignore, levels.Ask(2, out _));
+        Assert.Equal(LevelAnswer.Ignore, levels.Ask(0, true, out _));
+        Assert.Equal(LevelAnswer.Ignore, levels.Ask(2, true, out _));
         Assert.Equal(0, levels.Current);
 
-        Assert.Equal(LevelAnswer.Announce, levels.Ask(1, out var reason));
+        Assert.Equal(LevelAnswer.Announce, levels.Ask(1, true, out var reason));
         Assert.Null(reason);
         Assert.Equal(1, levels.Current);
 
         // Every other client asks for the same level.
-        Assert.Equal(LevelAnswer.Ignore, levels.Ask(1, out reason));
+        Assert.Equal(LevelAnswer.Ignore, levels.Ask(1, true, out reason));
         Assert.NotNull(reason);
-        Assert.Equal(LevelAnswer.Ignore, levels.Ask(3, out _));
-        Assert.Equal(LevelAnswer.Announce, levels.Ask(2, out _));
+        Assert.Equal(LevelAnswer.Ignore, levels.Ask(3, true, out _));
+        Assert.Equal(LevelAnswer.Announce, levels.Ask(2, true, out _));
         Assert.Equal(2, levels.Current);
     }
 
@@ -31,10 +31,10 @@ public sealed class MissionLevelsTests
     public void NoLevelPastTheMissionsLastBegins()
     {
         var levels = new MissionLevels(2);
-        levels.Ask(1, out _);
-        levels.Ask(2, out _);
+        levels.Ask(1, true, out _);
+        levels.Ask(2, true, out _);
 
-        Assert.Equal(LevelAnswer.Ignore, levels.Ask(3, out _));
+        Assert.Equal(LevelAnswer.Ignore, levels.Ask(3, true, out _));
         Assert.Equal(2, levels.Current);
     }
 
@@ -43,15 +43,15 @@ public sealed class MissionLevelsTests
     {
         var levels = new MissionLevels(3);
 
-        Assert.Equal(LevelAnswer.Ignore, levels.Ask(PqGameSessionStartMissionLevel.NoNextLevel, out var early));
+        Assert.Equal(LevelAnswer.Ignore, levels.Ask(PqGameSessionStartMissionLevel.NoNextLevel, true, out var early));
         Assert.NotNull(early);
 
-        levels.Ask(1, out _);
-        levels.Ask(2, out _);
-        Assert.Equal(LevelAnswer.Ignore, levels.Ask(PqGameSessionStartMissionLevel.NoNextLevel, out _));
+        levels.Ask(1, true, out _);
+        levels.Ask(2, true, out _);
+        Assert.Equal(LevelAnswer.Ignore, levels.Ask(PqGameSessionStartMissionLevel.NoNextLevel, true, out _));
 
-        levels.Ask(3, out _);
-        Assert.Equal(LevelAnswer.Clear, levels.Ask(PqGameSessionStartMissionLevel.NoNextLevel, out var reason));
+        levels.Ask(3, true, out _);
+        Assert.Equal(LevelAnswer.Clear, levels.Ask(PqGameSessionStartMissionLevel.NoNextLevel, true, out var reason));
         Assert.Null(reason);
     }
 
@@ -60,7 +60,28 @@ public sealed class MissionLevelsTests
     {
         var levels = new MissionLevels(1);
 
-        Assert.Equal(LevelAnswer.Announce, levels.Ask(1, out _));
-        Assert.Equal(LevelAnswer.Clear, levels.Ask(PqGameSessionStartMissionLevel.NoNextLevel, out _));
+        Assert.Equal(LevelAnswer.Announce, levels.Ask(1, true, out _));
+        Assert.Equal(LevelAnswer.Clear, levels.Ask(PqGameSessionStartMissionLevel.NoNextLevel, true, out _));
+    }
+
+    [Fact]
+    public void WhetherALevelsEnemiesTakeTurnsIsTheRequestThatBeganItsSay()
+    {
+        var levels = new MissionLevels(3);
+        Assert.False(levels.WantsEnemyTurns);
+
+        levels.Ask(1, true, out _);
+        Assert.True(levels.WantsEnemyTurns);
+
+        // A copy of the request saying otherwise changes nothing; the next level's says anew.
+        levels.Ask(1, false, out _);
+        Assert.True(levels.WantsEnemyTurns);
+        levels.Ask(2, false, out _);
+        Assert.False(levels.WantsEnemyTurns);
+
+        // Nor does any other request the mission cannot take now.
+        levels.Ask(1, true, out _);
+        levels.Ask(PqGameSessionStartMissionLevel.NoNextLevel, true, out _);
+        Assert.False(levels.WantsEnemyTurns);
     }
 }

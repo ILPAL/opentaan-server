@@ -569,6 +569,19 @@ with real tokens:
   planted to send the shot for the turn's slot, to have its steps name no character,
   or to give them another type all fail them. An expectation comes from what the
   client does, never from the code it checks.
+- **One answer per connection, not per character.** A connection may play two
+  characters, and a mission's enemies' turn reads at first as something each
+  character takes part in, to be sent to each and answered by each. The client's
+  code says otherwise: it runs one mission for the whole game, moves its enemies
+  once for every enemies' turn it is sent, and answers each once, however many
+  characters it plays. So the server sends each enemies' turn once to every
+  connection and waits for one answer from each. A test plays a connection with
+  two characters: a second enemies' turn sent to it would arrive where the test
+  expects the next turn, and a wait for two answers would never end. Versions
+  planted to send it once per character, or to wait for one answer per character,
+  fail it. The same reading showed that the enemies never attack: their turn only
+  moves them, places the level's next wave and lets their own poison work, which
+  the roadmap had called "missions whose enemies fight back".
 
 ## The game server: bytes, not types
 

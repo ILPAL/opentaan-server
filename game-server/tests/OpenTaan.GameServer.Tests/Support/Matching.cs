@@ -368,6 +368,46 @@ internal static class Matching
     }
 
     /// <summary>
+    /// After a shot of the character in <paramref name="from"/> in a mission level whose
+    /// enemies take turns: each of <paramref name="players"/> is told the turn ends and the
+    /// enemies take turn <paramref name="turnCount"/>, each reports it over, and each is told
+    /// the turn of the character in <paramref name="to"/> starts at that turn count.
+    /// </summary>
+    public static Task TurnPassedAfterEnemiesAsync(byte from, byte to, ushort turnCount, params Player[] players) =>
+        TurnPassedAfterEnemiesAsync(from, to, turnCount, ghostMoves: [], players);
+
+    /// <summary>As <see cref="TurnPassedAfterEnemiesAsync(byte, byte, ushort, Player[])"/>, the start of the turn carrying <paramref name="ghostMoves"/>.</summary>
+    public static async Task TurnPassedAfterEnemiesAsync(byte from, byte to, ushort turnCount, IReadOnlyList<GhostMove> ghostMoves, params Player[] players)
+    {
+        await EnemiesTurnToldAsync(from, turnCount, players);
+        await EnemiesTurnOverAsync(turnCount, players);
+        await TurnStartedAsync(to, turnCount, ghostMoves, players);
+    }
+
+    /// <summary>Each of <paramref name="players"/> is told the turn of the character in <paramref name="from"/> ends, then that the enemies take turn <paramref name="counter"/>.</summary>
+    public static async Task EnemiesTurnToldAsync(byte from, uint counter, params Player[] players)
+    {
+        foreach (var player in players)
+        {
+            Assert.Equal(MatchRules.TurnEndOf(from), await player.ReceiveAsync<PcGamePlayTurnEnd>(PcGamePlayTurnEnd.TryRead));
+            Assert.Equal(new PqGameSessionStartMissionEnemyTurn(counter), await player.ReceiveAsync<PqGameSessionStartMissionEnemyTurn>(PqGameSessionStartMissionEnemyTurn.TryRead));
+        }
+    }
+
+    /// <summary>Each of <paramref name="players"/> reports the enemies' turn <paramref name="counter"/> over, once, as the client does.</summary>
+    public static async Task EnemiesTurnOverAsync(uint counter, params Player[] players)
+    {
+        foreach (var player in players)
+        {
+            await player.SendAsync(new PcGameSessionFinishMissionEnemyTurn(counter));
+        }
+    }
+
+    /// <summary>Each of <paramref name="players"/> is told that the turn of the character in <paramref name="to"/> starts at <paramref name="turnCount"/>, with no end of a turn before it.</summary>
+    public static Task TurnStartedAsync(byte to, ushort turnCount, IReadOnlyList<GhostMove> ghostMoves, params Player[] players) =>
+        EveryoneToldAsync(TurnOf(to, turnCount, ghostMoves), PcGamePlayTurnStart.TryRead, players);
+
+    /// <summary>
     /// The shooter shoots for the character in <paramref name="slot"/>, which kills the level's
     /// last enemy: every one of <paramref name="players"/> asks for <paramref name="next"/> as it
     /// finishes playing the shot back, and is told the level begins once every one has.

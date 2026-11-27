@@ -51,7 +51,7 @@ public sealed class TurnFlowTests
         await QuietAsync(host, guest);
 
         await FinishedAsync(0, guest);
-        await TurnPassedAsync(0, 1, turnCount: 1, host, guest);
+        await TurnPassedAfterEnemiesAsync(0, 1, turnCount: 1, host, guest);
         await QuietAsync(host, guest);
     }
 
@@ -67,7 +67,7 @@ public sealed class TurnFlowTests
         // A shot counts.
         await ShotAsync(host, 0, guest);
         await FinishedAsync(0, host, guest);
-        await TurnPassedAsync(0, 1, turnCount: 1, host, guest);
+        await TurnPassedAfterEnemiesAsync(0, 1, turnCount: 1, host, guest);
 
         // A pass does not, and neither does a turn the server passes.
         var pass = new PcGamePlayPassTurn(1, 0x0102, 0x0304, 0x01, 0x05060708);
@@ -80,7 +80,7 @@ public sealed class TurnFlowTests
         // The next shot counts on from there.
         await ShotAsync(guest, 1, host);
         await FinishedAsync(1, host, guest);
-        await TurnPassedAsync(1, 0, turnCount: 2, host, guest);
+        await TurnPassedAfterEnemiesAsync(1, 0, turnCount: 2, host, guest);
 
         // The shot that clears the level counts toward it alone: the next level starts from none.
         await LevelClearedByShotAsync(host, 0, 2, host, guest);
@@ -137,9 +137,9 @@ public sealed class TurnFlowTests
         await QuietAsync(host, guest);
 
         clock.Advance(Tick);
-        await TurnPassedAsync(0, 1, turnCount: 1, host, guest);
+        await EnemiesTurnToldAsync(0, 1, host, guest);
 
-        // The guest's late reports find the turn passed.
+        // The guest's late reports find the shot over.
         await FinishedAsync(0, guest);
         await QuietAsync(host, guest);
     }
@@ -159,7 +159,7 @@ public sealed class TurnFlowTests
         await QuietAsync(host, guest);
 
         clock.Advance(Tick);
-        await TurnPassedAsync(0, 1, turnCount: 1, host, guest);
+        await EnemiesTurnToldAsync(0, 1, host, guest);
         await QuietAsync(host, guest);
     }
 
@@ -310,7 +310,7 @@ public sealed class TurnFlowTests
         // The shot that follows ends the turn as any other.
         await ShotAsync(host, 0, guest);
         await FinishedAsync(0, host, guest);
-        await TurnPassedAsync(0, 1, turnCount: 1, host, guest);
+        await TurnPassedAfterEnemiesAsync(0, 1, turnCount: 1, host, guest);
     }
 
     [Fact]
@@ -330,7 +330,7 @@ public sealed class TurnFlowTests
 
         // The guest's character is dead, so the host has the next turn too.
         await FinishedAsync(0, host, guest);
-        await TurnPassedAsync(0, 0, turnCount: 1, host, guest);
+        await TurnPassedAfterEnemiesAsync(0, 0, turnCount: 1, host, guest);
         await QuietAsync(host, guest);
     }
 
@@ -432,7 +432,7 @@ public sealed class TurnFlowTests
         Assert.Equal(
             new PcGameSessionUpdateSlot(SlotChange.Vacated, GameSlotInfo.Open(1), string.Empty),
             await host.ReceiveAsync<PcGameSessionUpdateSlot>(PcGameSessionUpdateSlot.TryRead));
-        await TurnPassedAsync(0, 0, turnCount: 1, host);
+        await TurnPassedAfterEnemiesAsync(0, 0, turnCount: 1, host);
         await QuietAsync(host, guest);
     }
 
