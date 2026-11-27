@@ -22,10 +22,17 @@ internal sealed class ScriptedCharacterStore : ICharacterStore
 {
     private readonly InMemoryCharacterStore _characters = new();
     private readonly ConcurrentQueue<KeepFailure> _failures = new();
+    private readonly ConcurrentQueue<KeepFailure> _cardFailures = new();
     private readonly ConcurrentDictionary<string, uint> _accounts = new();
 
     /// <summary>Every match the store was asked to keep, in order, each try counted.</summary>
     public ConcurrentQueue<MatchRecord> Kept { get; } = new();
+
+    /// <summary>Every card the store was asked to keep, including retries.</summary>
+    public ConcurrentQueue<(Guid MatchId, uint CharacterId, byte CardIndex)> CardsKept { get; } = new();
+
+    /// <summary>An optional gate a test may hold while a picked card waits for its transaction.</summary>
+    public TaskCompletionSource? CardGate { get; set; }
 
     /// <summary>Fails the next tries at keeping a match, one for each of <paramref name="failures"/>, in order.</summary>
     public void FailNext(params KeepFailure[] failures)
@@ -33,6 +40,15 @@ internal sealed class ScriptedCharacterStore : ICharacterStore
         foreach (var failure in failures)
         {
             _failures.Enqueue(failure);
+        }
+    }
+
+    /// <summary>Fails the next tries at keeping a card.</summary>
+    public void FailNextCard(params KeepFailure[] failures)
+    {
+        foreach (var failure in failures)
+        {
+            _cardFailures.Enqueue(failure);
         }
     }
 
@@ -75,6 +91,26 @@ internal sealed class ScriptedCharacterStore : ICharacterStore
         var kept = await _characters.KeepMatchAsync(match, cancellationToken);
         return failure == KeepFailure.AfterKeeping
             ? throw new InvalidOperationException("The store kept the match, and its answer was lost.")
+            : kept;
+    }
+
+    public async ValueTask<CharacterProgress?> KeepCardAsync(Guid matchId, uint characterId, byte cardIndex, CancellationToken cancellationToken)
+    {
+        CardsKept.Enqueue((matchId, characterId, cardIndex));
+        if (CardGate is { } gate)
+        {
+            await gate.Task.WaitAsync(cancellationToken);
+        }
+
+        var failure = _cardFailures.TryDequeue(out var next) ? next : (KeepFailure?)null;
+        if (failure == KeepFailure.BeforeKeeping)
+        {
+            throw new InvalidOperationException("The store could not keep the card.");
+        }
+
+        var kept = await _characters.KeepCardAsync(matchId, characterId, cardIndex, cancellationToken);
+        return failure == KeepFailure.AfterKeeping
+            ? throw new InvalidOperationException("The store kept the card, and its answer was lost.")
             : kept;
     }
 }

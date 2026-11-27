@@ -1,8 +1,9 @@
+using OpenTaan.GameServer.Matches;
 using OpenTaan.Protocol.Characters;
 
 namespace OpenTaan.GameServer.Characters;
 
-/// <summary>What a match changes about a character: its level and experience, its gold, and its record.</summary>
+/// <summary>What a match and a result card change about a character: its level and experience, its gold, and its record.</summary>
 /// <param name="Level">The level, the one <paramref name="Experience"/> reaches; see <see cref="LevelTable"/>.</param>
 /// <param name="Experience">The experience, a running total.</param>
 /// <param name="Gold">The gold.</param>
@@ -43,6 +44,14 @@ public readonly record struct CharacterProgress(ushort Level, uint Experience, u
         var total = (uint)Math.Min((ulong)Experience + experience, LevelTable.MostExperience);
         return this with { Level = LevelTable.LevelOf(total), Experience = total };
     }
+
+    /// <summary>The progress after a result card, with the match's win/loss record untouched.</summary>
+    public CharacterProgress AfterCard(CardRewardKind kind, uint amount) => kind switch
+    {
+        CardRewardKind.Experience => WithExperience(amount),
+        CardRewardKind.Gold => this with { Gold = Added(Gold, amount) },
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a result-card reward."),
+    };
 
     private static uint Added(uint count, uint more) => (uint)Math.Min((ulong)count + more, uint.MaxValue);
 }

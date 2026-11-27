@@ -45,6 +45,7 @@ public interface ICharacterStore
     /// <summary>
     /// Keeps a match that has ended, and pays each character that started it what the
     /// record says: its experience and gold added, and the match counted as won or lost.
+    /// Keeps each result-card offer with that payment, without crediting the card yet.
     /// </summary>
     /// <remarks>
     /// Each character is paid for a match once, however many times the match is kept and
@@ -53,6 +54,22 @@ public interface ICharacterStore
     /// </remarks>
     /// <returns>The progress of each of the match's characters the store has, as it is kept now, by character id.</returns>
     ValueTask<IReadOnlyDictionary<uint, CharacterProgress>> KeepMatchAsync(MatchRecord match, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Keeps a character's successful result-card pick and credits the offer kept with its
+    /// match, in one step. A repeated pick credits nothing again.
+    /// </summary>
+    /// <remarks>
+    /// The match must already have been kept, including its card offers. A card picked by
+    /// another character in that match cannot be picked again. The character's wins and
+    /// losses do not change. Its offer remains recorded if the character was deleted.
+    /// </remarks>
+    /// <returns>The character's progress as kept now, or null if it no longer exists.</returns>
+    ValueTask<CharacterProgress?> KeepCardAsync(
+        Guid matchId,
+        uint characterId,
+        byte cardIndex,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>How a creation ended.</summary>

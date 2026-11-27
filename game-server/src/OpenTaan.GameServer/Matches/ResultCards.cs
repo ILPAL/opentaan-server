@@ -67,4 +67,13 @@ public sealed class ResultCards
 
     /// <summary>Whether the character in slot <paramref name="slot"/> has its card.</summary>
     public bool HasPicked(byte slot) => _cards.ContainsKey(slot);
+
+    /// <summary>Gives back a reserved card whose payment failed, if it is still reserved for this slot.</summary>
+    public void Release(byte slot, byte card)
+    {
+        if (_cards.TryGetValue(slot, out var reserved) && reserved == card)
+        {
+            _cards.Remove(slot);
+        }
+    }
 }

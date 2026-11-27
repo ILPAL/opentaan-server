@@ -3,6 +3,7 @@ using OpenTaan.GameServer.Characters;
 using OpenTaan.GameServer.Matches;
 using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Characters;
+using OpenTaan.Protocol.Results;
 
 namespace OpenTaan.GameServer.Storage;
 
@@ -24,7 +25,9 @@ namespace OpenTaan.GameServer.Storage;
 /// A match is kept in one transaction with what it pays. Each payment is a row keyed by the
 /// match and the character, and only a row that is new pays: keeping a match again, or
 /// keeping it twice at once, finds the rows there and pays no one again. The record of a
-/// match stays when a character is deleted, as what that match paid.
+/// match stays when a character is deleted, as what that match paid. The card offers are
+/// kept with the match; choosing one and crediting it is another transaction, once per
+/// character and match.
 /// </para>
 /// </remarks>
 /// <param name="database">The connections to the database.</param>
@@ -32,6 +35,7 @@ public sealed class PostgresCharacterStore(NpgsqlDataSource database) : ICharact
 {
     private const string NameIndex = "characters_name_key";
     private const string OnePerAccountIndex = "characters_one_per_account";
+    private const string OneCharacterPerCard = "one_character_per_card";
 
     // One statement, so a character and its parts are read at one moment. In the order Read takes them.
     private const string FindByAccountSql =
@@ -78,6 +82,19 @@ public sealed class PostgresCharacterStore(NpgsqlDataSource database) : ICharact
     private const string InsertPaymentSql =
         "INSERT INTO match_payments (match_id, character_id, slot, ending, won, experience, gold) " +
         "VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (match_id, character_id) DO NOTHING";
+
+    // Every offer goes with the match payment kept in the same transaction. The offer is
+    // the one already sent to the result screen and cannot be rerolled by a later pick.
+    private const string InsertCardSql =
+        "INSERT INTO match_cards (match_id, character_id, reward_kind, amount) " +
+        "VALUES ($1, $2, $3, $4) ON CONFLICT (match_id, character_id) DO NOTHING";
+
+    private const string CardSql =
+        "SELECT reward_kind, amount, picked_card_index FROM match_cards " +
+        "WHERE match_id = $1 AND character_id = $2 FOR UPDATE";
+
+    private const string PickCardSql =
+        "UPDATE match_cards SET picked_card_index = $3 WHERE match_id = $1 AND character_id = $2";
 
     // Locked until the transaction ends, so that no other payment comes between the read and the write.
     private const string ProgressSql =
@@ -266,8 +283,72 @@ public sealed class PostgresCharacterStore(NpgsqlDataSource database) : ICharact
             kept[payment.CharacterId] = progress;
         }
 
+        foreach (var card in match.Cards.OrderBy(card => card.CharacterId))
+        {
+            await ExecuteAsync(connection, transaction, InsertCardSql, cancellationToken,
+                match.MatchId, (long)card.CharacterId, CardKindName(card.Kind), (long)card.Amount).ConfigureAwait(false);
+        }
+
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return kept;
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask<CharacterProgress?> KeepCardAsync(
+        Guid matchId,
+        uint characterId,
+        byte cardIndex,
+        CancellationToken cancellationToken)
+    {
+        if (cardIndex >= PrResultSelectCard.CardCount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(cardIndex), cardIndex, "A result card is numbered from 0 to 7.");
+        }
+
+        await using var connection = await database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var card = await CardAsync(connection, transaction, matchId, characterId, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"Match {matchId} has no card offer for character {characterId}.");
+        if (card.PickedCardIndex is { } previous && previous != cardIndex)
+        {
+            throw new InvalidOperationException(
+                $"Character {characterId} in match {matchId} already picked card {previous}, not card {cardIndex}.");
+        }
+
+        if (card.PickedCardIndex is null)
+        {
+            try
+            {
+                // Take the card before locking the character: two players contesting the
+                // same card cannot hold different character locks while one waits here.
+                await ExecuteAsync(connection, transaction, PickCardSql, cancellationToken,
+                    matchId, (long)characterId, (short)cardIndex).ConfigureAwait(false);
+            }
+            catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation &&
+                                                      exception.ConstraintName == OneCharacterPerCard)
+            {
+                throw new InvalidOperationException($"Card {cardIndex} in match {matchId} belongs to another character.", exception);
+            }
+        }
+
+        var progress = await ProgressAsync(connection, transaction, characterId, cancellationToken).ConfigureAwait(false);
+        if (progress is null)
+        {
+            // The offer remains recorded, but a deleted character cannot be paid. The
+            // transaction rolls back the pick, so it never claims payment that did not happen.
+            return null;
+        }
+
+        if (card.PickedCardIndex is null)
+        {
+            progress = progress.Value.AfterCard(card.Kind, card.Amount);
+            await ExecuteAsync(connection, transaction, PaySql, cancellationToken,
+                (long)characterId, (int)progress.Value.Level, (long)progress.Value.Experience, (long)progress.Value.Gold,
+                (long)progress.Value.Wins, (long)progress.Value.Losses).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return progress;
     }
 
     // As the schema names each ending.
@@ -278,6 +359,42 @@ public sealed class PostgresCharacterStore(NpgsqlDataSource database) : ICharact
         MatchEnding.Left => "left",
         _ => throw new ArgumentOutOfRangeException(nameof(ending), ending, "Not an ending the schema knows."),
     };
+
+    private static string CardKindName(CardRewardKind kind) => kind switch
+    {
+        CardRewardKind.Gold => "gold",
+        CardRewardKind.Experience => "experience",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a result-card reward."),
+    };
+
+    private static CardRewardKind CardKind(string kind) => kind switch
+    {
+        "gold" => CardRewardKind.Gold,
+        "experience" => CardRewardKind.Experience,
+        _ => throw new InvalidDataException($"Unknown result-card reward {kind}."),
+    };
+
+    private static async Task<CardOfferRow?> CardAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid matchId,
+        uint characterId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = Command(connection, transaction, CardSql, [matchId, (long)characterId]);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        return new CardOfferRow(
+            CardKind(reader.GetString(0)),
+            reader.Unsigned(1),
+            reader.IsDBNull(2) ? null : checked((byte)reader.GetInt16(2)));
+    }
+
+    private readonly record struct CardOfferRow(CardRewardKind Kind, uint Amount, byte? PickedCardIndex);
 
     private static async Task<CharacterProgress?> ProgressAsync(
         NpgsqlConnection connection,

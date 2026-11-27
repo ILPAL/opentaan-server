@@ -239,12 +239,52 @@ public sealed class MatchRaceTests
 
             await Task.WhenAll(host.SendAsync(new PqResultSelectCard(5, 0)), guest.SendAsync(new PqResultSelectCard(5, 1)));
 
-            // Whoever's pick came first has the card, and everyone is told; the other is refused alone.
-            var turned = await host.ReceiveAsync<PrResultSelectCard>(PrResultSelectCard.TryRead);
-            Assert.Equal(turned, await guest.ReceiveAsync<PrResultSelectCard>(PrResultSelectCard.TryRead));
+            // The loser can hear its refusal while the winner's payment is still being
+            // kept. Once it commits, everyone is told the reveal and only the winner
+            // receives an absolute progress update.
+            var hostFirst = await host.Client.ReceiveBodyAsync();
+            var guestFirst = await guest.Client.ReceiveBodyAsync();
+            var hostRefusedFirst = PrResultAlreadyOpend.TryRead(hostFirst).Succeeded;
+            var guestRefusedFirst = PrResultAlreadyOpend.TryRead(guestFirst).Succeeded;
+            PrResultSelectCard hostTurned;
+            PrResultSelectCard guestTurned;
+            if (hostRefusedFirst)
+            {
+                hostTurned = await host.ReceiveAsync<PrResultSelectCard>(PrResultSelectCard.TryRead);
+            }
+            else
+            {
+                var read = PrResultSelectCard.TryRead(hostFirst);
+                Assert.True(read.Succeeded, $"expected the card reveal: {read.Error}");
+                hostTurned = read.Packet;
+            }
+
+            if (guestRefusedFirst)
+            {
+                guestTurned = await guest.ReceiveAsync<PrResultSelectCard>(PrResultSelectCard.TryRead);
+            }
+            else
+            {
+                var read = PrResultSelectCard.TryRead(guestFirst);
+                Assert.True(read.Succeeded, $"expected the card reveal: {read.Error}");
+                guestTurned = read.Packet;
+            }
+
+            var turned = hostTurned;
+            Assert.Equal(turned, guestTurned);
             Assert.Equal(5, turned.CardIndex);
             var (refused, slot) = turned.GameSlotIndex == 0 ? (guest, (byte)1) : (host, (byte)0);
-            Assert.Equal(new PrResultAlreadyOpend(5, slot), await refused.ReceiveAsync<PrResultAlreadyOpend>(PrResultAlreadyOpend.TryRead));
+            if (turned.GameSlotIndex == 0 ? guestRefusedFirst : hostRefusedFirst)
+            {
+                Assert.Equal(new PrResultAlreadyOpend(5, slot),
+                    PrResultAlreadyOpend.TryRead(turned.GameSlotIndex == 0 ? guestFirst : hostFirst).Packet);
+            }
+            else
+            {
+                Assert.Equal(new PrResultAlreadyOpend(5, slot), await refused.ReceiveAsync<PrResultAlreadyOpend>(PrResultAlreadyOpend.TryRead));
+            }
+
+            await CardUpdateToldAsync(turned.GameSlotIndex == 0 ? host : guest);
             await QuietAsync(host, guest);
             winners[turned.GameSlotIndex == 0 ? 0 : 1]++;
         }

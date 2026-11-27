@@ -602,6 +602,15 @@ with real tokens:
   asks for never kept a match, so asking for the migration before the payments' own
   passed. A leaver on the winning team, an amount whose half rounds up, and a
   match kept on that database now fail them.
+- **A card's position is not its reward.** The client's result screen finds a
+  reward by the character id of the player whose card was turned, among eight
+  non-null offers it received before the match ended. Changing which card that
+  player picks must therefore leave the offer's kind and amount alone. The
+  server keeps the offer with the match, and keeps a successful pick and its
+  payment in one transaction. Flow tests turn a card at a position unlike the
+  character's slot and check its own offer, while store tests retry a pick whose
+  commit answer was lost and check that it was credited once. A refused pick
+  buys nothing.
 
 ## The game server: bytes, not types
 

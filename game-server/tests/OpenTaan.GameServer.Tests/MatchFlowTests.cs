@@ -443,6 +443,7 @@ public sealed class MatchFlowTests
         // The host's time runs out: the first card left is picked for it.
         await host.SendAsync(new PqResultRandSelect(0));
         await EveryoneToldAsync(new PrResultSelectCard(0, 0), PrResultSelectCard.TryRead, host, guest);
+        await CardUpdateToldAsync(host);
         await QuietAsync(host, guest);
     }
 
@@ -459,6 +460,7 @@ public sealed class MatchFlowTests
         await guest.SendAsync(new PqResultSelectCard(6, 0));
 
         await EveryoneToldAsync(new PrResultSelectCard(6, 1), PrResultSelectCard.TryRead, host, guest);
+        await CardUpdateToldAsync(guest);
         await QuietAsync(host, guest);
     }
 

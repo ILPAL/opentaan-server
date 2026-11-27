@@ -244,24 +244,22 @@ public sealed partial class MatchHandlers(
         return ValueTask.CompletedTask;
     }
 
-    /// <summary>Picks one of the cards left for a player whose time ran out; see <see cref="RoomDirectory.PickCard"/>.</summary>
-    public ValueTask RandSelectAsync(ClientSession session, PqResultRandSelect request, CancellationToken cancellationToken)
+    /// <summary>Picks one of the cards left for a player whose time ran out; see <see cref="RoomDirectory.PickCardAsync"/>.</summary>
+    public async ValueTask RandSelectAsync(ClientSession session, PqResultRandSelect request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(request);
 
-        LogUnless(session, nameof(PqResultRandSelect), rooms.PickCard(session, request.GameSlotIndex, card: null));
-        return ValueTask.CompletedTask;
+        LogUnless(session, nameof(PqResultRandSelect), await rooms.PickCardAsync(session, request.GameSlotIndex, card: null));
     }
 
-    /// <summary>Turns over the card a player picked; see <see cref="RoomDirectory.PickCard"/>.</summary>
-    public ValueTask SelectCardAsync(ClientSession session, PqResultSelectCard request, CancellationToken cancellationToken)
+    /// <summary>Turns over the card a player picked; see <see cref="RoomDirectory.PickCardAsync"/>.</summary>
+    public async ValueTask SelectCardAsync(ClientSession session, PqResultSelectCard request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(request);
 
-        LogUnless(session, nameof(PqResultSelectCard), rooms.PickCard(session, request.GameSlotIndex, request.CardIndex));
-        return ValueTask.CompletedTask;
+        LogUnless(session, nameof(PqResultSelectCard), await rooms.PickCardAsync(session, request.GameSlotIndex, request.CardIndex));
     }
 
     // Logs why a request about a match changed nothing, when it did not.

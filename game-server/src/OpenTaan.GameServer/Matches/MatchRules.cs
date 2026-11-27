@@ -211,19 +211,6 @@ public static class MatchRules
             GoldReward: earned.Gold);
     }
 
-    /// <summary>
-    /// The result screen's cards: for each slot holding a character, a card of no gold
-    /// naming it, since nothing is granted yet, and for every other slot a card no
-    /// character's.
-    /// </summary>
-    /// <param name="characters">The character in each slot, null for a slot with none, by slot.</param>
-    public static PcResultSetReward RewardsOf(IReadOnlyList<uint?> characters) => new(
-    [
-        .. characters.Select(character => character is { } id
-            ? new GameRewardGold(GoldRewardName, id, Amount: 0, HasPcRoomBonusCard: false, PcRoomBonusGold: 0)
-            : new GameRewardGold(EmptyRewardName, CharacterId: 0, Amount: 0, HasPcRoomBonusCard: false, PcRoomBonusGold: 0)),
-    ]);
-
     // A step of the experience bar: the level, the experience, and the level's bar.
     private static ExpResult StepAt(ushort level, uint experience)
     {

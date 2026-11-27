@@ -19,8 +19,9 @@ public readonly record struct Earning(uint Experience, uint Gold);
 /// any fraction dropped.
 /// </para>
 /// <para>
-/// No match pays more experience than <see cref="LevelTable.FirstLevelCost"/>, the least a
-/// level takes, so no match moves a character up more than one level.
+/// A match's base payment pays no more experience than <see cref="LevelTable.FirstLevelCost"/>,
+/// the least a level takes, so the result row moves a character up no more than one level.
+/// A result card is a separate payment and may pay more than that amount.
 /// </para>
 /// </remarks>
 public sealed class RewardOptions
@@ -47,6 +48,24 @@ public sealed class RewardOptions
 
     /// <summary>The gold a mission pays for each unit of the experience it pays.</summary>
     public double MissionGoldPerExperience { get; set; }
+
+    /// <summary>The relative chance of a gold card; item and quest cards are not offered yet.</summary>
+    public int CardGoldWeight { get; set; }
+
+    /// <summary>The relative chance of an experience card.</summary>
+    public int CardExperienceWeight { get; set; }
+
+    /// <summary>The least share of a character's match pay a card may carry, as a whole percent.</summary>
+    public uint CardMinimumPercent { get; set; }
+
+    /// <summary>The greatest share of a character's match pay a card may carry, as a whole percent.</summary>
+    public uint CardMaximumPercent { get; set; }
+
+    /// <summary>The least gold a card may carry, even when its character's match paid none.</summary>
+    public uint CardGoldFloor { get; set; }
+
+    /// <summary>The least experience a card may carry, even when its character's match paid none.</summary>
+    public uint CardExperienceFloor { get; set; }
 
     /// <summary>How many times the server tries to keep what a match paid before it gives up and logs the payment as lost.</summary>
     public int PayoutAttempts { get; set; }
@@ -117,6 +136,21 @@ public sealed class RewardOptions
         if (!double.IsFinite(MissionGoldPerExperience) || MissionGoldPerExperience < 0)
         {
             return $"{Section}:{nameof(MissionGoldPerExperience)} must be a number from 0 up, and is {MissionGoldPerExperience}";
+        }
+
+        if (CardGoldWeight < 0 || CardExperienceWeight < 0 || (long)CardGoldWeight + CardExperienceWeight == 0)
+        {
+            return $"{Section}:{nameof(CardGoldWeight)} and {nameof(CardExperienceWeight)} must be nonnegative, and at least one must be positive";
+        }
+
+        if (CardMinimumPercent > CardMaximumPercent)
+        {
+            return $"{Section}:{nameof(CardMinimumPercent)} must be no greater than {nameof(CardMaximumPercent)}";
+        }
+
+        if (CardGoldFloor == 0 || CardExperienceFloor == 0)
+        {
+            return $"{Section}:{nameof(CardGoldFloor)} and {nameof(CardExperienceFloor)} must both be positive";
         }
 
         if (PayoutAttempts < 1)

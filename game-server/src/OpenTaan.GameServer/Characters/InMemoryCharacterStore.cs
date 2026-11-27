@@ -1,4 +1,5 @@
 using OpenTaan.GameServer.Matches;
+using OpenTaan.Protocol.Results;
 
 namespace OpenTaan.GameServer.Characters;
 
@@ -14,6 +15,7 @@ public sealed class InMemoryCharacterStore : ICharacterStore
 
     // Each character paid for each match, so that keeping a match again pays no one twice.
     private readonly HashSet<(Guid MatchId, uint CharacterId)> _paid = [];
+    private readonly Dictionary<(Guid MatchId, uint CharacterId), CardState> _cards = [];
     private readonly Lock _lock = new();
     private uint _nextId = FirstCharacterId;
 
@@ -131,7 +133,61 @@ public sealed class InMemoryCharacterStore : ICharacterStore
                 kept[payment.CharacterId] = CharacterProgress.Of(character.Info);
             }
 
+            foreach (var offer in match.Cards)
+            {
+                _cards.TryAdd((match.MatchId, offer.CharacterId), new CardState(offer.Kind, offer.Amount, null));
+            }
+
             return ValueTask.FromResult<IReadOnlyDictionary<uint, CharacterProgress>>(kept);
         }
     }
+
+    /// <inheritdoc/>
+    public ValueTask<CharacterProgress?> KeepCardAsync(
+        Guid matchId,
+        uint characterId,
+        byte cardIndex,
+        CancellationToken cancellationToken)
+    {
+        if (cardIndex >= PrResultSelectCard.CardCount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(cardIndex), cardIndex, "A result card is numbered from 0 to 7.");
+        }
+
+        lock (_lock)
+        {
+            if (!_cards.TryGetValue((matchId, characterId), out var card))
+            {
+                throw new InvalidOperationException($"Match {matchId} has no card offer for character {characterId}.");
+            }
+
+            if (card.PickedCardIndex is { } previous && previous != cardIndex)
+            {
+                throw new InvalidOperationException(
+                    $"Character {characterId} in match {matchId} already picked card {previous}, not card {cardIndex}.");
+            }
+
+            if (!_characters.TryGetValue(characterId, out var character))
+            {
+                return ValueTask.FromResult<CharacterProgress?>(null);
+            }
+
+            if (card.PickedCardIndex is null)
+            {
+                if (_cards.Any(entry => entry.Key.MatchId == matchId && entry.Value.PickedCardIndex == cardIndex))
+                {
+                    throw new InvalidOperationException($"Card {cardIndex} in match {matchId} belongs to another character.");
+                }
+
+                var progress = CharacterProgress.Of(character.Info).AfterCard(card.Kind, card.Amount);
+                character = character.WithProgress(progress);
+                _characters[characterId] = character;
+                _cards[(matchId, characterId)] = card with { PickedCardIndex = cardIndex };
+            }
+
+            return ValueTask.FromResult<CharacterProgress?>(CharacterProgress.Of(character.Info));
+        }
+    }
+
+    private readonly record struct CardState(CardRewardKind Kind, uint Amount, byte? PickedCardIndex);
 }

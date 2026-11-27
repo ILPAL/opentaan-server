@@ -19,8 +19,9 @@ public sealed class MatchPayoutsTests
         var (store, clock, payouts, kimi) = await PaidAsync();
         var told = new ConcurrentBag<IReadOnlyDictionary<uint, CharacterProgress>>();
 
-        payouts.Pay(MatchPaying(kimi), told.Add);
+        var payment = payouts.Pay(MatchPaying(kimi), told.Add);
         await payouts.WhenPaidAsync().WaitAsync(TimeSpan.FromSeconds(10), Cancel);
+        Assert.True(await payment);
 
         Assert.Equal(new CharacterProgress(1, 60, 180, 1, 0), Assert.Single(told)[kimi]);
         Assert.Single(store.Kept);
@@ -34,7 +35,7 @@ public sealed class MatchPayoutsTests
         store.FailNext(KeepFailure.AfterKeeping, KeepFailure.BeforeKeeping);
         var told = new ConcurrentBag<IReadOnlyDictionary<uint, CharacterProgress>>();
 
-        payouts.Pay(MatchPaying(kimi), told.Add);
+        var payment = payouts.Pay(MatchPaying(kimi), told.Add);
         await RetryWaitingAsync(clock);
         clock.Advance(TimeSpan.FromSeconds(2) - TimeSpan.FromMilliseconds(1));
         Assert.Single(store.Kept);
@@ -43,6 +44,7 @@ public sealed class MatchPayoutsTests
         Assert.Empty(told);
         clock.Advance(TimeSpan.FromSeconds(2));
         await payouts.WhenPaidAsync().WaitAsync(TimeSpan.FromSeconds(10), Cancel);
+        Assert.True(await payment);
 
         Assert.Equal(3, store.Kept.Count);
         Assert.Equal(new CharacterProgress(1, 60, 180, 1, 0), Assert.Single(told)[kimi]);
@@ -56,12 +58,13 @@ public sealed class MatchPayoutsTests
         store.FailNext(KeepFailure.BeforeKeeping, KeepFailure.BeforeKeeping, KeepFailure.BeforeKeeping);
         var told = new ConcurrentBag<IReadOnlyDictionary<uint, CharacterProgress>>();
 
-        payouts.Pay(MatchPaying(kimi), told.Add);
+        var payment = payouts.Pay(MatchPaying(kimi), told.Add);
         await RetryWaitingAsync(clock);
         clock.Advance(TimeSpan.FromSeconds(2));
         await RetryWaitingAsync(clock);
         clock.Advance(TimeSpan.FromSeconds(2));
         await payouts.WhenPaidAsync().WaitAsync(TimeSpan.FromSeconds(10), Cancel);
+        Assert.False(await payment);
 
         Assert.Equal(3, store.Kept.Count);
         Assert.Empty(told);
@@ -75,14 +78,37 @@ public sealed class MatchPayoutsTests
         var (store, clock, payouts, kimi) = await PaidAsync();
         store.FailNext(KeepFailure.BeforeKeeping);
 
-        payouts.Pay(MatchPaying(kimi), _ => { });
+        var payment = payouts.Pay(MatchPaying(kimi), _ => { });
         await RetryWaitingAsync(clock);
         var stopping = payouts.StopAsync(Cancel);
         Assert.False(stopping.IsCompleted);
         clock.Advance(TimeSpan.FromSeconds(2));
         await stopping.WaitAsync(TimeSpan.FromSeconds(10), Cancel);
+        Assert.True(await payment);
 
         Assert.Equal(new CharacterProgress(1, 60, 180, 1, 0), CharacterProgress.Of((await store.CharacterAsync("Kimi")).Info));
+    }
+
+    [Fact]
+    public async Task ACardWhoseCommitAnswerWasLostIsTriedAgainWithoutPayingTwice()
+    {
+        var (store, clock, payouts, kimi) = await PaidAsync();
+        var offer = new MatchCardOffer(kimi, 0, CardRewardKind.Gold, 50);
+        var match = MatchPaying(kimi) with { Cards = [offer] };
+        var basePayment = payouts.Pay(match, _ => { });
+        Assert.True(await basePayment.WaitAsync(TimeSpan.FromSeconds(10), Cancel));
+        store.FailNextCard(KeepFailure.AfterKeeping);
+        var told = new ConcurrentBag<CharacterProgress>();
+
+        var cardPayment = payouts.PayCard(match.MatchId, offer, 3, basePayment, told.Add);
+        await RetryWaitingAsync(clock);
+        Assert.Empty(told);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        Assert.True(await cardPayment.WaitAsync(TimeSpan.FromSeconds(10), Cancel));
+
+        Assert.Equal(2, store.CardsKept.Count);
+        Assert.Equal(new CharacterProgress(1, 60, 230, 1, 0), Assert.Single(told));
+        Assert.Equal(new CharacterProgress(1, 60, 230, 1, 0), CharacterProgress.Of((await store.CharacterAsync("Kimi")).Info));
     }
 
     // A store holding one new character, Kimi, the clock the payouts wait on, and the payouts.
