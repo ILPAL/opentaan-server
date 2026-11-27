@@ -143,6 +143,7 @@ internal static class Matching
     {
         await player.SendAsync(new PqResultSelectCard(card, slot));
         await EveryoneToldAsync(new PrResultSelectCard(card, slot), PrResultSelectCard.TryRead, first, second);
+        await CardUpdateToldAsync(player);
     }
 
     /// <summary>The player picks <paramref name="card"/> for the character in <paramref name="slot"/>, and <paramref name="only"/> hears of it.</summary>
@@ -150,6 +151,23 @@ internal static class Matching
     {
         await player.SendAsync(new PqResultSelectCard(card, slot));
         await EveryoneToldAsync(new PrResultSelectCard(card, slot), PrResultSelectCard.TryRead, only);
+        await CardUpdateToldAsync(player);
+    }
+
+    /// <summary>Consumes the absolute experience or gold update sent for a paid card.</summary>
+    public static async Task CardUpdateToldAsync(Player player)
+    {
+        var body = await player.Client.ReceiveBodyAsync();
+        var experience = PcUpdateExp.TryRead(body);
+        if (experience.Succeeded)
+        {
+            Assert.InRange(experience.Packet.CharacterSlot, (byte)0, (byte)(player.Characters.Count - 1));
+            return;
+        }
+
+        var gold = PcUpdateMoney.TryRead(body);
+        Assert.True(gold.Succeeded, $"expected a card's experience or gold update: {gold.Error}");
+        Assert.InRange(gold.Packet.CharacterSlot, (byte)0, (byte)(player.Characters.Count - 1));
     }
 
     /// <summary>
@@ -170,7 +188,7 @@ internal static class Matching
     public static Task EndToldAsync(byte winningTeam, SeatOf[] seats, params Player[] told) =>
         EndToldAsync(winningTeam, seats, mission: false, told);
 
-    // A match's end, as everyone told is sent it: the cards, which give nothing yet, then
+    // A match's end, as everyone told is sent it: the cards with offers, then
     // the result, with a row for each slot. A character that played to the end is paid
     // what Paying says, and one that gave up nothing. Each player is then told the
     // experience and gold of each of its characters paid, in slot order, as the account
@@ -179,6 +197,7 @@ internal static class Matching
     private static async Task EndToldAsync(byte winningTeam, SeatOf[] seats, bool mission, Player[] told)
     {
         var characters = new uint?[GameSlotInfo.SlotCount];
+        var cardBases = new Earning[GameSlotInfo.SlotCount];
         var rows = Enumerable.Range(0, GameSlotInfo.SlotCount).Select(slot => GameResultSlot.Empty((byte)slot)).ToArray();
         var paid = new List<(SeatOf Seat, Earning Earned)>();
         foreach (var seat in seats.OrderBy(seat => seat.Slot))
@@ -196,12 +215,13 @@ internal static class Matching
                 ? won ? Paying.MissionCleared : Paying.MissionLost
                 : won ? Paying.TeamWin : Paying.TeamLoss;
             rows[seat.Slot] = PaidRow(seat.Slot, character, earned);
+            cardBases[seat.Slot] = earned;
             paid.Add((seat, earned));
         }
 
         foreach (var player in told)
         {
-            Assert.Equal(MatchRules.RewardsOf(characters), await player.ReceiveAsync<PcResultSetReward>(PcResultSetReward.TryRead));
+            AssertCards(characters, cardBases, await player.ReceiveAsync<PcResultSetReward>(PcResultSetReward.TryRead));
             Assert.Equal(
                 new PcGameSessionEndGame(new GameResult(winningTeam, rows, WinnerPointDelta: 0, LoserPointDelta: 0), EndGameMode: 0),
                 await player.ReceiveAsync<PcGameSessionEndGame>(PcGameSessionEndGame.TryRead));
@@ -215,6 +235,48 @@ internal static class Matching
                 new PcUpdateExp(accountSlot, character.Level, character.CurrentExperience + earned.Experience, character.ExperienceFloor, character.ExperienceCeiling),
                 await seat.Player.ReceiveAsync<PcUpdateExp>(PcUpdateExp.TryRead));
             Assert.Equal(PcUpdateMoney.GoldOf(accountSlot, character.Gold + earned.Gold), await seat.Player.ReceiveAsync<PcUpdateMoney>(PcUpdateMoney.TryRead));
+        }
+    }
+
+    private static void AssertCards(IReadOnlyList<uint?> characters, IReadOnlyList<Earning> bases, PcResultSetReward packet)
+    {
+        Assert.Equal(GameSlotInfo.SlotCount, packet.Rewards.Count);
+        for (var slot = 0; slot < characters.Count; slot++)
+        {
+            var reward = packet.Rewards[slot];
+            if (characters[slot] is not { } characterId)
+            {
+                Assert.Equal(new GameRewardGold("Empty", 0, 0, false, 0), reward);
+                continue;
+            }
+
+            Assert.Equal(characterId, reward.CharacterId);
+            uint amount;
+            uint baseAmount;
+            uint floor;
+            switch (reward)
+            {
+                case GameRewardGold gold:
+                    Assert.Equal("Gold", gold.Name);
+                    Assert.False(gold.HasPcRoomBonusCard);
+                    Assert.Equal(0u, gold.PcRoomBonusGold);
+                    amount = gold.Amount;
+                    baseAmount = bases[slot].Gold;
+                    floor = 50;
+                    break;
+                case GameRewardExp experience:
+                    Assert.Equal("Exp", experience.Name);
+                    amount = experience.Amount;
+                    baseAmount = bases[slot].Experience;
+                    floor = 20;
+                    break;
+                default:
+                    throw new Xunit.Sdk.XunitException($"Unexpected card reward {reward.GetType().Name}.");
+            }
+
+            var low = Math.Max(floor, (uint)((ulong)baseAmount * 40 / 100));
+            var high = Math.Max(low, (uint)((ulong)baseAmount * 120 / 100));
+            Assert.InRange(amount, low, high);
         }
     }
 

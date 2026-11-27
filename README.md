@@ -134,8 +134,10 @@ checked, with what those checks caught, is in
 | Game server: transport framing, packet cipher and seed schedule | Done |
 | Game protocol: reference sessions, supplied locally, not committed | In progress |
 | Game server: reference sessions replayed through the transport | Done |
-| Game server: packet codecs, verified byte for byte against the sessions | Next |
-| Game server: packet codecs, persistence, game logic | Planned |
+| Game server: packet codecs through the result screen, checked against the sessions | Done |
+| Game server: accounts, characters, matches and their payouts in PostgreSQL | Done |
+| Game server: result cards paying gold or experience on a pick | Done |
+| Game server: scoreboard stats and medals | Next |
 | Admin server: account lookup, contract-first API, permission model | Done |
 | Admin server: economy adjustments with four-eyes approval and idempotency keys | Done |
 | Admin server: append-only, hash-chained audit trail | Done |

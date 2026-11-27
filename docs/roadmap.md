@@ -50,8 +50,8 @@ What a reviewer should be able to see and run, end to end.
 | Area | What exists |
 |---|---|
 | Repository setup | `.gitignore`, `.gitattributes`, `.editorconfig` |
-| Database | `V1` initial schema (11 tables); `V2` economy adjustments and the outbox, with the approval rules as constraints; `V3` the audit trail; `V4` and `V5` accounts and characters as the game server keeps them; `V6` the matches and what each paid, each payment once, with its rules as constraints |
-| Game server | .NET 10 solution: transport framing and the packet cipher, handshake keys that can never switch encryption off, codecs for the handshake, the account and login packets, the character packets, the channel and lobby packets and the room packets, a session per connection with connection limits, idle and send timeouts, account check, creation and login with accounts in memory, one live connection per account, character naming, creation, selection and deletion with characters in memory and one character per account, rooms created, entered, quick-joined and left in each channel's lobby, with mission rooms and connections playing two accounts, what players do in a waiting room (ready, team, weapon, the host's options with the maps and missions the client lists, slots, expulsions), and a match from its start to its result screen, a mission's (each level begun once, its first turn once every client is ready) or one between two teams of any size (a random map drawn at each start, the first turn once every client has loaded, a team losing once it has nobody left in play), with turns of shots every client plays back before the next, a mission's enemies taking a turn of their own after every shot, the teams taking turns, passes, walks, deaths and ghosts, giving up, leaving, the end and what it pays each character, kept once in PostgreSQL with the level its experience reaches in a table of levels, the result cards, and items and ghosts, a mission's as the clients decide them and between teams the boxes on the field, the server's own boxes and the items of ghosts' catches and bonuses decided on the server from the client's drop table kept locally, each passed on to the clients that act on it, the reference sessions replayed through the codecs and played against real connections, architecture rules |
+| Database | `V1` initial schema (11 tables); `V2` economy adjustments and the outbox, with the approval rules as constraints; `V3` the audit trail; `V4` and `V5` accounts and characters as the game server keeps them; `V6` the matches and what each paid; `V7` their card offers and the cards picked and paid once, with their rules as constraints |
+| Game server | .NET 10 solution: transport framing and the packet cipher, handshake keys that can never switch encryption off, codecs for the handshake, the account and login packets, the character packets, the channel and lobby packets and the room packets, a session per connection with connection limits, idle and send timeouts, account check, creation and login with accounts in PostgreSQL, one live connection per account, character naming, creation, selection and deletion with characters in PostgreSQL and one character per account, rooms created, entered, quick-joined and left in each channel's lobby, with mission rooms and connections playing two accounts, what players do in a waiting room (ready, team, weapon, the host's options with the maps and missions the client lists, slots, expulsions), and a match from its start to its result screen, a mission's (each level begun once, its first turn once every client is ready) or one between two teams of any size (a random map drawn at each start, the first turn once every client has loaded, a team losing once it has nobody left in play), with turns of shots every client plays back before the next, a mission's enemies taking a turn of their own after every shot, the teams taking turns, passes, walks, deaths and ghosts, giving up, leaving, the end and what it pays each character, kept once in PostgreSQL with the level its experience reaches in a table of levels, result cards that pay gold or experience once for each character that picks, and items and ghosts, a mission's as the clients decide them and between teams the boxes on the field, the server's own boxes and the items of ghosts' catches and bonuses decided on the server from the client's drop table kept locally, each passed on to the clients that act on it, the reference sessions replayed through the codecs and played against real connections, architecture rules |
 | Admin server | Contract-first API, Keycloak token validation, role-to-permission mapping, read-only account data, problem-details errors |
 | Local stack | docker-compose with PostgreSQL 18, Flyway, Keycloak and both servers; secrets as files; operator script with no committed credentials |
 | CI | `game-server`, `admin-server` and `stack` workflows; the stack job signs operators in, takes an adjustment through four-eyes approval and checks the audit trail it left |
@@ -61,7 +61,7 @@ What a reviewer should be able to see and run, end to end.
 | Decisions and security | Ten decision records in `docs/adr`; a threat model with each threat's control, test and status; a case study of how correctness is checked; a test that two concurrent decisions leave exactly one |
 | Security scanning | `security` workflow: both images built, scanned with Trivy on every change and weekly, failing on fixable HIGH or CRITICAL findings, with a CycloneDX SBOM kept per image; Dockerfile checks; Dependabot for Maven, NuGet, base images, compose images and actions; every action pinned to a commit hash |
 
-Tests today: game server 1100, of which 21 need the reference sessions and skip without them, and 49 need PostgreSQL, which CI always gives them; admin server 61 unit tests and 25 integration tests.
+Tests today: game server 1126, of which 21 need the reference sessions and skip without them, and 54 need PostgreSQL, which CI always gives them; admin server 61 unit tests and 25 integration tests.
 
 ## Next
 
@@ -80,15 +80,15 @@ In order. Each item is one pull request unless noted.
    team in the modes with captains, a mission's enemies taking a turn of their own
    after every shot, and its items and ghosts, a mission's as the clients decide them
    and, between teams, the item boxes on the field and the items of ghosts' catches
-   and bonuses decided on the server, and what a match pays each character, kept
-   once, are done and served by real sessions. Next, one pull request each: the
-   result cards that pay, gold or experience, once per match and character; the
-   scoreboard's kills, damage, support and hit rate, read from the shots, with the
-   medals they earn and a match between teams paid by them; a mission lost once a
-   level runs out of turns; and the rest of the item rules between teams, decided
-   on the server (the items each character holds and uses, the team gauge of the
-   modes without items, and the damage poison does, which needs each character's
-   health).
+   and bonuses decided on the server, what a match pays each character, and its
+   result cards paying gold or experience once for each character that picks,
+   are done and served by real sessions. Next, one pull request each: the
+   scoreboard's kills, damage, support and hit rate, read from the shots, with
+   the medals they earn and a match between teams paid by them; a mission lost
+   once a level runs out of turns; and the rest of the item rules between teams,
+   decided on the server (the items each character holds and uses, the team
+   gauge of the modes without items, and the damage poison does, which needs
+   each character's health).
 2. **CodeQL.** Static analysis of the Java and C# code, reported through GitHub
    code scanning.
 3. **Operator portal.** Pages served by the admin server: account lookup, requesting

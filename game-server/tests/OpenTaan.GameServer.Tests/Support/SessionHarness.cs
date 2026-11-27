@@ -103,6 +103,12 @@ internal static class SessionHarness
         MissionExperience = new Dictionary<ushort, IReadOnlyList<uint>> { [0] = [40, 50, 60] },
         MissionLostShare = 0.25,
         MissionGoldPerExperience = 1.5,
+        CardGoldWeight = 60,
+        CardExperienceWeight = 30,
+        CardMinimumPercent = 40,
+        CardMaximumPercent = 120,
+        CardGoldFloor = 50,
+        CardExperienceFloor = 20,
         PayoutAttempts = 3,
         PayoutRetryDelay = TimeSpan.FromSeconds(2),
     };

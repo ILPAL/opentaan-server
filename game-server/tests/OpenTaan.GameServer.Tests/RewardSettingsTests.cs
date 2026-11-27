@@ -21,6 +21,9 @@ public sealed class RewardSettingsTests
         Assert.Equal([(ushort)0], shipped.MissionExperience.Keys);
         Assert.Equal([40u, 50u, 60u], shipped.MissionExperience[0]);
         Assert.Equal((0.25, 1.5), (shipped.MissionLostShare, shipped.MissionGoldPerExperience));
+        Assert.Equal((60, 30, 40u, 120u, 50u, 20u),
+            (shipped.CardGoldWeight, shipped.CardExperienceWeight, shipped.CardMinimumPercent,
+                shipped.CardMaximumPercent, shipped.CardGoldFloor, shipped.CardExperienceFloor));
         Assert.Equal((3, TimeSpan.FromSeconds(2)), (shipped.PayoutAttempts, shipped.PayoutRetryDelay));
         Assert.Null(shipped.Problem(SessionHarness.ShippedRoomOptions().Missions.Keys));
 
@@ -29,6 +32,11 @@ public sealed class RewardSettingsTests
             (shipped.TeamMatchExperience, shipped.TeamMatchGold, shipped.WinMultiplier, shipped.MissionLostShare, shipped.MissionGoldPerExperience),
             (harness.TeamMatchExperience, harness.TeamMatchGold, harness.WinMultiplier, harness.MissionLostShare, harness.MissionGoldPerExperience));
         Assert.Equal(shipped.MissionExperience[0], harness.MissionExperience[0]);
+        Assert.Equal(
+            (shipped.CardGoldWeight, shipped.CardExperienceWeight, shipped.CardMinimumPercent,
+                shipped.CardMaximumPercent, shipped.CardGoldFloor, shipped.CardExperienceFloor),
+            (harness.CardGoldWeight, harness.CardExperienceWeight, harness.CardMinimumPercent,
+                harness.CardMaximumPercent, harness.CardGoldFloor, harness.CardExperienceFloor));
         Assert.Equal((shipped.PayoutAttempts, shipped.PayoutRetryDelay), (harness.PayoutAttempts, harness.PayoutRetryDelay));
     }
 
@@ -94,6 +102,10 @@ public sealed class RewardSettingsTests
     [InlineData("negative gold per experience", "MissionGoldPerExperience must be a number from 0 up")]
     [InlineData("no try at a payment", "PayoutAttempts must be at least 1")]
     [InlineData("a negative wait between tries", "PayoutRetryDelay cannot be negative")]
+    [InlineData("no card chance", "CardGoldWeight and CardExperienceWeight must be nonnegative")]
+    [InlineData("negative card chance", "CardGoldWeight and CardExperienceWeight must be nonnegative")]
+    [InlineData("reversed card range", "CardMinimumPercent must be no greater than CardMaximumPercent")]
+    [InlineData("zero card floor", "CardGoldFloor and CardExperienceFloor must both be positive")]
     public void RewardsTheServerCannotPayWithAreRefusedNamingWhatIsWrong(string settings, string named)
     {
         var rewards = SessionHarness.ShippedRewardOptions();
@@ -121,9 +133,24 @@ public sealed class RewardSettingsTests
             case "no try at a payment":
                 rewards.PayoutAttempts = 0;
                 break;
-            default:
+            case "a negative wait between tries":
                 rewards.PayoutRetryDelay = TimeSpan.FromSeconds(-1);
                 break;
+            case "no card chance":
+                rewards.CardGoldWeight = 0;
+                rewards.CardExperienceWeight = 0;
+                break;
+            case "negative card chance":
+                rewards.CardGoldWeight = -1;
+                break;
+            case "reversed card range":
+                rewards.CardMinimumPercent = 121;
+                break;
+            case "zero card floor":
+                rewards.CardGoldFloor = 0;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(settings));
         }
 
         var rooms = SessionHarness.ShippedRoomOptions();

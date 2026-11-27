@@ -30,6 +30,14 @@ public sealed partial class RoomDirectory
     private const string NotInMatch = "it is in no match being played";
     private const string NotInMission = "its match is no mission";
     private const string NotOnResultScreen = "it is in no match whose result is shown";
+    private readonly Dictionary<Match, CardRound> _cardRounds = [];
+
+    private sealed class CardRound(MatchRecord record, Task<bool> matchPayment)
+    {
+        public MatchRecord Record { get; } = record;
+        public Task<bool> MatchPayment { get; } = matchPayment;
+        public HashSet<byte> Revealed { get; } = [];
+    }
 
     /// <summary>
     /// Starts the match of the host's room, and tells everyone in it and the lobby: every
@@ -299,30 +307,37 @@ public sealed partial class RoomDirectory
     /// </param>
     /// <param name="card">The card picked, or null for the client's automatic pick, which takes one of those left.</param>
     /// <returns>Null once picked; otherwise why the pick was refused or dropped, for the log.</returns>
-    public string? PickCard(ClientSession session, byte slot, byte? card)
+    public async ValueTask<string?> PickCardAsync(ClientSession session, byte slot, byte? card)
     {
         ArgumentNullException.ThrowIfNull(session);
 
+        Room room;
+        Match match;
+        CardRound round;
+        byte own;
+        byte picked;
+        MatchCardOffer offer;
         lock (_lock)
         {
-            if (!_roomOf.TryGetValue(session, out var room) || room.Match is not { IsOver: true } match)
+            if (!_roomOf.TryGetValue(session, out room!) || room.Match is not { IsOver: true } current
+                || !_cardRounds.TryGetValue(current, out round!))
             {
                 return NotOnResultScreen;
             }
 
+            match = current;
             var slots = room.SlotsOf(session);
-            var own = slots.Contains(slot) ? slot : slots[0];
-            var (outcome, picked) = match.Cards.Pick(own, card, random);
-            switch (outcome)
+            own = slots.Contains(slot) ? slot : slots[0];
+            var outcome = match.Cards.Pick(own, card, random);
+            picked = outcome.Card;
+            switch (outcome.Outcome)
             {
                 case CardOutcome.Picked:
-                    SendToRoomLocked(room, new PrResultSelectCard(picked, own));
-                    if (room.TakenSlots().All(match.Cards.HasPicked))
-                    {
-                        BackToWaitingLocked(room);
-                    }
-
-                    return null;
+                    var character = room.CharacterAt(own)
+                        ?? throw new InvalidOperationException($"A result card was picked for empty slot {own}.");
+                    offer = round.Record.Cards.SingleOrDefault(candidate => candidate.CharacterId == character.CharacterId)
+                        ?? throw new InvalidOperationException($"Character {character.CharacterId} has no result card offer.");
+                    break;
 
                 case CardOutcome.Taken:
                     // Only a pick the player made itself is refused: the client waits on it.
@@ -334,6 +349,70 @@ public sealed partial class RoomDirectory
 
                 default:
                     return $"card {picked} is not one a player may pick";
+            }
+        }
+
+        // The room lock is free while the card waits for the base match and its own
+        // transaction. Its reservation prevents a second pick of either the slot or card.
+        var paid = await payouts.PayCard(match.Id, offer, picked, round.MatchPayment,
+            progress => CardPaid(room, match, round, session, own, picked, offer, progress)).ConfigureAwait(false);
+        if (paid)
+        {
+            return null;
+        }
+
+        lock (_lock)
+        {
+            if (room.Match == match)
+            {
+                match.Cards.Release(own, picked);
+            }
+        }
+
+        return $"card {picked} for character {offer.CharacterId} could not be paid";
+    }
+
+    private void CardPaid(
+        Room room,
+        Match match,
+        CardRound round,
+        ClientSession player,
+        byte slot,
+        byte card,
+        MatchCardOffer offer,
+        CharacterProgress progress)
+    {
+        lock (_lock)
+        {
+            if (room.Match == match && room.SlotOf(offer.CharacterId) == slot)
+            {
+                SendToRoomLocked(room, new PrResultSelectCard(card, slot));
+                round.Revealed.Add(slot);
+                if (room.TakenSlots().All(round.Revealed.Contains))
+                {
+                    BackToWaitingLocked(room);
+                }
+            }
+
+            var accountSlot = player.SelectedCharacterIds.ToList().IndexOf(offer.CharacterId);
+            if (accountSlot < 0)
+            {
+                return;
+            }
+
+            if (_roomOf.TryGetValue(player, out var currentRoom) && currentRoom.SlotOf(offer.CharacterId) is { } currentSlot)
+            {
+                currentRoom.Refresh(currentRoom.CharacterAt(currentSlot)!.WithProgress(progress));
+            }
+
+            if (offer.Kind == CardRewardKind.Experience)
+            {
+                var bar = LevelTable.BarAt(progress.Level)!.Value;
+                player.Send(new PcUpdateExp((byte)accountSlot, progress.Level, progress.Experience, bar.Floor, bar.Ceiling));
+            }
+            else
+            {
+                player.Send(PcUpdateMoney.GoldOf((byte)accountSlot, progress.Gold));
             }
         }
     }
@@ -470,7 +549,9 @@ public sealed partial class RoomDirectory
         match.Arm(time.CreateTimer(_ => ResultWaitElapsed(room, match), null, matchOptions.Value.ResultWait, Timeout.InfiniteTimeSpan));
         room.ClearReady();
         var payments = PaymentsOf(room, match, winningTeam);
-        SendToRoomLocked(room, MatchRules.RewardsOf(room.CharacterIds()));
+        var characters = room.CharacterIds();
+        var cards = CardRewards.Roll(characters, payments, rewards.Value, random);
+        SendToRoomLocked(room, CardRewards.PacketOf(characters, cards));
         SendToRoomLocked(room, new PcGameSessionEndGame(ResultOf(room, winningTeam, payments), EndGameMode: 0));
 
         var record = new MatchRecord(
@@ -482,9 +563,13 @@ public sealed partial class RoomDirectory
             winningTeam,
             match.Started,
             time.GetUtcNow(),
-            payments);
+            payments)
+        {
+            Cards = cards,
+        };
         var players = match.Characters().DistinctBy(started => started.CharacterId).ToDictionary(started => started.CharacterId, started => started.Player);
-        payouts.Pay(record, kept => Paid(record, players, kept));
+        var payment = payouts.Pay(record, kept => Paid(record, players, kept));
+        _cardRounds.Add(match, new CardRound(record, payment));
         LogMatchEnded(
             logger,
             room.Number,
@@ -571,6 +656,11 @@ public sealed partial class RoomDirectory
 
     private void BackToWaitingLocked(Room room)
     {
+        if (room.Match is { } match)
+        {
+            _cardRounds.Remove(match);
+        }
+
         room.EndMatch();
         lobbies.Tell(room.ChannelId, new PcLobbyUpdateRoomList([room.Listing()]));
         LogWaitingAgain(logger, room.Number);

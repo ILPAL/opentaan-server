@@ -12,7 +12,7 @@
 | `tests/OpenTaan.Transport.Tests` | Framing, the packet cipher, the seed schedule and handshake keys, including hostile input. |
 | `tests/OpenTaan.Protocol.Tests` | Each codec's bytes, built from invented values, and hostile bodies: forged counts, broken text, leftover bytes. |
 | `tests/OpenTaan.GameServer.Tests` | Sessions on real loopback sockets: the login flows, and every way a connection is refused or closed. |
-| `tests/OpenTaan.GameServer.Storage.Tests` | The stores on a real PostgreSQL 18 with the real migrations: one contract that the in-memory and the PostgreSQL stores both pass, what a match pays kept once however many keep it at once among them, what only the database refuses, and the check of the schema at startup. Skips with no PostgreSQL to use, except in CI. |
+| `tests/OpenTaan.GameServer.Storage.Tests` | The stores on a real PostgreSQL 18 with the real migrations: one contract that the in-memory and the PostgreSQL stores both pass, what a match and its picked cards pay kept once however many keep them at once, what only the database refuses, and the check of the schema at startup. Skips with no PostgreSQL to use, except in CI. |
 | `tests/OpenTaan.Conformance.Tests` | The reference sessions and the declared layouts, and the sessions played against real connections. Skips when the contract is absent. |
 | `tests/OpenTaan.Architecture.Tests` | Dependency rules between projects, enforced as tests. |
 
@@ -537,15 +537,29 @@ A mission's enemies never attack, but take a turn of their own after every shot.
   its own. A character's level is the one its experience reaches in the table of
   levels (`LevelTable`): 109 of them, the first taking 300 and each more than the
   last, 17,519,999 in all to reach the last. The client has no such table: it draws
-  the bar from what it is told. The cards still give nothing; paying them is the next
-  step.
-- **The cards:** each character turns over one card of the first eight, which then
-  belongs to no one else; everyone sees each one turned. A card the player picked
-  that another took first is refused to that player alone, who may pick again; a
-  card picked for a player whose time ran out is one of those left. The room waits
-  for players again once every character in it has its card, or
-  `Matches:ResultWait` after the end, by when every client has left its result
-  screen by itself.
+  the bar from what it is told. The card chosen after the result pays separately.
+- **The cards:** before the result, each character still in the room is offered
+  either gold or experience, drawn from its own match pay. Gold and experience
+  have weights `Rewards:CardGoldWeight` and `Rewards:CardExperienceWeight`; each
+  amount is drawn evenly between `Rewards:CardMinimumPercent` and
+  `Rewards:CardMaximumPercent` of that pay, with a floor for its kind. A
+  character whose match paid nothing can still draw the floor. Eight non-null
+  rewards are sent, one per room slot; an empty slot has a zero-gold card.
+  Each character turns over one card of the first eight, which then belongs to
+  no one else. The picked position only decides which card opens: the reward
+  belongs to the character named in it. A card another character took first is
+  refused to the picker alone, who may try again; a client's timed pick takes one
+  of the cards left. A player who leaves before picking gets no card pay; one who
+  gave up but stayed in the room may still pick. The room waits for players again
+  once every character in it has its card, or `Matches:ResultWait` after the end.
+- **Keeping a card's pay:** the offers are kept with the match. A successful
+  pick records its card and adds its gold or experience in one transaction,
+  after the match's own payment is kept, so trying the pick again pays nothing
+  twice. The card is revealed after that transaction, away from the rooms'
+  lock; the picker is then told the absolute balance in its account slot.
+  Experience can raise its level and stops at the last level, as match
+  experience does. A card changes neither wins nor losses. If a player leaves
+  after a successful pick, the card stays paid.
 
 A match lives under the rooms' lock, so a level begun, a shot, a death, a player
 leaving and the end happen in one order for everyone. Its waits run as timers on
@@ -743,6 +757,9 @@ dotnet run --project src/OpenTaan.GameServer -- --GameServer:Port=2181 --PlayTim
 | `Rewards:MissionExperience` | `0`: `40`, `50`, `60` | For each mission `Rooms:Missions` lists, and only those, the experience clearing it pays at each difficulty, easiest first, one for each. The server refuses to start otherwise. |
 | `Rewards:MissionLostShare` | `0.25` | The share of a clear's experience a lost mission pays, from 0 to 1. |
 | `Rewards:MissionGoldPerExperience` | `1.5` | The gold a mission pays for each unit of experience it pays. From 0 up. |
-| `Rewards:PayoutAttempts`, `Rewards:PayoutRetryDelay` | `3`, `00:00:02` | How many times the server tries to keep what a match paid, and how long it waits between tries, before it gives up and logs the payment as lost. |
+| `Rewards:CardGoldWeight`, `Rewards:CardExperienceWeight` | `60`, `30` | The relative chances of a gold or experience result card; both together must be above 0. Item and quest cards are not offered yet. |
+| `Rewards:CardMinimumPercent`, `Rewards:CardMaximumPercent` | `40`, `120` | The inclusive range, as percentages of the character's own match pay, from which a card's amount is drawn. Fractions are dropped before the draw. |
+| `Rewards:CardGoldFloor`, `Rewards:CardExperienceFloor` | `50`, `20` | The least gold or experience a card offers, even when the match itself paid nothing. |
+| `Rewards:PayoutAttempts`, `Rewards:PayoutRetryDelay` | `3`, `00:00:02` | How many times the server tries to keep a match payment or a picked card, and how long it waits between tries, before it gives up and logs the payment as lost. |
 | `Portraits:Folder` | none | Where the pictures clients send of their characters are kept. A relative path is taken from the content root. |
 | `Characters:CreatorParts` | `1, 3, 5, 8` | The appearance parts the client's character creator offers; a new character keeps only these. |

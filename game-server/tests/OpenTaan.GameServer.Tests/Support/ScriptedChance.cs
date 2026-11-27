@@ -21,7 +21,8 @@ internal sealed class ScriptedChance(uint seed) : Random
     /// <summary>How many things each draw so far was among, in order.</summary>
     public List<int> DrawnAmong { get; } = [];
 
-    public override long NextInt64(long minValue, long maxValue) => Seed;
+    public override long NextInt64(long minValue, long maxValue) =>
+        minValue == 0 && maxValue == 1L << 32 ? Seed : minValue;
 
     public override int Next(int maxValue)
     {

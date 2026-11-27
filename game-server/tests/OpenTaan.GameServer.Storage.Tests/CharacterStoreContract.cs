@@ -318,6 +318,106 @@ public abstract class CharacterStoreContract
         Assert.Equal(new CharacterProgress(1, 60, 180, 1, 0), kept[kimi]);
     }
 
+    [Fact]
+    public async Task CardsPayTheCharacterTheyNameOnceWithoutCountingAnotherMatch()
+    {
+        var store = await NewStoreAsync();
+        var (kimi, rong) = await TwoCharactersAsync(store);
+        var match = MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: true, 60, 180), Paid(rong, 2, won: false, 40, 120)) with
+        {
+            Cards =
+            [
+                new MatchCardOffer(kimi, 0, CardRewardKind.Experience, 72),
+                new MatchCardOffer(rong, 2, CardRewardKind.Gold, 50),
+            ],
+        };
+        await store.KeepMatchAsync(match, Cancel);
+
+        Assert.Equal(new CharacterProgress(1, 132, 180, 1, 0), await store.KeepCardAsync(match.MatchId, kimi, 5, Cancel));
+        Assert.Equal(new CharacterProgress(1, 40, 170, 0, 1), await store.KeepCardAsync(match.MatchId, rong, 2, Cancel));
+
+        var reopened = await ReopenAsync(store);
+        Assert.Equal(new CharacterProgress(1, 132, 180, 1, 0), CharacterProgress.Of(Assert.Single(await reopened.FindByAccountAsync(1001, Cancel)).Info));
+        Assert.Equal(new CharacterProgress(1, 40, 170, 0, 1), CharacterProgress.Of(Assert.Single(await reopened.FindByAccountAsync(1002, Cancel)).Info));
+        Assert.Equal(new CharacterProgress(1, 132, 180, 1, 0), await reopened.KeepCardAsync(match.MatchId, kimi, 5, Cancel));
+        Assert.Equal(new CharacterProgress(1, 40, 170, 0, 1), await reopened.KeepCardAsync(match.MatchId, rong, 2, Cancel));
+    }
+
+    [Fact]
+    public async Task ACardCannotBePaidBeforeItsMatchOrTakenFromAnotherCharacter()
+    {
+        var store = await NewStoreAsync();
+        var (kimi, rong) = await TwoCharactersAsync(store);
+        var match = MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: true, 60, 180), Paid(rong, 2, won: false, 40, 120)) with
+        {
+            Cards =
+            [
+                new MatchCardOffer(kimi, 0, CardRewardKind.Gold, 72),
+                new MatchCardOffer(rong, 2, CardRewardKind.Experience, 20),
+            ],
+        };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await store.KeepCardAsync(match.MatchId, kimi, 4, Cancel));
+        await store.KeepMatchAsync(match, Cancel);
+        Assert.Equal(new CharacterProgress(1, 60, 252, 1, 0), await store.KeepCardAsync(match.MatchId, kimi, 4, Cancel));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await store.KeepCardAsync(match.MatchId, rong, 4, Cancel));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await store.KeepCardAsync(match.MatchId, kimi, 6, Cancel));
+        Assert.Equal(new CharacterProgress(1, 60, 252, 1, 0), CharacterProgress.Of(Assert.Single(await store.FindByAccountAsync(1001, Cancel)).Info));
+        Assert.Equal(new CharacterProgress(1, 40, 120, 0, 1), CharacterProgress.Of(Assert.Single(await store.FindByAccountAsync(1002, Cancel)).Info));
+    }
+
+    [Fact]
+    public async Task OfManySimultaneousKeepingsOfOneCardOnlyOneAmountIsAdded()
+    {
+        var store = await NewStoreAsync();
+        var (kimi, _) = await TwoCharactersAsync(store);
+        var match = MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: true, 60, 180)) with
+        {
+            Cards = [new MatchCardOffer(kimi, 0, CardRewardKind.Gold, 50)],
+        };
+        await store.KeepMatchAsync(match, Cancel);
+
+        var told = await Race(async _ => await store.KeepCardAsync(match.MatchId, kimi, 3, Cancel));
+
+        Assert.All(told, progress => Assert.Equal(new CharacterProgress(1, 60, 230, 1, 0), progress));
+        Assert.Equal(new CharacterProgress(1, 60, 230, 1, 0), CharacterProgress.Of(Assert.Single(await (await ReopenAsync(store)).FindByAccountAsync(1001, Cancel)).Info));
+    }
+
+    [Fact]
+    public async Task ACardForADeletedCharacterStaysUnpaid()
+    {
+        var store = await NewStoreAsync();
+        var (kimi, _) = await TwoCharactersAsync(store);
+        var match = MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: true, 60, 180)) with
+        {
+            Cards = [new MatchCardOffer(kimi, 0, CardRewardKind.Experience, 72)],
+        };
+        await store.KeepMatchAsync(match, Cancel);
+        Assert.True(await store.DeleteAsync(1001, kimi, Cancel));
+
+        Assert.Null(await store.KeepCardAsync(match.MatchId, kimi, 3, Cancel));
+        Assert.Null(await (await ReopenAsync(store)).KeepCardAsync(match.MatchId, kimi, 3, Cancel));
+    }
+
+    [Fact]
+    public async Task CardExperienceStopsAtTheLevelTablesLastValue()
+    {
+        var store = await NewStoreAsync();
+        var (kimi, _) = await TwoCharactersAsync(store);
+        var match = MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: true, LevelTable.MostExperience - 10, 0)) with
+        {
+            Cards = [new MatchCardOffer(kimi, 0, CardRewardKind.Experience, 360)],
+        };
+        await store.KeepMatchAsync(match, Cancel);
+
+        var progress = await store.KeepCardAsync(match.MatchId, kimi, 7, Cancel);
+
+        Assert.Equal(LevelTable.MostExperience, progress?.Experience);
+        Assert.Equal(LevelTable.LastLevel, progress?.Level);
+        Assert.Equal(1u, progress?.Wins);
+        Assert.Equal(0u, progress?.Losses);
+    }
+
     /// <summary>Accounts 1001 and 1002, each with a character as creation builds one, Kimi and Rồng; returns their ids.</summary>
     protected async Task<(uint Kimi, uint Rong)> TwoCharactersAsync(ICharacterStore store)
     {

@@ -44,4 +44,8 @@ public sealed record MatchRecord(
     byte WinningTeam,
     DateTimeOffset Started,
     DateTimeOffset Ended,
-    IReadOnlyList<MatchPayment> Payments);
+    IReadOnlyList<MatchPayment> Payments)
+{
+    /// <summary>The offers shown on the result screen, kept with the base match payment.</summary>
+    public IReadOnlyList<MatchCardOffer> Cards { get; init; } = [];
+}

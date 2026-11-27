@@ -599,6 +599,11 @@ public sealed partial class RoomDirectory(
 
         if (room.IsEmpty)
         {
+            if (room.Match is { } match)
+            {
+                _cardRounds.Remove(match);
+            }
+
             room.EndMatch();
             _rooms.Remove(room.Number);
             lobbies.Tell(room.ChannelId, new PcLobbyUpdateRoomList([GameSessionInfoPack.Removal(room.Number)]));
