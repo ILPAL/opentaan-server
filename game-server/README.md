@@ -316,7 +316,7 @@ chosen in the room before the match:
   characters when it leaves; the host leaving keeps everyone else's.
 - **In the match:** the client sets the captains only at the start. A team whose
   captain's player leaves plays on without one, and a dead captain is given no turn.
-  Item gifts are passed on as the clients send them, like every item, for now.
+  Item gifts are passed on as the clients send them, for now.
 
 Item boxes drop in every mode. With items, a box caught, or a bonus at the end of a
 turn, gives the character an item. Without them, it fills the character's team
@@ -418,25 +418,52 @@ Missions whose enemies fight back come next.
   reported it standing: once loaded, walking, placed or passing. A turn whose character is out
   of the match passes on at once, but during a shot nothing is decided until every
   client has played it back, since the shot may kill more.
-- **Items:** the clients decide every item, for now. The start of every turn tells
-  them how many item boxes the turn's shot may drop, `Matches:ItemBoxesPerTurn`, in
-  every mode, and how good the items are, `Matches:ItemDropQuality`; the shooter's client places the
-  boxes along its missiles' paths, and the client that catches one, or whose
-  character is given a bonus at the end of its turn, draws the item. In a match
-  without items (`NoItems` or `CaptainNoItems`, modes 1 and 3), the catch or the
-  bonus fills the team's gauge instead, and carries the gauge's change. A box a missile
-  catches is a step of its shot; a box a ghost catches is sent on its own. A client
-  acts on an item used, the items a shot spent, an item thrown away or taken off, a
-  box its ghost caught and a bonus only when the server's copy comes back, and gives
-  no item of its own accord, so each goes to everyone in the match, its sender
-  included, as it came. Where an item went goes back to its sender alone, as in the
-  recorded sessions. A player may also give its items to the teammate whose turn it
-  is: a ghost to whoever has its team's turn, and in the modes with captains a living
-  character to its captain on the captain's turn. A gift names the giver's own slot.
-  Each is passed on only for one of the sender's own characters,
-  the only ones the client sends them for, whoever has the turn and during a shot
-  too, since a step of a shot can have a client use an item as it plays the shot
-  back. Deciding items on the server comes later, as its own step.
+- **Items:** the start of every turn tells the clients how many item boxes the
+  turn's shot may drop, `Matches:ItemBoxesPerTurn`, in every mode, and how good the
+  items they draw are, `Matches:ItemDropQuality`; the shooter's client places the
+  boxes along its missiles' paths. In a match without items (`NoItems` or
+  `CaptainNoItems`, modes 1 and 3), a box caught or a bonus fills the team's gauge
+  instead, names no item, and carries the gauge's change. A box a missile catches is
+  a step of its shot, whose item the shooter's client draws as it works the shot out;
+  a box a ghost catches is sent on its own. A client acts on an item used, the items
+  a shot spent, an item thrown away or taken off, a box its ghost caught and a bonus
+  only when the server's copy comes back, and gives no item of its own accord, so
+  each goes to everyone in the match, its sender included. Where an item went goes
+  back to its sender alone, as in the recorded sessions. A player may also give its
+  items to the teammate whose turn it is: a ghost to whoever has its team's turn, and
+  in the modes with captains a living character to its captain on the captain's
+  turn. A gift names the giver's own slot. Each is passed on only for one of the
+  sender's own characters, the only ones the client sends them for, whoever has the
+  turn and during a shot too, since a step of a shot can have a client use an item
+  as it plays the shot back.
+  - In a mission, the clients decide every item, and each is passed on as it came.
+  - Between teams, the server decides what it can. Before every start of a turn it
+    places `Matches:PlacedItemBoxesPerTurn` boxes of its own, in a shot sent for no
+    character's slot: a client lets no item be used after any shot until the next
+    start of a turn, so the start comes right after it. Each box goes at a random
+    spot of the strip from the leftmost character in play to the rightmost,
+    `Matches:ItemBoxLowest` to `Matches:ItemBoxHighest` above the character nearest
+    to it, and never nearer another box than 70, twice the reach a character catches
+    a box from. A strip too narrow for the boxes side by side is widened about its
+    middle, and where no spot is left, fewer boxes are placed. Every client reports
+    the server's shot played back, and those reports change nothing.
+  - The server keeps every box on the field until a catch of it: its own, and those
+    a shooter's shot drops, as many as the start of its turn let it. At most
+    `Matches:MostItemBoxes` are on the field at once; once it is full, the server
+    places none and the start of a turn lets the shot drop none, until boxes are
+    caught.
+  - A box a ghost catches counts only from the ghost's own client, for a box on the
+    field, once; a bonus counts once for each shot, for its shooter, in a room whose
+    chances give one, until the shooter's next turn starts. Anything else is dropped,
+    and no screen gives it. The server draws the item of each, every item of the
+    client's drop table as likely as another (`Matches:ItemDropsFile`; see
+    [Run](#run)). A catch or a bonus that names no item, as in a mode without items,
+    keeps its client's none.
+  - A box a missile catches is the shooter's client's to draw, since it has played
+    the shot before the server sees it: the server takes the box off the field, and a
+    catch of a box not on it, or of an item no box gives, is only logged, the shot
+    going on as it came. Checking what each character holds and uses comes next, as
+    its own step.
 - **Ghosts:** the player of a dead character may send its ghost somewhere, which goes
   to everyone in the match, its sender included. The start of every turn after that
   moves the ghost from where its client last reported it to where it was sent, until
@@ -540,7 +567,10 @@ Development it uses the database `opentaan` on `127.0.0.1:5432` as the user
 - a PostgreSQL 18 server on `127.0.0.1:5432`, such as [Postgres.app](https://postgresapp.com)
   on macOS, whose command-line tools are in
   `/Applications/Postgres.app/Contents/Versions/latest/bin` (add that folder to `PATH`);
-- Flyway, the command-line tool that applies the migrations (`brew install flyway` on macOS).
+- Flyway, the command-line tool that applies the migrations (`brew install flyway` on macOS);
+- the item drop table from your own game client, as `client-data/item-drops.json` at the
+  repository root, which never goes into git: see [`client-data/README.md`](../client-data/README.md).
+  The server does not start without it.
 
 Run the commands below from this folder (`game-server/`). Once on each machine,
 create the user and the database, as a PostgreSQL superuser (on Postgres.app, your
@@ -577,7 +607,8 @@ dotnet user-secrets set db_password '<the password>' --project src/OpenTaan.Game
 A server that stops at startup with `role "opentaan" does not exist` or
 `database "opentaan" does not exist` is missing the user and the database; one
 that says the database has no schema, or is at an older migration, is missing
-the Flyway step. With all of that in place, start it:
+the Flyway step; one that says `Matches:ItemDropsFile names client-data/item-drops.json,
+which is not in ...` is missing the item drop table. With all of that in place, start it:
 
 ```sh
 dotnet run --project src/OpenTaan.GameServer
@@ -649,7 +680,11 @@ dotnet run --project src/OpenTaan.GameServer -- --GameServer:Port=2181 --PlayTim
 | `Matches:ShotWait` | `00:00:05` | How long a shot waits, once the first client has played it back, for every other client to finish it. |
 | `Matches:LongestShot` | `00:01:00` | How long a shot may wait in all, from its arrival, in case no client reports it played back. |
 | `Matches:ResultWait` | `00:00:25` | How long after a match's end its room waits for every player's result card before it waits for players again. |
-| `Matches:ItemBoxesPerTurn` | `1` | How many item boxes each turn's shot may drop, as the start of the turn tells every client; the shooter's client places them. The same in every mode: without items, a box caught fills the team's gauge. `0` lets none drop. |
-| `Matches:ItemDropQuality` | `20` | How good the items the clients draw are, from `0` to `100`, as the start of every turn tells them: higher makes the rarer items likelier. Above `100` the server refuses to start, since the client would hold it to `100`. |
+| `Matches:ItemBoxesPerTurn` | `1` | How many item boxes each turn's shot may drop, as the start of the turn tells every client; the shooter's client places them. The same in every mode: without items, a box caught fills the team's gauge. `0` lets none drop. Between teams, the start of a turn lets fewer drop once the field is nearly full: see `Matches:MostItemBoxes`. |
+| `Matches:PlacedItemBoxesPerTurn` | `3` | How many item boxes the server places before every start of a turn in a match between teams, as many as the field has room for. `0` places none. |
+| `Matches:MostItemBoxes` | `28` | How many item boxes, the server's and the shooters', may be on the field of a match between teams at once. Once it is full, no more are placed or dropped until boxes are caught. |
+| `Matches:ItemBoxLowest`, `Matches:ItemBoxHighest` | `100`, `300` | How high above the character nearest to it the server places an item box: a height drawn from this range. Heights from 0 to 1000, the lowest first, or the server refuses to start. |
+| `Matches:ItemDropsFile` | `client-data/item-drops.json` | The JSON file of the client's item drop table, which every box a ghost catches and every bonus in a match between teams gives its item from, each item as likely as another. A relative path is looked for from the server's folder up. The server does not start without it; see [`client-data/README.md`](../client-data/README.md). |
+| `Matches:ItemDropQuality` | `20` | How good the items the clients draw are, from `0` to `100`, as the start of every turn tells them: higher makes the rarer items likelier. Above `100` the server refuses to start, since the client would hold it to `100`. The server's own draws, between teams, take every item as likely as another, whatever the quality. |
 | `Portraits:Folder` | none | Where the pictures clients send of their characters are kept. A relative path is taken from the content root. |
 | `Characters:CreatorParts` | `1, 3, 5, 8` | The appearance parts the client's character creator offers; a new character keeps only these. |

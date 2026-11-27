@@ -13,7 +13,8 @@
 
   <ItemGroup>
     <!-- Lets the password tests check the hash function against published vectors, and
-         hook the hasher to count and hold its work. -->
+         hook the hasher to count and hold its work; and the item field's tests place
+         boxes on a field of a match's own, without a match. -->
     <InternalsVisibleTo Include="OpenTaan.GameServer.Tests" />
   </ItemGroup>
 

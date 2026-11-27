@@ -2,6 +2,7 @@ using OpenTaan.GameServer.Matches;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol;
 using OpenTaan.Protocol.GamePlay;
+using OpenTaan.Protocol.Rooms;
 
 namespace OpenTaan.GameServer.Rooms;
 
@@ -57,6 +58,11 @@ public sealed partial class RoomDirectory
                 return WhyNotTurn(match, session, shot.FiringSlot);
             }
 
+            if (!match.IsMission)
+            {
+                TrackBoxesLocked(room, match, shot);
+            }
+
             // The wait runs from before anyone else has the shot.
             match.BeginShot(time.GetUtcNow());
             ArmShotWaitLocked(room, match, matchOptions.Value.LongestShot);
@@ -73,6 +79,8 @@ public sealed partial class RoomDirectory
     /// Once the first client has finished, the others are given <see cref="MatchOptions.ShotWait"/>
     /// to finish too: they have played the shot from the moment it reached them. A client
     /// reports every shot twice, and its second report changes nothing, nor is it logged.
+    /// Every report of the server's own shot of item boxes, which names
+    /// <see cref="MatchRules.BoxesShotSlot"/>, changes nothing either: no turn waits for it.
     /// </remarks>
     /// <returns>Null once recorded, or for a client's second report; otherwise why the report changed nothing, for the log.</returns>
     public string? FinishShot(ClientSession session, PcGamePlayEndScenario report)
@@ -88,7 +96,7 @@ public sealed partial class RoomDirectory
             }
 
             var match = room.Match!;
-            if (match.HasFinished(session))
+            if (report.FiringSlot == MatchRules.BoxesShotSlot || match.HasFinished(session))
             {
                 return null;
             }
@@ -145,7 +153,7 @@ public sealed partial class RoomDirectory
 
             match.Moved(pass.SlotIndex, pass.X, pass.Y);
             SendToRoomLocked(room, pass, except: session);
-            NextTurnLocked(room, match, match.NextInPlay(pass.SlotIndex)!.Value);
+            NextTurnLocked(room, match, match.NextInPlay(pass.SlotIndex)!.Value, shot: false);
             return null;
         }
     }
@@ -285,19 +293,94 @@ public sealed partial class RoomDirectory
             return;
         }
 
-        NextTurnLocked(room, match, next);
+        NextTurnLocked(room, match, next, shot: true);
     }
 
     // Ends the turn running and starts the turn of the character in slot next. The wait for
-    // the new turn runs from before anyone hears of it.
-    private void NextTurnLocked(Room room, Match match, byte next)
+    // the new turn runs from before anyone hears of it. A turn that ended with a shot, in a
+    // match between teams whose chances give a bonus, owes its shooter the bonus its client
+    // asks for as it plays the turn's end; the debt is taken on once the new turn is the
+    // next character's, so a shooter that has the next turn too keeps it until that turn ends.
+    private void NextTurnLocked(Room room, Match match, byte next, bool shot)
     {
         var ending = match.TurnSlot!.Value;
         match.HandTurnTo(next);
+        if (shot && !match.IsMission && room.ChanceMode == ChanceMode.Bonus)
+        {
+            match.OweBonus(ending);
+        }
+
         ArmTurnWaitLocked(room, match);
         SendToRoomLocked(room, MatchRules.TurnEndOf(ending));
-        SendToRoomLocked(room, MatchRules.TurnOf(next, match.TurnCount, matchOptions.Value, match.GhostMoves(MatchRules.StartPosition)));
+        SendTurnStartLocked(room, match, next);
         LogTurnPassed(logger, room.Number, ending, next);
+    }
+
+    // Tells everyone in the match that the turn of the character in slot starts. Between
+    // teams, the server first places the turn's item boxes, as many as the field has room
+    // for, in a shot of its own: a client takes any shot as one being played, and lets no
+    // item be used until the next start of a turn, so the boxes' shot goes just before it.
+    // The start then lets the turn's shot drop as many boxes as the field still has room for.
+    private void SendTurnStartLocked(Room room, Match match, byte slot)
+    {
+        var options = matchOptions.Value;
+        var shotBoxes = options.ItemBoxesPerTurn;
+        if (!match.IsMission)
+        {
+            var space = Math.Max(0, options.MostItemBoxes - match.Field.Count);
+            var placed = match.Field.Place(
+                match.InPlayPositions(MatchRules.StartPosition),
+                Math.Min(options.PlacedItemBoxesPerTurn, space),
+                options.ItemBoxLowest,
+                options.ItemBoxHighest,
+                random);
+            if (placed.Count > 0)
+            {
+                SendToRoomLocked(room, MatchRules.BoxesShotOf(slot, placed));
+            }
+
+            shotBoxes = (byte)Math.Min(shotBoxes, Math.Max(0, options.MostItemBoxes - match.Field.Count));
+        }
+
+        match.ShotBoxes = shotBoxes;
+        SendToRoomLocked(room, MatchRules.TurnOf(slot, match.TurnCount, shotBoxes, options, match.GhostMoves(MatchRules.StartPosition)));
+    }
+
+    // Takes note of the boxes the turn's shot catches and drops, in a match between teams.
+    // Every box a missile catches leaves the field. The shooter's client drew the item it
+    // gives and has played the shot already, so a catch of a box that is not on the field, or
+    // of an item no box gives, is passed on with the shot as it came, and only logged. The
+    // first boxes the shot drops, as many as the start of the turn let it, go on the field;
+    // any more are left off it, so no catch of one counts.
+    private void TrackBoxesLocked(Room room, Match match, PcGamePlayScenario shot)
+    {
+        var givesItems = MatchRules.GivesItems(room.GameMode);
+        var dropped = 0;
+        foreach (var step in shot.Scenario.Commands)
+        {
+            if (step is GameScenarioCommandEatItemBox caught)
+            {
+                if (!match.Field.Caught(caught.ItemBoxId))
+                {
+                    LogCaughtOffField(logger, room.Number, shot.FiringSlot, caught.ItemBoxId);
+                }
+                else if (givesItems && caught.PickupItemId != ItemDrops.NoItem && !itemDrops.Gives(caught.PickupItemId))
+                {
+                    LogCaughtItemNoBoxGives(logger, room.Number, shot.FiringSlot, caught.PickupItemId);
+                }
+            }
+            else if (step is GameScenarioCommandMakeItemBox made)
+            {
+                if (dropped >= match.ShotBoxes)
+                {
+                    LogDroppedTooMany(logger, room.Number, shot.FiringSlot, match.ShotBoxes);
+                }
+                else if (match.Field.Dropped(new ItemBox(made.ItemBoxId, made.SpawnX, made.SpawnY)))
+                {
+                    dropped++;
+                }
+            }
+        }
     }
 
     // What a match does once a character is out of it, having given up, left or died. During
@@ -320,7 +403,7 @@ public sealed partial class RoomDirectory
         }
         else if (match.Phase == MatchPhase.Turn && !match.InPlay(match.TurnSlot!.Value))
         {
-            NextTurnLocked(room, match, match.NextInPlay(match.TurnSlot.Value)!.Value);
+            NextTurnLocked(room, match, match.NextInPlay(match.TurnSlot.Value)!.Value, shot: false);
         }
         else if (match.EveryoneReady(MembersOf(room)))
         {
@@ -353,7 +436,7 @@ public sealed partial class RoomDirectory
 
             var slot = match.TurnSlot!.Value;
             LogTurnWaitElapsed(logger, room.Number, slot);
-            NextTurnLocked(room, match, match.NextInPlay(slot)!.Value);
+            NextTurnLocked(room, match, match.NextInPlay(slot)!.Value, shot: false);
         }
     }
 
@@ -386,4 +469,16 @@ public sealed partial class RoomDirectory
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Room {RoomNumber}: the character in slot {Slot} died")]
     private static partial void LogDied(ILogger logger, ushort roomNumber, byte slot);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Room {RoomNumber}: slot {Slot}'s shot catches item box {Box:X16}, which is not on the field; passed on as its client played it")]
+    private static partial void LogCaughtOffField(ILogger logger, ushort roomNumber, byte slot, ulong box);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Room {RoomNumber}: slot {Slot}'s shot catches item {Item}, which no box gives; passed on as its client played it")]
+    private static partial void LogCaughtItemNoBoxGives(ILogger logger, ushort roomNumber, byte slot, ushort item);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Room {RoomNumber}: slot {Slot}'s shot drops more item boxes than the {Allowed} its turn allowed; the others are left off the field")]
+    private static partial void LogDroppedTooMany(ILogger logger, ushort roomNumber, byte slot, byte allowed);
 }

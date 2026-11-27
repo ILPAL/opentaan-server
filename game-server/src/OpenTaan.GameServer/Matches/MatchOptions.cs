@@ -7,7 +7,8 @@ namespace OpenTaan.GameServer.Matches;
 /// <remarks>
 /// The waits are how long the server waits on players before it goes on without them, so
 /// that one client that stops answering cannot hold up everyone else. The item settings are
-/// what the start of every turn tells the clients.
+/// what the start of every turn tells the clients, and, between teams, how the server places
+/// boxes of its own and draws their items.
 /// </remarks>
 public sealed class MatchOptions
 {
@@ -15,6 +16,9 @@ public sealed class MatchOptions
 
     /// <summary>The highest drop quality the client knows: it holds anything higher to this.</summary>
     public const uint MaxDropQuality = 100;
+
+    /// <summary>The greatest height above a character an item box may be placed at: about the height of a whole map.</summary>
+    public const int MaxItemBoxHeight = 1000;
 
     /// <summary>
     /// How long a turn waits for its character to shoot or pass before the server passes it.
@@ -71,16 +75,44 @@ public sealed class MatchOptions
 
     /// <summary>
     /// How many item boxes the shot of each turn may drop, in every game mode. The shooter's
-    /// client places them along its missiles' paths, and the client that catches one draws
-    /// its item, or, in a mode without items, fills its team's gauge; 0 lets no box drop.
+    /// client places them along its missiles' paths; 0 lets no box drop. Between teams, the
+    /// start of a turn allows fewer once the field is nearly full: see <see cref="MostItemBoxes"/>.
     /// </summary>
     public byte ItemBoxesPerTurn { get; set; } = 1;
 
     /// <summary>
     /// How good the items the clients draw are, from 0 to 100: higher makes the rarer
-    /// items likelier. The reference sessions carry 20.
+    /// items likelier. The reference sessions carry 20. The server's own draws, between
+    /// teams, take every item as likely as another, whatever the quality.
     /// </summary>
     public uint ItemDropQuality { get; set; } = 20;
+
+    /// <summary>
+    /// How many item boxes the server places at the start of each turn of a match between
+    /// teams, in a shot of its own, as many as the field has room for; 0 places none.
+    /// </summary>
+    public byte PlacedItemBoxesPerTurn { get; set; } = 3;
+
+    /// <summary>
+    /// How many item boxes may be on the field of a match between teams at once, the
+    /// shooters' and the server's: once it is full, the server places none and the start of
+    /// a turn lets the shot drop none, until boxes are caught.
+    /// </summary>
+    public byte MostItemBoxes { get; set; } = 28;
+
+    /// <summary>The least height above the character nearest to it the server places an item box at.</summary>
+    public int ItemBoxLowest { get; set; } = 100;
+
+    /// <summary>The greatest height above the character nearest to it the server places an item box at.</summary>
+    public int ItemBoxHighest { get; set; } = 300;
+
+    /// <summary>
+    /// The JSON file of the client's item drop table, which every box and bonus of a match
+    /// between teams gives its item from. It is the client's data, kept by whoever runs the
+    /// server and never in the repository; a relative path is looked for from the server's
+    /// folder up. The server refuses to start without it. See <see cref="ItemDrops"/>.
+    /// </summary>
+    public string? ItemDropsFile { get; set; }
 
     /// <summary>What is wrong with the settings, for the message the server refuses to start with; null when nothing is.</summary>
     public string? Problem()
@@ -104,9 +136,14 @@ public sealed class MatchOptions
                 $"{Section}:{nameof(LongestLoad)} must be longer than the client's tour of a full room's characters, {MatchRules.LongestClientTour.TotalSeconds} seconds, or every full match starts before any client has loaded it");
         }
 
-        return ItemDropQuality <= MaxDropQuality
+        if (ItemDropQuality > MaxDropQuality)
+        {
+            return $"{Section}:{nameof(ItemDropQuality)} must be from 0 to {MaxDropQuality}";
+        }
+
+        return ItemBoxLowest >= 0 && ItemBoxLowest <= ItemBoxHighest && ItemBoxHighest <= MaxItemBoxHeight
             ? null
-            : $"{Section}:{nameof(ItemDropQuality)} must be from 0 to {MaxDropQuality}";
+            : $"{Section}:{nameof(ItemBoxLowest)} and {Section}:{nameof(ItemBoxHighest)} must be heights from 0 to {MaxItemBoxHeight}, the lowest first";
     }
 }
 

@@ -97,6 +97,27 @@ builder.Services
     .ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<MatchOptions>, MatchOptionsValidation>();
 
+// The items boxes and bonuses give are the client's data, kept beside the server and never
+// in the repository. Without them no match between teams could give one, so the server
+// does not start, and says why in one line.
+var itemDrops = ItemDrops.Load(
+    builder.Configuration[$"{MatchOptions.Section}:{nameof(MatchOptions.ItemDropsFile)}"],
+    builder.Environment.ContentRootPath,
+    out var itemDropsFound,
+    out var itemDropsProblem);
+if (itemDrops is null)
+{
+    Console.Error.WriteLine(itemDropsProblem);
+    return 1;
+}
+
+builder.Services.AddSingleton(provider =>
+{
+    provider.GetRequiredService<ILogger<ItemDrops>>().LogInformation(
+        "Item boxes and bonuses give {Count} items, from {Path}", itemDrops.Items.Count, itemDropsFound);
+    return itemDrops;
+});
+
 builder.Services
     .AddOptions<PlayTimeOptions>()
     .Bind(builder.Configuration.GetSection(PlayTimeOptions.Section))
@@ -165,3 +186,4 @@ builder.Services.AddSingleton(provider => new SessionServices(
 builder.Services.AddHostedService<GameListener>();
 
 builder.Build().Run();
+return 0;

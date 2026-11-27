@@ -227,6 +227,51 @@ public sealed class RoomSettingsTests
         Assert.Equal((shipped.ItemBoxesPerTurn, shipped.ItemDropQuality), (harness.ItemBoxesPerTurn, harness.ItemDropQuality));
     }
 
+    [Fact]
+    public void TheShippedMatchSettingsPlaceThreeBoxesATurnAtMostTwentyEightOnTheFieldOneHundredToThreeHundredUpFromTheLocalTable()
+    {
+        var shipped = Shipped().GetSection(MatchOptions.Section).Get<MatchOptions>()!;
+
+        Assert.Equal(
+            ((byte)3, (byte)28, 100, 300, "client-data/item-drops.json"),
+            (shipped.PlacedItemBoxesPerTurn, shipped.MostItemBoxes, shipped.ItemBoxLowest, shipped.ItemBoxHighest, shipped.ItemDropsFile));
+        var harness = SessionHarness.ShippedMatchOptions();
+        Assert.Equal(
+            (shipped.PlacedItemBoxesPerTurn, shipped.MostItemBoxes, shipped.ItemBoxLowest, shipped.ItemBoxHighest, shipped.ItemDropsFile),
+            (harness.PlacedItemBoxesPerTurn, harness.MostItemBoxes, harness.ItemBoxLowest, harness.ItemBoxHighest, harness.ItemDropsFile));
+    }
+
+    [Theory]
+    [InlineData(-1, 300)]
+    [InlineData(301, 300)]
+    [InlineData(100, MatchOptions.MaxItemBoxHeight + 1)]
+    [InlineData(0, int.MaxValue)]
+    public void BoxHeightsBelowTheCharacterAboveAWholeMapOrTheWrongWayRoundAreRefusedNamingThem(int lowest, int highest)
+    {
+        var options = SessionHarness.ShippedMatchOptions();
+        options.ItemBoxLowest = lowest;
+        options.ItemBoxHighest = highest;
+
+        var result = new MatchOptionsValidation().Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains("Matches:ItemBoxLowest", result.FailureMessage, StringComparison.Ordinal);
+        Assert.Contains("Matches:ItemBoxHighest", result.FailureMessage, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(200, 200)]
+    [InlineData(0, MatchOptions.MaxItemBoxHeight)]
+    public void BoxHeightsFromTheCharacterUpToAWholeMapAreAccepted(int lowest, int highest)
+    {
+        var options = SessionHarness.ShippedMatchOptions();
+        options.ItemBoxLowest = lowest;
+        options.ItemBoxHighest = highest;
+
+        Assert.True(new MatchOptionsValidation().Validate(null, options).Succeeded);
+    }
+
     [Theory]
     [InlineData(101u)]
     [InlineData(uint.MaxValue)]

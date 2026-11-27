@@ -48,7 +48,8 @@ public enum RoomCreation
 /// <param name="options">The room settings.</param>
 /// <param name="matchOptions">The match settings.</param>
 /// <param name="time">The clock a match's waits run on.</param>
-/// <param name="random">Where a match's seed and a result card picked for a player come from.</param>
+/// <param name="random">Where a match's seed, a result card picked for a player, and the server's item boxes and items come from.</param>
+/// <param name="itemDrops">The items a box or a bonus gives in a match between teams.</param>
 /// <param name="logger">The log.</param>
 public sealed partial class RoomDirectory(
     LobbyRoster lobbies,
@@ -56,6 +57,7 @@ public sealed partial class RoomDirectory(
     IOptions<MatchOptions> matchOptions,
     TimeProvider time,
     Random random,
+    ItemDrops itemDrops,
     ILogger<RoomDirectory> logger)
 {
     // Why a request to act in a room is dropped when the connection is in none that waits.

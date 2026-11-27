@@ -44,12 +44,15 @@ flowchart LR
 | [`database/`](database) | Flyway migrations; the only place tables are defined |
 | [`deploy/`](deploy) | Keycloak realm and the script that adds operators |
 | [`secrets/`](secrets) | Local secret files, mounted as Docker secrets; never committed |
+| [`client-data/`](client-data) | Data from your own game client the game server needs, mounted into its container; never committed |
 | [`docker-compose.yml`](docker-compose.yml) | The whole stack on one machine |
 
 ## Run it
 
-You need Docker. Create the two local secrets, start everything and add yourself
-as an operator:
+You need Docker, and the item drop table from your own game client in
+`client-data/` (see [its README](client-data/README.md); made-up items do for a
+stack you will not play on): without it the game server does not start. Create the
+two local secrets, start everything and add yourself as an operator:
 
 ```sh
 openssl rand -base64 32 | tr -d '\n' > secrets/db_password
@@ -98,7 +101,7 @@ local development only; the browser client uses authorization code with PKCE.
 | | Build and test | Needs |
 |---|---|---|
 | Game server | `cd game-server && dotnet test --solution OpenTaan.GameServer.slnx` | .NET SDK 10.0.201+ |
-| Game server, run alone | `cd game-server && dotnet run --project src/OpenTaan.GameServer` (Development: any login creates its account) | .NET SDK 10.0.201+, PostgreSQL 18 and Flyway, set up once as in [Run](game-server/README.md#run) |
+| Game server, run alone | `cd game-server && dotnet run --project src/OpenTaan.GameServer` (Development: any login creates its account) | .NET SDK 10.0.201+, PostgreSQL 18 and Flyway, set up once as in [Run](game-server/README.md#run), and the item drop table in [`client-data/`](client-data/README.md) |
 | Admin server | `cd admin-server && ./mvnw verify` | JDK 25 (integration tests also need Docker) |
 
 Each service has its own README with the details.

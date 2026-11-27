@@ -1,0 +1,4 @@
+# Everything here comes from the game client and stays on this machine.
+*
+!.gitignore
+!README.md

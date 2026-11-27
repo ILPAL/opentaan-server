@@ -32,6 +32,10 @@ internal static class Matching
     public static Task<ushort> TeamRoomAsync(GameMode gameMode, Player host, params Player[] guests) =>
         ReadyRoomAsync(Requested(gameMode: gameMode), host, guests);
 
+    /// <summary>As <see cref="TeamRoomAsync(Player, Player[])"/>, in a room playing <paramref name="gameMode"/> with <paramref name="chanceMode"/>.</summary>
+    public static Task<ushort> TeamRoomAsync(GameMode gameMode, ChanceMode chanceMode, Player host, params Player[] guests) =>
+        ReadyRoomAsync(Requested(gameMode: gameMode, chanceMode: chanceMode), host, guests);
+
     /// <summary>A report that a client has loaded its match, with its characters in <paramref name="slots"/> where every character starts.</summary>
     public static PcGamePlayLoadingDone Loading(params byte[] slots) =>
         new([.. slots.Select(slot => new LoadedCharacter(slot, MatchRules.StartX, MatchRules.StartY))]);
@@ -47,20 +51,21 @@ internal static class Matching
         await StartedAsync(host, host, guest);
         await host.SendAsync(Loading(0));
         await guest.SendAsync(Loading(2));
-        await TurnToldAsync(0, host, guest);
+        await TeamTurnToldAsync(0, host, guest);
     }
 
     /// <summary>
-    /// The player passes the turn of the character in <paramref name="from"/>: each of
-    /// <paramref name="players"/> but the passer is passed the pass, and each is told the turn
-    /// passes to the character in <paramref name="to"/>.
+    /// In a match between teams, the player passes the turn of the character in
+    /// <paramref name="from"/>: each of <paramref name="players"/> but the passer is passed the
+    /// pass, and each is told the turn passes to the character in <paramref name="to"/>.
     /// </summary>
-    public static async Task PassedAsync(Player passer, byte from, byte to, params Player[] players)
+    /// <returns>The boxes the server placed for the next turn.</returns>
+    public static async Task<IReadOnlyList<GameScenarioCommandMakeItemBox>> TeamPassedAsync(Player passer, byte from, byte to, params Player[] players)
     {
         var pass = new PcGamePlayPassTurn(from, 0x0102, 0x0304, 0x01, 0x05060708);
         await passer.SendAsync(pass);
         await EveryoneToldAsync(pass, PcGamePlayPassTurn.TryRead, [.. players.Where(player => player != passer)]);
-        await TurnPassedAsync(from, to, players);
+        return await TeamTurnPassedAsync(from, to, players);
     }
 
     // Creates the room requested with the host in it, seats each guest, and readies them.
@@ -183,7 +188,97 @@ internal static class Matching
     /// turn count of 0.
     /// </summary>
     public static Task TurnToldAsync(byte slot, params Player[] players) =>
-        EveryoneToldAsync(MatchRules.TurnOf(slot, turnCount: 0, SessionHarness.ShippedMatchOptions(), []), PcGamePlayTurnStart.TryRead, players);
+        EveryoneToldAsync(TurnOf(slot, turnCount: 0, ghostMoves: []), PcGamePlayTurnStart.TryRead, players);
+
+    /// <summary>
+    /// Each of <paramref name="players"/> is told that the first turn of a match between teams
+    /// starts, the turn of the character in <paramref name="slot"/>: first the item boxes the
+    /// server places for it, in a shot of its own, at least one on a field still empty, then
+    /// the start itself, which lets the turn's shot drop one box. Returns the boxes placed,
+    /// which every player is told alike.
+    /// </summary>
+    public static async Task<IReadOnlyList<GameScenarioCommandMakeItemBox>> TeamTurnToldAsync(byte slot, params Player[] players)
+    {
+        var placed = await BoxesThenTurnAsync(slot, shotBoxes: 1, ghostMoves: [], players);
+        Assert.NotEmpty(placed);
+        return placed;
+    }
+
+    /// <summary>
+    /// Each of <paramref name="players"/> is told the turn of the character in <paramref name="from"/>
+    /// ends, in a match between teams, then the boxes the server places for the turn of the one
+    /// in <paramref name="to"/>, then that its turn starts, with <paramref name="ghostMoves"/>.
+    /// Returns the boxes placed.
+    /// </summary>
+    public static async Task<IReadOnlyList<GameScenarioCommandMakeItemBox>> TeamTurnPassedAsync(byte from, byte to, IReadOnlyList<GhostMove> ghostMoves, params Player[] players)
+    {
+        IReadOnlyList<GameScenarioCommandMakeItemBox>? placed = null;
+        foreach (var player in players)
+        {
+            Assert.Equal(MatchRules.TurnEndOf(from), await player.ReceiveAsync<PcGamePlayTurnEnd>(PcGamePlayTurnEnd.TryRead));
+            var told = await BoxesThenTurnAsync(to, shotBoxes: 1, ghostMoves, player);
+            Assert.Equal(placed ?? told, told);
+            placed = told;
+        }
+
+        return placed!;
+    }
+
+    /// <summary>As <see cref="TeamTurnPassedAsync(byte, byte, IReadOnlyList{GhostMove}, Player[])"/>, with no ghost moving.</summary>
+    public static Task<IReadOnlyList<GameScenarioCommandMakeItemBox>> TeamTurnPassedAsync(byte from, byte to, params Player[] players) =>
+        TeamTurnPassedAsync(from, to, ghostMoves: [], players);
+
+    /// <summary>
+    /// Each of <paramref name="players"/> is told the boxes the server places for the turn of
+    /// the character in <paramref name="slot"/>, in its own shot, then that the turn starts,
+    /// letting its shot drop <paramref name="shotBoxes"/> boxes. Every player is told the same
+    /// boxes, each a step naming the turn's character; when the field has no room for any,
+    /// the server sends no shot, and the turn just starts.
+    /// </summary>
+    /// <returns>The boxes placed, none when there was no room.</returns>
+    public static async Task<IReadOnlyList<GameScenarioCommandMakeItemBox>> BoxesThenTurnAsync(byte slot, byte shotBoxes, IReadOnlyList<GhostMove> ghostMoves, params Player[] players)
+    {
+        IReadOnlyList<GameScenarioCommandMakeItemBox>? first = null;
+        foreach (var player in players)
+        {
+            var body = await player.Client.ReceiveBodyAsync();
+            IReadOnlyList<GameScenarioCommandMakeItemBox> placed = [];
+            if (PcGamePlayScenario.TryRead(body).Packet is { } boxes)
+            {
+                // For no character's slot, with nothing in it but steps the client plays as boxes.
+                Assert.Equal(0xFE, boxes.FiringSlot);
+                Assert.Equal(slot, boxes.Scenario.SlotIndex);
+                Assert.Empty(boxes.Scenario.Effects);
+                Assert.Empty(boxes.Scenario.HitSlots);
+                placed = [.. boxes.Scenario.Commands.Select(step => Assert.IsType<GameScenarioCommandMakeItemBox>(step))];
+                Assert.NotEmpty(placed);
+                Assert.All(placed, made => Assert.Equal((slot, (byte)10, 0u), (made.SlotIndex, made.CommandType, made.TimingTick)));
+                body = await player.Client.ReceiveBodyAsync();
+            }
+
+            Assert.Equal(first ?? placed, placed);
+            first = placed;
+            var start = PcGamePlayTurnStart.TryRead(body);
+            Assert.True(start.Succeeded, $"expected the start of a turn: {start.Error}");
+            Assert.Equal(MatchRules.TurnOf(slot, turnCount: 0, shotBoxes, SessionHarness.ShippedMatchOptions(), ghostMoves), start.Packet);
+        }
+
+        return first!;
+    }
+
+    /// <summary>The box a step of the server's shot drops, failing the test for any other step.</summary>
+    public static ItemBox BoxOf(GameScenarioCommand step)
+    {
+        var made = Assert.IsType<GameScenarioCommandMakeItemBox>(step);
+        return new ItemBox(made.ItemBoxId, made.SpawnX, made.SpawnY);
+    }
+
+    /// <summary>The start of a mission's turn for the character in <paramref name="slot"/>, as the shipped settings make it.</summary>
+    public static PcGamePlayTurnStart TurnOf(byte slot, ushort turnCount, IReadOnlyList<GhostMove> ghostMoves)
+    {
+        var options = SessionHarness.ShippedMatchOptions();
+        return MatchRules.TurnOf(slot, turnCount, options.ItemBoxesPerTurn, options, ghostMoves);
+    }
 
     /// <summary>
     /// Starts a mission with <paramref name="host"/> and <paramref name="guest"/>, begins its
@@ -268,7 +363,7 @@ internal static class Matching
         foreach (var player in players)
         {
             Assert.Equal(MatchRules.TurnEndOf(from), await player.ReceiveAsync<PcGamePlayTurnEnd>(PcGamePlayTurnEnd.TryRead));
-            Assert.Equal(MatchRules.TurnOf(to, turnCount, SessionHarness.ShippedMatchOptions(), ghostMoves), await player.ReceiveAsync<PcGamePlayTurnStart>(PcGamePlayTurnStart.TryRead));
+            Assert.Equal(TurnOf(to, turnCount, ghostMoves), await player.ReceiveAsync<PcGamePlayTurnStart>(PcGamePlayTurnStart.TryRead));
         }
     }
 

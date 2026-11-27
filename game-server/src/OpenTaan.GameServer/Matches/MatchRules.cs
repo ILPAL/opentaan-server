@@ -51,6 +51,13 @@ public static class MatchRules
     /// <summary>The seed the start of a match between teams carries: only a mission is laid out from one.</summary>
     public const uint NoMissionSeed = 0;
 
+    /// <summary>
+    /// The slot the server's own shot is sent for, which drops its item boxes: no
+    /// character's, so no client turns its camera to it, gives anyone ammunition for it, or
+    /// sends it back. Every client still reports it played back, naming this slot.
+    /// </summary>
+    public const byte BoxesShotSlot = 0xFE;
+
     /// <summary>The name of a result card that is no character's.</summary>
     public const string EmptyRewardName = "Empty";
 
@@ -90,18 +97,26 @@ public static class MatchRules
     /// </summary>
     public static bool HasCaptains(GameMode gameMode) => gameMode is GameMode.CaptainItems or GameMode.CaptainNoItems;
 
+    /// <summary>
+    /// Whether a box caught or a bonus in a match played by <paramref name="gameMode"/> gives
+    /// an item. In the other modes it fills its team's gauge instead, and its client names
+    /// no item.
+    /// </summary>
+    public static bool GivesItems(GameMode gameMode) => gameMode is GameMode.Items or GameMode.CaptainItems;
+
     /// <summary>How the character in slot <paramref name="slot"/>, with weapon <paramref name="weaponId"/>, starts.</summary>
     public static GameSlotPlayInfo StartOf(byte slot, ushort weaponId) =>
         new(slot, StartX, StartY, IsAirborne: false, StartingHp, StartingHp, Seed: 0, WeaponPlayed(weaponId), MaxAmmo, Field3C: 0, StartingAmmo: 0);
 
     /// <summary>
     /// The start of a turn for the character in slot <paramref name="slot"/>, at a mission
-    /// level's turn count <paramref name="turnCount"/>: as many item boxes may drop as
-    /// <paramref name="options"/> allow, whatever the game mode, since in a mode without
-    /// items a box caught fills its catcher's team gauge instead; the items drawn are of the
-    /// quality they set; and every ghost in <paramref name="ghostMoves"/> moves on its way.
+    /// level's turn count <paramref name="turnCount"/>: its shot may drop
+    /// <paramref name="itemBoxes"/> item boxes, whatever the game mode, since in a mode
+    /// without items a box caught fills its catcher's team gauge instead; the items the
+    /// clients draw are of the quality <paramref name="options"/> set; and every ghost in
+    /// <paramref name="ghostMoves"/> moves on its way.
     /// </summary>
-    public static PcGamePlayTurnStart TurnOf(byte slot, ushort turnCount, MatchOptions options, IReadOnlyList<GhostMove> ghostMoves)
+    public static PcGamePlayTurnStart TurnOf(byte slot, ushort turnCount, byte itemBoxes, MatchOptions options, IReadOnlyList<GhostMove> ghostMoves)
     {
         ArgumentNullException.ThrowIfNull(options);
         return new(
@@ -109,13 +124,40 @@ public static class MatchRules
             Field11: 0,
             TurnWind,
             TurnAmmo,
-            options.ItemBoxesPerTurn,
+            itemBoxes,
             RemovedItemBoxes: [],
             ghostMoves,
             HpUpdates: [],
             options.ItemDropQuality,
             DropQualityByTeam: [0, 0, 0],
             MissionTurnCount: turnCount);
+    }
+
+    /// <summary>
+    /// The server's own shot, which drops <paramref name="boxes"/> on the field of a match
+    /// between teams. It is sent for <see cref="BoxesShotSlot"/>, and its steps name the
+    /// character in <paramref name="slot"/>, whose turn starts next: a client plays a step
+    /// only for a slot a character sits in, and a box belongs to whoever catches it.
+    /// </summary>
+    public static PcGamePlayScenario BoxesShotOf(byte slot, IReadOnlyList<ItemBox> boxes)
+    {
+        ArgumentNullException.ThrowIfNull(boxes);
+        return new(
+            Direction: 0,
+            BoxesShotSlot,
+            new GameScenario(
+                slot,
+                ActionType: 0,
+                [.. boxes.Select(box => new GameScenarioCommandMakeItemBox(slot, GameScenarioCommandMakeItemBox.Type, TimingTick: 0, Duration: 0, box.Id, box.X, box.Y))],
+                DelayTimings: [],
+                Effects: [],
+                WeaponFlags: 0,
+                InitialAngle: 0,
+                HitSlots: [],
+                Seed: 0),
+            TotalStats: 0,
+            AmmoAddition: 0,
+            Integrity: default);
     }
 
     /// <summary>The end of the turn of the character in slot <paramref name="slot"/>.</summary>

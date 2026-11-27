@@ -394,7 +394,7 @@ public sealed class CaptainFlowTests
         await second.SendAsync(Loading(2));
         await third.SendAsync(Loading(1));
         await fourth.SendAsync(Loading(3));
-        await TurnToldAsync(0, everyone);
+        await TeamTurnToldAsync(0, everyone);
 
         // The host captains the first team and has the turn: the third player, its
         // teammate in slot 1, gives it the item in its first item slot.

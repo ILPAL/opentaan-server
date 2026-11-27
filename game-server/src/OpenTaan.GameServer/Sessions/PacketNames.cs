@@ -50,7 +50,7 @@ public sealed partial class PacketNames
             return new PacketNames();
         }
 
-        var found = Locate(file, contentRoot);
+        var found = LocalFiles.Locate(file, contentRoot);
         if (found is null)
         {
             LogNotFound(logger, file, contentRoot);
@@ -60,25 +60,6 @@ public sealed partial class PacketNames
         var names = new PacketNames(ReadFile(found));
         LogLoaded(logger, names.Count, found);
         return names;
-    }
-
-    private static string? Locate(string file, string contentRoot)
-    {
-        if (Path.IsPathRooted(file))
-        {
-            return File.Exists(file) ? file : null;
-        }
-
-        for (var folder = new DirectoryInfo(contentRoot); folder is not null; folder = folder.Parent)
-        {
-            var candidate = Path.Combine(folder.FullName, file);
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        return null;
     }
 
     private static Dictionary<string, uint> ReadFile(string path)
