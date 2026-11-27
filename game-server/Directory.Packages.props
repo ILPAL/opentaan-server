@@ -5,7 +5,7 @@
 
   <ItemGroup Label="Runtime">
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.KeyPerFile" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.KeyPerFile" Version="11.0.0" />
     <PackageVersion Include="Npgsql" Version="10.0.4" />
   </ItemGroup>
 
