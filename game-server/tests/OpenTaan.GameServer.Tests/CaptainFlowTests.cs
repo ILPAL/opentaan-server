@@ -270,7 +270,7 @@ public sealed class CaptainFlowTests
         await VolunteeredAsync(guest, 0, host, guest);
         await StartedAsync(host, host, guest);
         await guest.SendAsync(new PcGamePlayGiveUp());
-        await EndToldAsync(1, [new SeatOf(host, 0), new SeatOf(guest, 2)], host, guest);
+        await EndToldAsync(1, [new SeatOf(host, 0), new SeatOf(guest, 2, GaveUp: true)], host, guest);
         await PickAsync(host, host, guest, card: 0, slot: 0);
         await PickAsync(guest, host, guest, card: 1, slot: 2);
 

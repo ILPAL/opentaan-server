@@ -38,6 +38,31 @@ public sealed record Character(uint AccountId, CharacterInfo Info, CharacterAppe
     public static CharacterAppear AppearanceOf(Gender gender, uint characterId, ushort level, IReadOnlyList<AppearanceSlot> parts) =>
         new(gender, characterId, level, parts);
 
+    /// <summary>
+    /// The character with <paramref name="progress"/>: its level, experience, gold and record,
+    /// with the experience bar of its level, and its appearance carrying the level.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The level is past <see cref="LevelTable"/>.</exception>
+    public Character WithProgress(CharacterProgress progress)
+    {
+        var bar = LevelTable.BarAt(progress.Level)
+            ?? throw new ArgumentOutOfRangeException(nameof(progress), $"There is no level {progress.Level}.");
+        return this with
+        {
+            Info = Info with
+            {
+                Level = progress.Level,
+                CurrentExperience = progress.Experience,
+                ExperienceFloor = bar.Floor,
+                ExperienceCeiling = bar.Ceiling,
+                Gold = progress.Gold,
+                Wins = progress.Wins,
+                Losses = progress.Losses,
+            },
+            Appearance = AppearanceOf(Info.Gender, CharacterId, progress.Level, Appearance.Slots),
+        };
+    }
+
     /// <summary>An account's characters as the client is sent them, each with its appearance in the same position.</summary>
     public static CharacterCatalog CatalogOf(IReadOnlyCollection<Character> characters)
     {

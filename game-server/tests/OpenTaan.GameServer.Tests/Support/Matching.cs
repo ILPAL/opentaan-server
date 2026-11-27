@@ -1,6 +1,7 @@
 using OpenTaan.GameServer.Matches;
 using OpenTaan.GameServer.Rooms;
 using OpenTaan.GameServer.Sessions;
+using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.GamePlay;
 using OpenTaan.Protocol.Matches;
 using OpenTaan.Protocol.Results;
@@ -9,8 +10,12 @@ using static OpenTaan.Tests.GameServer.Playing;
 
 namespace OpenTaan.Tests.GameServer;
 
-/// <summary>A character in a match: the player's character at <paramref name="Position"/> among its own, in slot <paramref name="Slot"/>.</summary>
-internal sealed record SeatOf(Player Player, byte Slot, int Position = 0);
+/// <summary>
+/// A character in a match: the player's character at <paramref name="Position"/> among its
+/// own, in slot <paramref name="Slot"/>, which <paramref name="GaveUp"/> while it was in play,
+/// or played the match to its end.
+/// </summary>
+internal sealed record SeatOf(Player Player, byte Slot, int Position = 0, bool GaveUp = false);
 
 /// <summary>Brings players into a match and through it, as the client does. Every value is invented.</summary>
 internal static class Matching
@@ -114,7 +119,7 @@ internal static class Matching
         await QuietAsync(players);
     }
 
-    /// <summary>Each of <paramref name="players"/> gives up, and each is told the mission was lost.</summary>
+    /// <summary>Each of <paramref name="players"/> gives up, and each is told the mission was lost, with nothing paid.</summary>
     public static async Task GiveUpAndEndAsync(params Player[] players)
     {
         foreach (var player in players)
@@ -122,8 +127,16 @@ internal static class Matching
             await player.SendAsync(new PcGamePlayGiveUp());
         }
 
-        await EndToldAsync(MatchRules.MissionsTeam, players, players);
+        await EndAfterGivingUpToldAsync(players, players);
     }
+
+    /// <summary>
+    /// Each of <paramref name="told"/> is sent the end of a mission that every one of the
+    /// characters of <paramref name="characters"/>, seated in the first team's slots in
+    /// order, gave up: lost, and nothing paid.
+    /// </summary>
+    public static Task EndAfterGivingUpToldAsync(Player[] characters, params Player[] told) =>
+        EndToldAsync(MatchRules.MissionsTeam, InMission(characters, gaveUp: true), mission: true, told);
 
     /// <summary>The player picks <paramref name="card"/> for the character in <paramref name="slot"/>, and <paramref name="first"/> and <paramref name="second"/> are told.</summary>
     public static async Task PickAsync(Player player, Player first, Player second, byte card, byte slot)
@@ -140,46 +153,105 @@ internal static class Matching
     }
 
     /// <summary>
-    /// Each of <paramref name="told"/> is sent the end of a match <paramref name="winningTeam"/>
+    /// Each of <paramref name="told"/> is sent the end of a mission <paramref name="winningTeam"/>
     /// won, in which the characters of <paramref name="characters"/>, seated in the first
-    /// team's slots in order, earned nothing: the cards first, then the result.
+    /// team's slots in order, played to the end: the cards first, then the result, and each
+    /// player is then told its characters' experience and gold.
     /// </summary>
-    public static Task EndToldAsync(byte winningTeam, Player[] characters, params Player[] told)
-    {
-        var teamOne = Enumerable.Range(0, GameSlotInfo.SlotCount).Where(slot => Seating.TeamOf(slot) == 1).Select(slot => (byte)slot).ToArray();
-        var next = 0;
-
-        // The order of seating in these tests: the first team's lowest slots first.
-        SeatOf[] seats =
-        [
-            .. characters.SelectMany(player => player.Characters.Select((_, position) => new SeatOf(player, teamOne[next++], position))),
-        ];
-        return EndToldAsync(winningTeam, seats, told);
-    }
+    public static Task EndToldAsync(byte winningTeam, Player[] characters, params Player[] told) =>
+        EndToldAsync(winningTeam, InMission(characters, gaveUp: false), mission: true, told);
 
     /// <summary>
-    /// Each of <paramref name="told"/> is sent the end of a match <paramref name="winningTeam"/>
-    /// won, in which the characters in <paramref name="seats"/>, the room's only ones, earned
-    /// nothing: the cards first, then the result.
+    /// Each of <paramref name="told"/> is sent the end of a match between teams
+    /// <paramref name="winningTeam"/> won, in which the characters in <paramref name="seats"/>
+    /// are the room's only ones: the cards first, then the result, and each player whose
+    /// character played to the end is then told its experience and gold.
     /// </summary>
-    public static async Task EndToldAsync(byte winningTeam, SeatOf[] seats, params Player[] told)
+    public static Task EndToldAsync(byte winningTeam, SeatOf[] seats, params Player[] told) =>
+        EndToldAsync(winningTeam, seats, mission: false, told);
+
+    // A match's end, as everyone told is sent it: the cards, which give nothing yet, then
+    // the result, with a row for each slot. A character that played to the end is paid
+    // what Paying says, and one that gave up nothing. Each player is then told the
+    // experience and gold of each of its characters paid, in slot order, as the account
+    // slot of the character names it. Every character is expected to start the match as
+    // it was created, and to stay on its level.
+    private static async Task EndToldAsync(byte winningTeam, SeatOf[] seats, bool mission, Player[] told)
     {
-        var slots = new uint?[GameSlotInfo.SlotCount];
-        var levels = new ushort?[GameSlotInfo.SlotCount];
-        foreach (var seat in seats)
+        var characters = new uint?[GameSlotInfo.SlotCount];
+        var rows = Enumerable.Range(0, GameSlotInfo.SlotCount).Select(slot => GameResultSlot.Empty((byte)slot)).ToArray();
+        var paid = new List<(SeatOf Seat, Earning Earned)>();
+        foreach (var seat in seats.OrderBy(seat => seat.Slot))
         {
             var character = seat.Player.Characters[seat.Position];
-            slots[seat.Slot] = character.CharacterId;
-            levels[seat.Slot] = character.Level;
+            characters[seat.Slot] = character.CharacterId;
+            if (seat.GaveUp)
+            {
+                rows[seat.Slot] = GameResultSlot.NothingEarned(seat.Slot, character.Level);
+                continue;
+            }
+
+            var won = Seating.TeamOf(seat.Slot) == winningTeam;
+            var earned = mission
+                ? won ? Paying.MissionCleared : Paying.MissionLost
+                : won ? Paying.TeamWin : Paying.TeamLoss;
+            rows[seat.Slot] = PaidRow(seat.Slot, character, earned);
+            paid.Add((seat, earned));
         }
 
         foreach (var player in told)
         {
-            Assert.Equal(MatchRules.RewardsOf(slots), await player.ReceiveAsync<PcResultSetReward>(PcResultSetReward.TryRead));
+            Assert.Equal(MatchRules.RewardsOf(characters), await player.ReceiveAsync<PcResultSetReward>(PcResultSetReward.TryRead));
             Assert.Equal(
-                new PcGameSessionEndGame(MatchRules.ResultOf(winningTeam, levels), EndGameMode: 0),
+                new PcGameSessionEndGame(new GameResult(winningTeam, rows, WinnerPointDelta: 0, LoserPointDelta: 0), EndGameMode: 0),
                 await player.ReceiveAsync<PcGameSessionEndGame>(PcGameSessionEndGame.TryRead));
         }
+
+        foreach (var (seat, earned) in paid)
+        {
+            var character = seat.Player.Characters[seat.Position];
+            var accountSlot = (byte)seat.Position;
+            Assert.Equal(
+                new PcUpdateExp(accountSlot, character.Level, character.CurrentExperience + earned.Experience, character.ExperienceFloor, character.ExperienceCeiling),
+                await seat.Player.ReceiveAsync<PcUpdateExp>(PcUpdateExp.TryRead));
+            Assert.Equal(PcUpdateMoney.GoldOf(accountSlot, character.Gold + earned.Gold), await seat.Player.ReceiveAsync<PcUpdateMoney>(PcUpdateMoney.TryRead));
+        }
+    }
+
+    // The characters of players, seated in the first team's slots in order, as the tests seat them.
+    private static SeatOf[] InMission(Player[] players, bool gaveUp)
+    {
+        var teamOne = Enumerable.Range(0, GameSlotInfo.SlotCount).Where(slot => Seating.TeamOf(slot) == 1).Select(slot => (byte)slot).ToArray();
+        var next = 0;
+        return [.. players.SelectMany(player => player.Characters.Select((_, position) => new SeatOf(player, teamOne[next++], position, gaveUp)))];
+    }
+
+    // The row of a character paid earned that stays on its level: its bar from where it
+    // started to where the experience takes it, and the experience and gold shown rising.
+    private static GameResultSlot PaidRow(byte slot, CharacterInfo character, Earning earned)
+    {
+        var after = character.CurrentExperience + earned.Experience;
+        Assert.True(after < character.ExperienceCeiling, "These helpers expect no level gained; the reward tests check one.");
+        return new GameResultSlot(
+            slot,
+            character.Level,
+            (int)earned.Experience,
+            [
+                new ExpResult(character.Level, character.CurrentExperience, character.ExperienceFloor, character.ExperienceCeiling),
+                new ExpResult(character.Level, after, character.ExperienceFloor, character.ExperienceCeiling),
+            ],
+            earned.Gold,
+            KillStat: 0,
+            ForceStat: 0,
+            HitRate: 0,
+            SupportStat: 0,
+            Bonuses: [],
+            ForceMedalAward: 0,
+            KillMedalAward: 0,
+            SupportMedalAward: 0,
+            HasReward: true,
+            ExpReward: earned.Experience,
+            GoldReward: earned.Gold);
     }
 
     /// <summary>

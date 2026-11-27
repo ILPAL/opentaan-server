@@ -2,6 +2,7 @@ using OpenTaan.GameServer.Rooms;
 using OpenTaan.GameServer.Sessions;
 using OpenTaan.Protocol.GamePlay;
 using OpenTaan.Protocol.Matches;
+using OpenTaan.Protocol.Rooms;
 
 namespace OpenTaan.GameServer.Matches;
 
@@ -35,7 +36,9 @@ internal enum MatchPhase
 /// <remarks>
 /// <para>
 /// The match keeps every character that started it, by slot, and which of them are out of
-/// it: given up, gone with their player, or dead. A player out of the match still sees it
+/// it: given up, gone with their player, or dead. Each slot's part ends one of three ways,
+/// which decide what the match pays its character; see <see cref="EndingOf"/>. A player
+/// out of the match still sees it
 /// to its end, and its client still plays every level's opening, every shot and every turn
 /// of a mission's enemies, so it is still waited for. Each character plays for the team of
 /// its slot; see <see cref="Winner"/> for when that ends the match.
@@ -51,7 +54,10 @@ internal enum MatchPhase
 internal sealed class Match : IDisposable
 {
     private readonly Dictionary<byte, ClientSession> _players;
+    private readonly uint?[] _characterIds;
     private readonly HashSet<byte> _out = [];
+    private readonly HashSet<byte> _gaveUp = [];
+    private readonly HashSet<byte> _left = [];
     private readonly HashSet<byte> _dead = [];
     private readonly HashSet<ClientSession> _ready = [];
     private readonly HashSet<ClientSession> _finished = [];
@@ -67,14 +73,22 @@ internal sealed class Match : IDisposable
         MissionLevels? levels,
         uint seed,
         IReadOnlyDictionary<byte, ClientSession> players,
+        IReadOnlyList<uint?> characterIds,
         IReadOnlyList<byte> captainSlots,
         DateTimeOffset started)
     {
+        Id = Guid.CreateVersion7(started);
         MapId = mapId;
         Levels = levels;
         Seed = seed;
         Started = started;
         _players = new Dictionary<byte, ClientSession>(players);
+        _characterIds = [.. characterIds];
+        if (_characterIds.Length != GameSlotInfo.SlotCount || players.Keys.Any(slot => _characterIds[slot] is null))
+        {
+            throw new ArgumentException("There is a character id for every slot a player plays, by slot.", nameof(characterIds));
+        }
+
         CaptainSlots = captainSlots.Count == PcGameSessionStartGame.CaptainCount
             ? [.. captainSlots]
             : throw new ArgumentException($"There is one entry for each of the {PcGameSessionStartGame.CaptainCount} team numbers.", nameof(captainSlots));
@@ -85,17 +99,33 @@ internal sealed class Match : IDisposable
     /// <param name="levels">How many levels the mission has.</param>
     /// <param name="seed">The value every client lays the mission out from.</param>
     /// <param name="players">The connection playing the character in each slot, by slot.</param>
+    /// <param name="characterIds">The id of the character in each slot, null for a slot with none, by slot.</param>
     /// <param name="started">When the match started.</param>
-    public static Match OfMission(ushort missionId, byte levels, uint seed, IReadOnlyDictionary<byte, ClientSession> players, DateTimeOffset started) =>
-        new(missionId, new MissionLevels(levels), seed, players, PcGameSessionStartGame.NoCaptains, started);
+    public static Match OfMission(
+        ushort missionId,
+        byte levels,
+        uint seed,
+        IReadOnlyDictionary<byte, ClientSession> players,
+        IReadOnlyList<uint?> characterIds,
+        DateTimeOffset started) =>
+        new(missionId, new MissionLevels(levels), seed, players, characterIds, PcGameSessionStartGame.NoCaptains, started);
 
     /// <summary>A match between teams on map <paramref name="mapId"/>, started by the characters in <paramref name="players"/>.</summary>
     /// <param name="mapId">The map played on.</param>
     /// <param name="players">The connection playing the character in each slot, by slot, each on its slot's team.</param>
+    /// <param name="characterIds">The id of the character in each slot, null for a slot with none, by slot.</param>
     /// <param name="captainSlots">For each team number, the slot of the team's captain, or <see cref="PcGameSessionStartGame.NoCaptain"/>.</param>
     /// <param name="started">When the match started.</param>
-    public static Match BetweenTeams(ushort mapId, IReadOnlyDictionary<byte, ClientSession> players, IReadOnlyList<byte> captainSlots, DateTimeOffset started) =>
-        new(mapId, levels: null, MatchRules.NoMissionSeed, players, captainSlots, started);
+    public static Match BetweenTeams(
+        ushort mapId,
+        IReadOnlyDictionary<byte, ClientSession> players,
+        IReadOnlyList<uint?> characterIds,
+        IReadOnlyList<byte> captainSlots,
+        DateTimeOffset started) =>
+        new(mapId, levels: null, MatchRules.NoMissionSeed, players, characterIds, captainSlots, started);
+
+    /// <summary>The match, which no other match shares, as what it paid is kept.</summary>
+    public Guid Id { get; }
 
     /// <summary>The map the match is played on, or a mission's own number in a mission.</summary>
     public ushort MapId { get; }
@@ -423,13 +453,16 @@ internal sealed class Match : IDisposable
             : null;
     }
 
-    /// <summary>Takes every character <paramref name="session"/> plays out of the match, and returns whether any was still in it.</summary>
+    /// <summary>
+    /// Takes every character <paramref name="session"/> plays out of the match, and returns
+    /// whether any was still in it. Those still in it gave up; a ghost among them did not.
+    /// </summary>
     public bool GiveUp(ClientSession session)
     {
-        var slots = SlotsOf(session);
-        var wasIn = slots.Any(slot => !_out.Contains(slot));
-        _out.UnionWith(slots);
-        return wasIn;
+        var giving = SlotsOf(session).Where(slot => !_out.Contains(slot)).ToArray();
+        _gaveUp.UnionWith(giving);
+        _out.UnionWith(giving);
+        return giving.Length > 0;
     }
 
     /// <summary>
@@ -441,6 +474,7 @@ internal sealed class Match : IDisposable
         foreach (var slot in SlotsOf(session))
         {
             _out.Add(slot);
+            _left.Add(slot);
             _ghostTargets.Remove(slot);
         }
 
@@ -448,6 +482,20 @@ internal sealed class Match : IDisposable
         _finished.Remove(session);
         _answered.Remove(session);
     }
+
+    /// <summary>The slots of the characters that started the match, each with its character's id and player, in slot order.</summary>
+    public IEnumerable<(byte Slot, uint CharacterId, ClientSession Player)> Characters() =>
+        _players.Keys.Order().Select(slot => (slot, _characterIds[slot]!.Value, _players[slot]));
+
+    /// <summary>
+    /// How the part of the character in <paramref name="slot"/> ended, so far: its player
+    /// left the room while the match went on, or gave up while the character was in play, or
+    /// neither, and saw it to the end, the character alive or a ghost.
+    /// </summary>
+    public MatchEnding EndingOf(byte slot) =>
+        _left.Contains(slot) ? MatchEnding.Left
+        : _gaveUp.Contains(slot) ? MatchEnding.GaveUp
+        : MatchEnding.Played;
 
     /// <summary>Marks the match over, and stops any wait in progress.</summary>
     public void End()

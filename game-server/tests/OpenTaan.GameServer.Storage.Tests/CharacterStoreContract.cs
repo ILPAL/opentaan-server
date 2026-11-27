@@ -1,4 +1,5 @@
 using OpenTaan.GameServer.Characters;
+using OpenTaan.GameServer.Matches;
 using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Characters;
 using OpenTaan.Tests.GameServer;
@@ -7,7 +8,8 @@ namespace OpenTaan.Tests.Storage;
 
 /// <summary>
 /// What every character store must do, run against each of them: ids, names, one
-/// character per account, the finished tutorial, and creations that race. The in-memory
+/// character per account, the finished tutorial, creations that race, and what a match
+/// pays, once, however often and however many at once keep it. The in-memory
 /// store and the PostgreSQL store pass the same tests, so the flow tests, which run on the
 /// first, speak for the second. Every value here is invented.
 /// </summary>
@@ -17,10 +19,10 @@ public abstract class CharacterStoreContract
 
     protected static CancellationToken Cancel => TestContext.Current.CancellationToken;
 
-    /// <summary>The experience at which level 2 begins, as the stores' settings have it.</summary>
-    protected static uint ExperienceCeiling => SessionHarness.ShippedCharacterOptions().Start.ExperienceCeiling;
+    /// <summary>The experience at which level 2 begins, as the reference sessions record a new character's bar.</summary>
+    protected const uint ExperienceCeiling = 300;
 
-    /// <summary>A store with no characters, whose experience bars come from the shipped settings.</summary>
+    /// <summary>A store with no characters.</summary>
     protected abstract Task<ICharacterStore> NewStoreAsync();
 
     /// <summary>The characters of <paramref name="store"/>, read afresh: through new connections, for a store that has any.</summary>
@@ -195,7 +197,7 @@ public abstract class CharacterStoreContract
         var store = await NewStoreAsync();
         await GivenAccountsAsync([.. Enumerable.Range(1, Contenders).Select(contender => (uint)(1000 + contender))]);
 
-        var outcomes = await Race(account => store.CreateAsync(account, "Kimi", Builder(account, "Kimi"), Cancel));
+        var outcomes = await Race(async account => (await store.CreateAsync(account, "Kimi", Builder(account, "Kimi"), Cancel)).Outcome);
 
         Assert.Single(outcomes, outcome => outcome == CharacterCreationOutcome.Created);
         Assert.All(
@@ -209,7 +211,7 @@ public abstract class CharacterStoreContract
         var store = await NewStoreAsync();
         await GivenAccountsAsync(1001);
 
-        var outcomes = await Race(contender => store.CreateAsync(1001, $"Kim{contender:D4}", Builder(1001, $"Kim{contender:D4}"), Cancel));
+        var outcomes = await Race(async contender => (await store.CreateAsync(1001, $"Kim{contender:D4}", Builder(1001, $"Kim{contender:D4}"), Cancel)).Outcome);
 
         Assert.Single(outcomes, outcome => outcome == CharacterCreationOutcome.Created);
         Assert.All(
@@ -217,6 +219,130 @@ public abstract class CharacterStoreContract
             outcome => Assert.Equal(CharacterCreationOutcome.AccountHasCharacter, outcome));
         Assert.Single(await store.FindByAccountAsync(1001, Cancel));
     }
+
+    [Fact]
+    public async Task AMatchPaysEachCharacterItsExperienceAndGoldAndCountsItsResultOnceReopened()
+    {
+        var store = await NewStoreAsync();
+        var (kimi, rong) = await TwoCharactersAsync(store);
+
+        var kept = await store.KeepMatchAsync(MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: true, 60, 180), Paid(rong, 2, won: false, 40, 120)), Cancel);
+
+        Assert.Equal(new CharacterProgress(1, 60, 180, 1, 0), kept[kimi]);
+        Assert.Equal(new CharacterProgress(1, 40, 120, 0, 1), kept[rong]);
+        var reopened = await ReopenAsync(store);
+        Assert.Equal(new CharacterProgress(1, 60, 180, 1, 0), CharacterProgress.Of((await reopened.FindByAccountAsync(1001, Cancel))[0].Info));
+        Assert.Equal(new CharacterProgress(1, 40, 120, 0, 1), CharacterProgress.Of((await reopened.FindByAccountAsync(1002, Cancel))[0].Info));
+    }
+
+    [Fact]
+    public async Task ACharacterPaidPastALevelsEndIsAtTheNextLevelWithItsBarAndAppearance()
+    {
+        var store = await NewStoreAsync();
+        var (kimi, _) = await TwoCharactersAsync(store);
+
+        await store.KeepMatchAsync(MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: true, 250, 0)), Cancel);
+        await store.KeepMatchAsync(MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: true, 60, 0)), Cancel);
+
+        var character = (await (await ReopenAsync(store)).FindByAccountAsync(1001, Cancel))[0];
+        Assert.Equal((2, 310u, 300u, 791u), (character.Info.Level, character.Info.CurrentExperience, character.Info.ExperienceFloor, character.Info.ExperienceCeiling));
+        Assert.Equal((ushort)2, character.Appearance.Field0C);
+    }
+
+    [Fact]
+    public async Task KeepingAMatchAgainPaysNoOneTwiceAndTellsHowEachStands()
+    {
+        var store = await NewStoreAsync();
+        var (kimi, rong) = await TwoCharactersAsync(store);
+        var match = MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: true, 60, 180), Paid(rong, 2, won: false, 40, 120));
+
+        await store.KeepMatchAsync(match, Cancel);
+        var again = await store.KeepMatchAsync(match, Cancel);
+
+        Assert.Equal(new CharacterProgress(1, 60, 180, 1, 0), again[kimi]);
+        Assert.Equal(new CharacterProgress(1, 40, 120, 0, 1), again[rong]);
+        Assert.Equal(new CharacterProgress(1, 60, 180, 1, 0), CharacterProgress.Of((await (await ReopenAsync(store)).FindByAccountAsync(1001, Cancel))[0].Info));
+    }
+
+    [Fact]
+    public async Task AnotherMatchPaysTheSameCharactersAgain()
+    {
+        var store = await NewStoreAsync();
+        var (kimi, _) = await TwoCharactersAsync(store);
+
+        await store.KeepMatchAsync(MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: true, 60, 180)), Cancel);
+        var kept = await store.KeepMatchAsync(MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: false, 40, 120)), Cancel);
+
+        Assert.Equal(new CharacterProgress(1, 100, 300, 1, 1), kept[kimi]);
+    }
+
+    [Fact]
+    public async Task OfManySimultaneousKeepingsOfOneMatchEachCharacterIsPaidOnce()
+    {
+        var store = await NewStoreAsync();
+        var (kimi, rong) = await TwoCharactersAsync(store);
+        var match = MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: true, 60, 180), Paid(rong, 2, won: false, 40, 120));
+
+        var told = await Race(async _ => await store.KeepMatchAsync(match, Cancel));
+
+        Assert.All(told, kept => Assert.Equal(new CharacterProgress(1, 60, 180, 1, 0), kept[kimi]));
+        Assert.All(told, kept => Assert.Equal(new CharacterProgress(1, 40, 120, 0, 1), kept[rong]));
+        var reopened = await ReopenAsync(store);
+        Assert.Equal(new CharacterProgress(1, 60, 180, 1, 0), CharacterProgress.Of((await reopened.FindByAccountAsync(1001, Cancel))[0].Info));
+        Assert.Equal(new CharacterProgress(1, 40, 120, 0, 1), CharacterProgress.Of((await reopened.FindByAccountAsync(1002, Cancel))[0].Info));
+    }
+
+    [Fact]
+    public async Task OfManyMatchesKeptAtOncePayingOneCharacterEveryPayIsAddedToTheRest()
+    {
+        var store = await NewStoreAsync();
+        var (kimi, _) = await TwoCharactersAsync(store);
+
+        await Race(async _ => await store.KeepMatchAsync(MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: true, 1, 3)), Cancel));
+
+        Assert.Equal(
+            new CharacterProgress(1, Contenders, 3 * Contenders, Contenders, 0),
+            CharacterProgress.Of((await (await ReopenAsync(store)).FindByAccountAsync(1001, Cancel))[0].Info));
+    }
+
+    [Fact]
+    public async Task ACharacterDeletedBeforeItsMatchIsKeptIsLeftOutAndTheOthersArePaid()
+    {
+        var store = await NewStoreAsync();
+        var (kimi, rong) = await TwoCharactersAsync(store);
+        Assert.True(await store.DeleteAsync(1002, rong, Cancel));
+
+        var kept = await store.KeepMatchAsync(MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: true, 60, 180), Paid(rong, 2, won: false, 40, 120)), Cancel);
+
+        Assert.Equal([kimi], kept.Keys);
+        Assert.Equal(new CharacterProgress(1, 60, 180, 1, 0), kept[kimi]);
+    }
+
+    /// <summary>Accounts 1001 and 1002, each with a character as creation builds one, Kimi and Rồng; returns their ids.</summary>
+    protected async Task<(uint Kimi, uint Rong)> TwoCharactersAsync(ICharacterStore store)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        await GivenAccountsAsync(1001, 1002);
+        var kimi = (await store.CreateAsync(1001, "Kimi", Builder(1001, "Kimi"), Cancel)).Character!.CharacterId;
+        var rong = (await store.CreateAsync(1002, "Rồng", Builder(1002, "Rồng"), Cancel)).Character!.CharacterId;
+        return (kimi, rong);
+    }
+
+    /// <summary>A match between teams, ended, with <paramref name="payments"/>; team 1 won.</summary>
+    protected static MatchRecord MatchOf(Guid matchId, params MatchPayment[] payments) => new(
+        matchId,
+        RoomNumber: 7,
+        ChannelId: 11,
+        MapId: 3,
+        MissionDifficulty: null,
+        WinningTeam: 1,
+        Started: new DateTimeOffset(2026, 11, 27, 9, 0, 0, TimeSpan.Zero),
+        Ended: new DateTimeOffset(2026, 11, 27, 9, 12, 0, TimeSpan.Zero),
+        payments);
+
+    /// <summary>A payment to a character that played its match to the end.</summary>
+    protected static MatchPayment Paid(uint characterId, byte slot, bool won, uint experience, uint gold) =>
+        new(characterId, slot, MatchEnding.Played, won, experience, gold);
 
     /// <summary>Builds a character as creation builds one, for a male account.</summary>
     protected static Func<uint, Character> Builder(uint accountId, string name) => id => NewCharacter(id, accountId, name);
@@ -229,14 +355,14 @@ public abstract class CharacterStoreContract
 
     // Runs every contender at once, each on a thread of its own: 64 pool threads
     // blocked on the barrier would starve every other test's timers and sockets.
-    private static async Task<CharacterCreationOutcome[]> Race(Func<uint, ValueTask<CharacterCreation>> create)
+    private static async Task<T[]> Race<T>(Func<uint, Task<T>> run)
     {
         using var start = new Barrier(Contenders);
         return await Task.WhenAll(Enumerable.Range(1, Contenders).Select(contender => Task.Factory.StartNew(
             () =>
             {
                 start.SignalAndWait(Cancel);
-                return create((uint)(1000 + contender)).AsTask().GetAwaiter().GetResult().Outcome;
+                return run((uint)(1000 + contender)).GetAwaiter().GetResult();
             },
             Cancel,
             TaskCreationOptions.LongRunning,

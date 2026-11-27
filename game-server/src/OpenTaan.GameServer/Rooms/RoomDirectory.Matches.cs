@@ -1,9 +1,12 @@
+using OpenTaan.GameServer.Characters;
 using OpenTaan.GameServer.Matches;
 using OpenTaan.GameServer.Sessions;
+using OpenTaan.Protocol.Characters;
 using OpenTaan.Protocol.GamePlay;
 using OpenTaan.Protocol.Lobby;
 using OpenTaan.Protocol.Matches;
 using OpenTaan.Protocol.Results;
+using OpenTaan.Protocol.Rooms;
 
 namespace OpenTaan.GameServer.Rooms;
 
@@ -384,7 +387,7 @@ public sealed partial class RoomDirectory
             return $"mission {room.MapId} is not one the client lists";
         }
 
-        BeginMatchLocked(room, Match.OfMission(room.MapId, levels, NextSeed(), room.PlayersBySlot(), time.GetUtcNow()));
+        BeginMatchLocked(room, Match.OfMission(room.MapId, levels, NextSeed(), room.PlayersBySlot(), room.CharacterIds(), time.GetUtcNow()));
         LogMissionStarted(logger, room.Number, room.MapId, levels);
         return null;
     }
@@ -407,7 +410,7 @@ public sealed partial class RoomDirectory
         }
 
         var captains = MatchRules.HasCaptains(room.GameMode) ? DrawCaptainsLocked(room) : PcGameSessionStartGame.NoCaptains;
-        var match = Match.BetweenTeams(map, room.PlayersBySlot(), captains, time.GetUtcNow());
+        var match = Match.BetweenTeams(map, room.PlayersBySlot(), room.CharacterIds(), captains, time.GetUtcNow());
         BeginMatchLocked(room, match);
         var (first, second) = room.TeamSizes();
         LogTeamMatchStarted(logger, room.Number, first, second, map, room.MapId);
@@ -458,21 +461,112 @@ public sealed partial class RoomDirectory
 
     // Ends the match with winningTeam the winner: everyone still in the room is sent the
     // rewards, then the result, which builds the result screen from them, and the room
-    // waits for the cards.
+    // waits for the cards. The result shows what the match pays each character, which is
+    // kept after, away from this lock; see Paid.
     private void EndLocked(Room room, Match match, byte winningTeam)
     {
         // The wait for the cards runs from before anyone hears of the end.
         match.End();
         match.Arm(time.CreateTimer(_ => ResultWaitElapsed(room, match), null, matchOptions.Value.ResultWait, Timeout.InfiniteTimeSpan));
         room.ClearReady();
+        var payments = PaymentsOf(room, match, winningTeam);
         SendToRoomLocked(room, MatchRules.RewardsOf(room.CharacterIds()));
-        SendToRoomLocked(room, new PcGameSessionEndGame(MatchRules.ResultOf(winningTeam, room.Levels()), EndGameMode: 0));
+        SendToRoomLocked(room, new PcGameSessionEndGame(ResultOf(room, winningTeam, payments), EndGameMode: 0));
+
+        var record = new MatchRecord(
+            match.Id,
+            room.Number,
+            room.ChannelId,
+            match.MapId,
+            match.IsMission ? room.Difficulty : null,
+            winningTeam,
+            match.Started,
+            time.GetUtcNow(),
+            payments);
+        var players = match.Characters().DistinctBy(started => started.CharacterId).ToDictionary(started => started.CharacterId, started => started.Player);
+        payouts.Pay(record, kept => Paid(record, players, kept));
         LogMatchEnded(
             logger,
             room.Number,
             !match.IsMission ? $"team {winningTeam} won"
             : winningTeam == MatchRules.PlayersTeam ? "the mission was cleared"
             : "the mission was lost");
+    }
+
+    // What the match pays each character that started it. A character whose player saw the
+    // match to its end is paid, alive or a ghost, and counts its team's result, as its client
+    // does; one whose player gave up is paid nothing and counts its team's result too; one
+    // whose player left is paid nothing and counts the match lost, as its client counts
+    // nothing. A mission pays by its own number, its difficulty and whether it was cleared,
+    // the same to every player; a match between teams, by the character's team's result.
+    private MatchPayment[] PaymentsOf(Room room, Match match, byte winningTeam) =>
+    [
+        .. match.Characters().Select(started =>
+        {
+            var ending = match.EndingOf(started.Slot);
+            var won = ending != MatchEnding.Left && Seating.TeamOf(started.Slot) == winningTeam;
+            var earned = ending != MatchEnding.Played ? default
+                : match.IsMission ? rewards.Value.Mission(match.MapId, room.Difficulty, cleared: winningTeam == MatchRules.PlayersTeam)
+                : rewards.Value.BetweenTeams(won);
+            return new MatchPayment(started.CharacterId, started.Slot, ending, won, earned.Experience, earned.Gold);
+        }),
+    ];
+
+    // The result, with a row for each slot: what a character still in the room was paid,
+    // from where it stood, or nothing for one whose player gave up; and nothing to show
+    // for a slot with no character.
+    private static GameResult ResultOf(Room room, byte winningTeam, IReadOnlyList<MatchPayment> payments) => new(
+        winningTeam,
+        [
+            .. Enumerable.Range(0, GameSlotInfo.SlotCount).Select(slot =>
+            {
+                var place = (byte)slot;
+                if (room.CharacterAt(slot) is not { } character)
+                {
+                    return GameResultSlot.Empty(place);
+                }
+
+                return payments.FirstOrDefault(payment => payment.Slot == place && payment.CharacterId == character.CharacterId) is
+                    { Ending: MatchEnding.Played } paid
+                    ? MatchRules.PaidRow(place, CharacterProgress.Of(character.Info), new Earning(paid.Experience, paid.Gold))
+                    : GameResultSlot.NothingEarned(place, character.Info.Level);
+            }),
+        ],
+        WinnerPointDelta: 0,
+        LoserPointDelta: 0);
+
+    // What a match paid is kept: each of its characters a connection still plays is put
+    // back in the room it is in as it is kept now, so that a player entering later is shown
+    // its level, and a character that played the match to its end is told its experience
+    // and gold, in place of its client's own. The client keeps those only from these
+    // packets; it counts the match won or lost itself.
+    private void Paid(MatchRecord record, IReadOnlyDictionary<uint, ClientSession> players, IReadOnlyDictionary<uint, CharacterProgress> kept)
+    {
+        lock (_lock)
+        {
+            foreach (var payment in record.Payments)
+            {
+                var player = players[payment.CharacterId];
+                var accountSlot = player.SelectedCharacterIds.ToList().IndexOf(payment.CharacterId);
+                if (!kept.TryGetValue(payment.CharacterId, out var progress) || accountSlot < 0)
+                {
+                    // Deleted, or no longer played by that connection: nothing of it is held.
+                    continue;
+                }
+
+                if (_roomOf.TryGetValue(player, out var room) && room.SlotOf(payment.CharacterId) is { } slot)
+                {
+                    room.Refresh(room.CharacterAt(slot)!.WithProgress(progress));
+                }
+
+                if (payment.Ending == MatchEnding.Played)
+                {
+                    var bar = LevelTable.BarAt(progress.Level)!.Value;
+                    player.Send(new PcUpdateExp((byte)accountSlot, progress.Level, progress.Experience, bar.Floor, bar.Ceiling));
+                    player.Send(PcUpdateMoney.GoldOf((byte)accountSlot, progress.Gold));
+                }
+            }
+        }
     }
 
     private void BackToWaitingLocked(Room room)

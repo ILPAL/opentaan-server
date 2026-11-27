@@ -179,7 +179,7 @@ public sealed class ItemFlowTests
         await guest.SendAsync(new PcGamePlayGiveUp());
         await QuietAsync(host, guest);
         await host.SendAsync(new PcGamePlayGiveUp());
-        await EndToldAsync(MatchRules.MissionsTeam, [host, guest], host, guest);
+        await EndAfterGivingUpToldAsync([host, guest], host, guest);
 
         await host.SendAsync(new PcGamePlayUseItem(0, MatchRules.PlayersTeam, 0x00, 0x00, 0x01, 0x0203));
         await host.SendAsync(new PcGamePlayNotifyEatItem(0, 0x01, 0x0203));

@@ -45,7 +45,7 @@ internal static class SessionHarness
     public static CharacterOptions ShippedCharacterOptions() => new()
     {
         CreatorParts = [1, 3, 5, 8],
-        Start = new CharacterStart { ExperienceCeiling = 300 },
+        Start = new CharacterStart(),
     };
 
     /// <summary>The channel settings the server ships with, as <c>appsettings.json</c> sets them.</summary>
@@ -94,6 +94,19 @@ internal static class SessionHarness
         ItemDropsFile = "client-data/item-drops.json",
     };
 
+    /// <summary>The rewards the server ships with, as <c>appsettings.json</c> sets them.</summary>
+    public static RewardOptions ShippedRewardOptions() => new()
+    {
+        TeamMatchExperience = 40,
+        TeamMatchGold = 120,
+        WinMultiplier = 1.5,
+        MissionExperience = new Dictionary<ushort, IReadOnlyList<uint>> { [0] = [40, 50, 60] },
+        MissionLostShare = 0.25,
+        MissionGoldPerExperience = 1.5,
+        PayoutAttempts = 3,
+        PayoutRetryDelay = TimeSpan.FromSeconds(2),
+    };
+
     /// <summary>A drop table of invented items, in place of the client's, which the tests never read.</summary>
     public static ItemDrops TestItemDrops { get; } = new(
     [
@@ -119,9 +132,12 @@ internal static class SessionHarness
         MatchOptions? matchOptions = null,
         Random? random = null,
         PasswordHasher? passwords = null,
-        ItemDrops? itemDrops = null)
+        ItemDrops? itemDrops = null,
+        RewardOptions? rewardOptions = null,
+        MatchPayouts? payouts = null)
     {
         characterStore ??= new InMemoryCharacterStore();
+        var rewards = Options.Create(rewardOptions ?? ShippedRewardOptions());
         var accounts = new AccountHandlers(
             store ?? new InMemoryAccountStore(),
             characterStore,
@@ -151,6 +167,8 @@ internal static class SessionHarness
             time ?? TimeProvider.System,
             random ?? new Random(1),
             itemDrops ?? TestItemDrops,
+            rewards,
+            payouts ?? new MatchPayouts(characterStore, rewards, time ?? TimeProvider.System, NullLogger<MatchPayouts>.Instance),
             NullLogger<RoomDirectory>.Instance);
 
         var names = new PacketNames();

@@ -7,6 +7,7 @@ using OpenTaan.Protocol.Accounts;
 namespace OpenTaan.Tests.Storage;
 
 /// <summary>The account contract, against accounts kept in PostgreSQL, and what only the database can show.</summary>
+[Collection(nameof(PostgresServer))]
 public sealed class PostgresAccountStoreTests(PostgresServer server) : AccountStoreContract, IAsyncDisposable
 {
     private TestDatabase? _database;

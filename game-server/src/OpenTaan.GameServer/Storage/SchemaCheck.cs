@@ -18,8 +18,8 @@ namespace OpenTaan.GameServer.Storage;
 /// </remarks>
 public sealed partial class SchemaCheck(NpgsqlDataSource database, ILogger<SchemaCheck> logger) : IHostedService
 {
-    /// <summary>The migration this code needs: V5, the characters as the game server keeps them.</summary>
-    public const int RequiredVersion = 5;
+    /// <summary>The migration this code needs: V6, the matches and what each paid.</summary>
+    public const int RequiredVersion = 6;
 
     /// <summary>Checks the schema, and throws, which stops the server, if it is too old.</summary>
     /// <exception cref="InvalidOperationException">The database has no migration at or past <see cref="RequiredVersion"/>.</exception>

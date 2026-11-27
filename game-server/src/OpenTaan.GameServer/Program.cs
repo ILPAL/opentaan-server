@@ -48,9 +48,6 @@ builder.Services
     .AddOptions<CharacterOptions>()
     .Bind(builder.Configuration.GetSection(CharacterOptions.Section))
     .Validate(
-        o => o.Start.ExperienceCeiling > 0,
-        "Characters:Start:ExperienceCeiling must be above zero: the client divides by it to draw the experience bar")
-    .Validate(
         o => o.CreatorParts.Count > 0
              && o.CreatorParts.All(part => part is >= 0 and < AppearanceSlot.Count)
              && o.CreatorParts.Distinct().Count() == o.CreatorParts.Count,
@@ -97,6 +94,12 @@ builder.Services
     .ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<MatchOptions>, MatchOptionsValidation>();
 
+builder.Services
+    .AddOptions<RewardOptions>()
+    .Bind(builder.Configuration.GetSection(RewardOptions.Section))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<RewardOptions>, RewardOptionsValidation>();
+
 // The items boxes and bonuses give are the client's data, kept beside the server and never
 // in the repository. Without them no match between teams could give one, so the server
 // does not start, and says why in one line.
@@ -135,6 +138,11 @@ builder.Services.AddSingleton<ChannelHandlers>();
 builder.Services.AddSingleton<LobbyHandlers>();
 builder.Services.AddSingleton<LobbyRoster>();
 builder.Services.AddSingleton<RoomDirectory>();
+
+// Started before the listener, so that it stops after it: a server stopping waits for
+// every match's payment under way.
+builder.Services.AddSingleton<MatchPayouts>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<MatchPayouts>());
 builder.Services.AddSingleton<RoomHandlers>();
 builder.Services.AddSingleton<MatchHandlers>();
 builder.Services.AddSingleton(Random.Shared);

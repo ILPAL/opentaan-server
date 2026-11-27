@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OpenTaan.GameServer.Accounts;
 using OpenTaan.GameServer.Characters;
+using OpenTaan.GameServer.Matches;
 using OpenTaan.GameServer.Storage;
 using OpenTaan.Protocol;
 using OpenTaan.Protocol.Accounts;
@@ -14,6 +15,7 @@ namespace OpenTaan.Tests.Storage;
 /// The check that stops the server on a schema too old for it, read from Flyway's own
 /// record of the migrations it ran. Each test edits that record in a database of its own.
 /// </summary>
+[Collection(nameof(PostgresServer))]
 public sealed class SchemaCheckTests(PostgresServer server)
 {
     private static CancellationToken Cancel => TestContext.Current.CancellationToken;
@@ -43,7 +45,7 @@ public sealed class SchemaCheckTests(PostgresServer server)
         var account = (await accounts.CreateAsync("player@example.test", password, Gender.Female, Cancel))!;
         Assert.NotNull(await accounts.ReplacePasswordAsync(account.AccountId, password, Cancel));
 
-        var characters = new PostgresCharacterStore(source, Options.Create(SessionHarness.ShippedCharacterOptions()));
+        var characters = new PostgresCharacterStore(source);
         var parts = new AppearanceSlot[AppearanceSlot.Count];
         parts[1] = new AppearanceSlot(110_001, 1, 2, 3);
         var created = await characters.CreateAsync(account.AccountId, "Rồng", id => new Character(
@@ -54,6 +56,12 @@ public sealed class SchemaCheckTests(PostgresServer server)
         Assert.True(await characters.FinishTutorialAsync(created.Character!.CharacterId, Cancel));
         Assert.True(await characters.IsNameTakenAsync("rỒng", Cancel));
         Assert.Equal(created.Character with { HasFinishedTutorial = true }, Assert.Single(await characters.FindByAccountAsync(account.AccountId, Cancel)));
+        var kept = await characters.KeepMatchAsync(
+            new MatchRecord(
+                Guid.NewGuid(), 1, 11, 0, MissionDifficulty: 0, WinningTeam: 1, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
+                [new MatchPayment(created.Character.CharacterId, 0, MatchEnding.Played, Won: true, Experience: 40, Gold: 60)]),
+            Cancel);
+        Assert.Equal(new CharacterProgress(1, 40, 60, 1, 0), kept[created.Character.CharacterId]);
         Assert.True(await characters.DeleteAsync(account.AccountId, created.Character.CharacterId, Cancel));
     }
 

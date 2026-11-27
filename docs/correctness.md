@@ -582,6 +582,26 @@ with real tokens:
   fail it. The same reading showed that the enemies never attack: their turn only
   moves them, places the level's next wave and lets their own poison work, which
   the roadmap had called "missions whose enemies fight back".
+- **A race the key did not cover.** What a match pays is kept once by a payment
+  row keyed by the match and the character. The first race kept one match 64 times
+  at once, and every keeping after the first found the row there and paid no one:
+  it passed with the character's row no longer locked while it is paid. Two
+  matches paying one character at once each insert a row of their own, so the key
+  does not keep them apart: each read the same balance, added its own pay, and the
+  second write lost the first's. A second race, 64 matches paying one character at
+  once, fails without the lock. The two races also opened 64 connections each,
+  and one run, with a race in another test class alongside, asked PostgreSQL for
+  more than its 100: the test classes that use the database now run one after
+  another.
+- **Rules no test could tell from their mistakes.** Of 25 versions planted in the
+  payment code, three passed every test. A rule that a player who leaves counts the
+  match lost was never seen to do anything, since every test's leaver was on the
+  losing team. Rounding instead of dropping a fraction matched every shipped amount,
+  since .NET rounds a half to the even number and every half there fell on one. And
+  the test that runs every store on a database at exactly the migration the server
+  asks for never kept a match, so asking for the migration before the payments' own
+  passed. A leaver on the winning team, an amount whose half rounds up, and a
+  match kept on that database now fail them.
 
 ## The game server: bytes, not types
 

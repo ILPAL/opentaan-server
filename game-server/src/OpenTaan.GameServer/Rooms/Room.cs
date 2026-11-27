@@ -329,6 +329,27 @@ internal sealed class Room
         }
     }
 
+    /// <summary>The character in <paramref name="slot"/>, or null when the slot holds none.</summary>
+    public Character? CharacterAt(int slot) => _seats[slot]?.Character;
+
+    /// <summary>
+    /// Puts <paramref name="character"/>, as it is kept now, in place of the character of the
+    /// same id, in the slot it holds, and returns whether the room held it.
+    /// </summary>
+    public bool Refresh(Character character)
+    {
+        ArgumentNullException.ThrowIfNull(character);
+
+        var held = false;
+        foreach (var seat in _seats.OfType<TakenSlot>().Where(seat => seat.Character.CharacterId == character.CharacterId))
+        {
+            seat.Character = character;
+            held = true;
+        }
+
+        return held;
+    }
+
     /// <summary>Empties every slot <paramref name="session"/> holds, and returns them in rising order. Its characters no longer volunteer.</summary>
     public IReadOnlyList<byte> Vacate(ClientSession session)
     {
@@ -450,7 +471,8 @@ internal sealed class Room
     {
         public RoomMember Member { get; } = member;
 
-        public Character Character { get; } = character;
+        // Put back as it is kept whenever a match pays it.
+        public Character Character { get; set; } = character;
 
         public bool IsReady { get; set; }
 

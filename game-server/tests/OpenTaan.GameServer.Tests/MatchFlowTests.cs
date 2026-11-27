@@ -280,7 +280,7 @@ public sealed class MatchFlowTests
         await QuietAsync(host, guest);
 
         await guest.SendAsync(new PcGamePlayGiveUp());
-        await EndToldAsync(MatchRules.MissionsTeam, [host, guest], host, guest);
+        await EndAfterGivingUpToldAsync([host, guest], host, guest);
         await QuietAsync(host, guest);
     }
 
@@ -314,7 +314,7 @@ public sealed class MatchFlowTests
         await LevelBegunAsync(1, host, guest);
         await host.SendAsync(new PcGamePlayGiveUp());
         await guest.SendAsync(new PcGamePlayGiveUp());
-        await EndToldAsync(MatchRules.MissionsTeam, [host, guest], host, guest);
+        await EndAfterGivingUpToldAsync([host, guest], host, guest);
 
         await host.SendAsync(new PqGameSessionMissionLevelReady(1));
         await guest.SendAsync(new PqGameSessionMissionLevelReady(1));
@@ -397,7 +397,7 @@ public sealed class MatchFlowTests
 
         Assert.Equal(new PcGamePlayLeaveUser(1), await host.ReceiveAsync<PcGamePlayLeaveUser>(PcGamePlayLeaveUser.TryRead));
         await host.ReceiveAsync<PcGameSessionUpdateSlot>(PcGameSessionUpdateSlot.TryRead);
-        await EndToldAsync(MatchRules.MissionsTeam, [host], host);
+        await EndAfterGivingUpToldAsync([host], host);
         await QuietAsync(host);
     }
 
@@ -519,7 +519,7 @@ public sealed class MatchFlowTests
         await pair.SendAsync(new PcGamePlayGiveUp());
         await QuietAsync(host, pair);
         await host.SendAsync(new PcGamePlayGiveUp());
-        await EndToldAsync(MatchRules.MissionsTeam, [host, pair], host, pair);
+        await EndAfterGivingUpToldAsync([host, pair], host, pair);
 
         // Each of the pair's characters picks a card of its own.
         await PickAsync(pair, host, pair, card: 4, slot: 1);

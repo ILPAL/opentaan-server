@@ -1,6 +1,6 @@
-using Microsoft.Extensions.Options;
 using Npgsql;
 using OpenTaan.GameServer.Characters;
+using OpenTaan.GameServer.Matches;
 using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Characters;
 
@@ -20,10 +20,15 @@ namespace OpenTaan.GameServer.Storage;
 /// The database decides which of two creations takes a name, or an account's one
 /// character. Each is a unique index, and the index a refused creation broke says why.
 /// </para>
+/// <para>
+/// A match is kept in one transaction with what it pays. Each payment is a row keyed by the
+/// match and the character, and only a row that is new pays: keeping a match again, or
+/// keeping it twice at once, finds the rows there and pays no one again. The record of a
+/// match stays when a character is deleted, as what that match paid.
+/// </para>
 /// </remarks>
 /// <param name="database">The connections to the database.</param>
-/// <param name="options">The rules a character's experience bar is worked out by.</param>
-public sealed class PostgresCharacterStore(NpgsqlDataSource database, IOptions<CharacterOptions> options) : ICharacterStore
+public sealed class PostgresCharacterStore(NpgsqlDataSource database) : ICharacterStore
 {
     private const string NameIndex = "characters_name_key";
     private const string OnePerAccountIndex = "characters_one_per_account";
@@ -63,6 +68,23 @@ public sealed class PostgresCharacterStore(NpgsqlDataSource database, IOptions<C
     // Only the first report changes anything, so a repeat is no news.
     private const string FinishTutorialSql =
         "UPDATE characters SET tutorial_finished_at = now() WHERE character_id = $1 AND tutorial_finished_at IS NULL";
+
+    // A match kept again is the same match: its first record stands.
+    private const string InsertMatchSql =
+        "INSERT INTO matches (match_id, room_number, channel_id, map_id, mission_difficulty, winning_team, started_at, ended_at) " +
+        "VALUES ($1, $2, $3, $4, $5::smallint, $6, $7, $8) ON CONFLICT (match_id) DO NOTHING";
+
+    // Inserted only once for each match and character: the row that is new is the payment.
+    private const string InsertPaymentSql =
+        "INSERT INTO match_payments (match_id, character_id, slot, ending, won, experience, gold) " +
+        "VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (match_id, character_id) DO NOTHING";
+
+    // Locked until the transaction ends, so that no other payment comes between the read and the write.
+    private const string ProgressSql =
+        "SELECT level, experience, gold, wins, losses FROM characters WHERE character_id = $1 FOR UPDATE";
+
+    private const string PaySql =
+        "UPDATE characters SET level = $2, experience = $3, gold = $4, wins = $5, losses = $6 WHERE character_id = $1";
 
     /// <inheritdoc/>
     public async ValueTask<IReadOnlyList<Character>> FindByAccountAsync(uint accountId, CancellationToken cancellationToken)
@@ -206,6 +228,73 @@ public sealed class PostgresCharacterStore(NpgsqlDataSource database, IOptions<C
         return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 1;
     }
 
+    /// <inheritdoc/>
+    public async ValueTask<IReadOnlyDictionary<uint, CharacterProgress>> KeepMatchAsync(MatchRecord match, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(match);
+
+        await using var connection = await database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        await ExecuteAsync(connection, transaction, InsertMatchSql, cancellationToken,
+            match.MatchId, (int)match.RoomNumber, (int)match.ChannelId, (int)match.MapId,
+            match.MissionDifficulty is { } difficulty ? (object)(short)difficulty : DBNull.Value,
+            (short)match.WinningTeam, match.Started.ToUniversalTime(), match.Ended.ToUniversalTime()).ConfigureAwait(false);
+
+        // In one order, so that two matches paying the same characters lock them alike.
+        var kept = new Dictionary<uint, CharacterProgress>();
+        foreach (var payment in match.Payments.OrderBy(payment => payment.CharacterId))
+        {
+            var isNew = await ExecuteAsync(connection, transaction, InsertPaymentSql, cancellationToken,
+                match.MatchId, (long)payment.CharacterId, (short)payment.Slot, EndingName(payment.Ending), payment.Won,
+                (long)payment.Experience, (long)payment.Gold).ConfigureAwait(false) == 1;
+
+            if (await ProgressAsync(connection, transaction, payment.CharacterId, cancellationToken).ConfigureAwait(false) is not { } progress)
+            {
+                // Deleted since the match: its record stays, and there is no one to pay.
+                continue;
+            }
+
+            if (isNew)
+            {
+                progress = progress.After(payment.Experience, payment.Gold, payment.Won);
+                await ExecuteAsync(connection, transaction, PaySql, cancellationToken,
+                    (long)payment.CharacterId, (int)progress.Level, (long)progress.Experience, (long)progress.Gold,
+                    (long)progress.Wins, (long)progress.Losses).ConfigureAwait(false);
+            }
+
+            kept[payment.CharacterId] = progress;
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return kept;
+    }
+
+    // As the schema names each ending.
+    private static string EndingName(MatchEnding ending) => ending switch
+    {
+        MatchEnding.Played => "played",
+        MatchEnding.GaveUp => "gave_up",
+        MatchEnding.Left => "left",
+        _ => throw new ArgumentOutOfRangeException(nameof(ending), ending, "Not an ending the schema knows."),
+    };
+
+    private static async Task<CharacterProgress?> ProgressAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        uint characterId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = Command(connection, transaction, ProgressSql, [(long)characterId]);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        return new CharacterProgress(reader.UnsignedShort(0), reader.Unsigned(1), reader.Unsigned(2), reader.Unsigned(3), reader.Unsigned(4));
+    }
+
     // In the order of FindByAccountSql, up to the parts.
     private static Kept Read(NpgsqlDataReader reader) => new(
         CharacterId: reader.Unsigned(0),
@@ -235,11 +324,11 @@ public sealed class PostgresCharacterStore(NpgsqlDataSource database, IOptions<C
     }
 
     // The character the client is sent, from what is kept of it.
-    private Character Describe(uint accountId, Kept kept, IReadOnlyList<AppearanceSlot> parts)
+    private static Character Describe(uint accountId, Kept kept, IReadOnlyList<AppearanceSlot> parts)
     {
-        var bar = options.Value.ExperienceBarAt(kept.Level)
+        var bar = LevelTable.BarAt(kept.Level)
             ?? throw new InvalidDataException(
-                $"Character {kept.CharacterId} is at level {kept.Level}, whose experience bar this server does not know yet.");
+                $"Character {kept.CharacterId} is at level {kept.Level}, past the table of levels.");
 
         var info = new CharacterInfo(
             kept.CharacterId, kept.Name, kept.Level, kept.Experience, bar.Floor, bar.Ceiling, kept.Gold, kept.Gender,
@@ -265,7 +354,8 @@ public sealed class PostgresCharacterStore(NpgsqlDataSource database, IOptions<C
         return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static async Task ExecuteAsync(
+    // Returns the rows the statement changed.
+    private static async Task<int> ExecuteAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         string sql,
@@ -273,7 +363,7 @@ public sealed class PostgresCharacterStore(NpgsqlDataSource database, IOptions<C
         params object[] values)
     {
         await using var command = Command(connection, transaction, sql, values);
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static NpgsqlCommand Command(NpgsqlConnection connection, NpgsqlTransaction transaction, string sql, object[] values)
