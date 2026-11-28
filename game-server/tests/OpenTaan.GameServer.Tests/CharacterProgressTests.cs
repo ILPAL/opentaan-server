@@ -1,4 +1,5 @@
 using OpenTaan.GameServer.Characters;
+using OpenTaan.GameServer.Matches;
 using OpenTaan.Protocol.Accounts;
 using OpenTaan.Protocol.Characters;
 
@@ -26,10 +27,14 @@ public sealed class CharacterProgressTests
     [Fact]
     public void ExperienceStopsAtTheEndOfTheLastLevelsBarAndGoldAndTheRecordAtTheMostTheClientHolds()
     {
-        var before = new CharacterProgress(109, 18_063_200, uint.MaxValue - 100, uint.MaxValue, uint.MaxValue);
+        var before = new CharacterProgress(109, 18_063_200, uint.MaxValue - 100, uint.MaxValue, uint.MaxValue,
+            ForceMedals: uint.MaxValue, KillMedals: uint.MaxValue - 1, SupportMedals: 12);
+        var after = new CharacterProgress(109, 18_063_236, uint.MaxValue, uint.MaxValue, uint.MaxValue,
+            ForceMedals: uint.MaxValue, KillMedals: uint.MaxValue, SupportMedals: 12);
 
-        Assert.Equal(new CharacterProgress(109, 18_063_236, uint.MaxValue, uint.MaxValue, uint.MaxValue), before.After(60, 180, won: true));
-        Assert.Equal(new CharacterProgress(109, 18_063_236, uint.MaxValue, uint.MaxValue, uint.MaxValue), before.After(60, 180, won: false));
+        var medals = new MedalAwards(1, 1, 0);
+        Assert.Equal(after, before.After(60, 180, won: true, medals));
+        Assert.Equal(after, before.After(60, 180, won: false, medals));
     }
 
     [Fact]
@@ -40,12 +45,12 @@ public sealed class CharacterProgressTests
             new CharacterInfo(1001, "Kimi", 1, 0, 0, 300, 0, Gender.Female, 5, 6, 7, 8, 0, 0, 9, 10, 11, string.Empty),
             Character.AppearanceOf(Gender.Female, 1001, 1, new AppearanceSlot[AppearanceSlot.Count]));
 
-        var paid = created.WithProgress(new CharacterProgress(2, 310, 180, 1, 0));
+        var paid = created.WithProgress(CharacterProgress.Of(created.Info).After(310, 180, won: true, new MedalAwards(0, 1, 1)));
 
         Assert.Equal(
-            new CharacterInfo(1001, "Kimi", 2, 310, 300, 791, 180, Gender.Female, 5, 6, 7, 8, 1, 0, 9, 10, 11, string.Empty),
+            new CharacterInfo(1001, "Kimi", 2, 310, 300, 791, 180, Gender.Female, 5, 6, 7, 8, 1, 0, 9, 11, 12, string.Empty),
             paid.Info);
         Assert.Equal(Character.AppearanceOf(Gender.Female, 1001, 2, new AppearanceSlot[AppearanceSlot.Count]), paid.Appearance);
-        Assert.Equal(new CharacterProgress(2, 310, 180, 1, 0), CharacterProgress.Of(paid.Info));
+        Assert.Equal(new CharacterProgress(2, 310, 180, 1, 0, ForceMedals: 9, KillMedals: 11, SupportMedals: 12), CharacterProgress.Of(paid.Info));
     }
 }

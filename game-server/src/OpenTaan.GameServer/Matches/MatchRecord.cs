@@ -13,6 +13,12 @@ public enum MatchEnding
     Left,
 }
 
+/// <summary>The medal increments a character earned in one match.</summary>
+/// <param name="Force">The award for damage dealt.</param>
+/// <param name="Kill">The award for kills.</param>
+/// <param name="Support">The award for support given.</param>
+public readonly record struct MedalAwards(byte Force, byte Kill, byte Support);
+
 /// <summary>What a match paid one character that started it.</summary>
 /// <param name="CharacterId">The character.</param>
 /// <param name="Slot">The slot it played in, whose team it played for.</param>
@@ -23,7 +29,11 @@ public enum MatchEnding
 /// </param>
 /// <param name="Experience">The experience it was paid.</param>
 /// <param name="Gold">The gold it was paid.</param>
-public sealed record MatchPayment(uint CharacterId, byte Slot, MatchEnding Ending, bool Won, uint Experience, uint Gold);
+public sealed record MatchPayment(uint CharacterId, byte Slot, MatchEnding Ending, bool Won, uint Experience, uint Gold)
+{
+    /// <summary>The medal increments shown in the result row.</summary>
+    public MedalAwards Medals { get; init; }
+}
 
 /// <summary>A match that has ended, and what it paid each character that started it, to be kept once.</summary>
 /// <param name="MatchId">The match, which no other match shares.</param>

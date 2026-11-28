@@ -66,6 +66,7 @@ internal sealed class Match : IDisposable
     private readonly Dictionary<byte, (int X, int Y)> _ghostTargets = [];
     private readonly HashSet<byte> _bonusOwed = [];
     private readonly TurnOrder _turns = new();
+    private readonly MatchStats _stats = new();
     private ITimer? _timer;
 
     private Match(
@@ -212,6 +213,7 @@ internal sealed class Match : IDisposable
         Step++;
         TurnCount = 0;
         _ready.Clear();
+        _stats.NewMissionLevel();
     }
 
     /// <summary>Records that <paramref name="session"/>'s client reports a mission's <paramref name="level"/> ready.</summary>
@@ -272,6 +274,7 @@ internal sealed class Match : IDisposable
         Step++;
         _turns.Played(slot);
         _bonusOwed.Remove(slot);
+        _stats.NewTurn();
     }
 
     /// <summary>Owes the character in <paramref name="slot"/> the bonus its client asks for as the turn in which it shot ends.</summary>
@@ -301,10 +304,12 @@ internal sealed class Match : IDisposable
     public bool HasTurn(byte slot, ClientSession session) =>
         Phase == MatchPhase.Turn && TurnSlot == slot && IsPlayedBy(slot, session) && InPlay(slot);
 
-    /// <summary>Starts waiting for every client to play back the shot the turn's character has just fired, which adds one to a mission level's turn count.</summary>
+    /// <summary>Records the accepted shot and starts waiting for every client to play it back.</summary>
+    /// <param name="shot">The shot the turn's character fired.</param>
     /// <param name="now">When the shot arrived.</param>
-    public void BeginShot(DateTimeOffset now)
+    public void BeginShot(PcGamePlayScenario shot, DateTimeOffset now)
     {
+        _stats.RecordShot(this, shot);
         Phase = MatchPhase.Shot;
         Step++;
         if (IsMission)
@@ -386,14 +391,26 @@ internal sealed class Match : IDisposable
     public void HoldClear() => HeldClear = true;
 
     /// <summary>Takes the character in <paramref name="slot"/> out of the match as dead, and returns whether it was not dead already.</summary>
-    public bool Died(byte slot)
+    public bool Died(byte slot, bool reportedFromShot)
     {
+        if (!_dead.Add(slot))
+        {
+            return false;
+        }
+
+        _stats.RecordPlayerDeath(this, slot, reportedFromShot);
         _out.Add(slot);
-        return _dead.Add(slot);
+        return true;
     }
 
     /// <summary>Whether the character in <paramref name="slot"/> has died in the match.</summary>
     public bool IsDead(byte slot) => _dead.Contains(slot);
+
+    /// <summary>Records support for an item gifted during the teammate's turn.</summary>
+    public void RecordItemUse(PcGamePlayUseItem use) => _stats.RecordGift(this, use);
+
+    /// <summary>The statistics of the character in <paramref name="slot"/>.</summary>
+    public MatchStatistics StatsOf(byte slot) => _stats.Of(slot);
 
     /// <summary>Records where the character in <paramref name="slot"/> stands now.</summary>
     public void Moved(byte slot, int x, int y) => _positions[slot] = (x, y);

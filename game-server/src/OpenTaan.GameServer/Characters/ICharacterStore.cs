@@ -44,7 +44,7 @@ public interface ICharacterStore
 
     /// <summary>
     /// Keeps a match that has ended, and pays each character that started it what the
-    /// record says: its experience and gold added, and the match counted as won or lost.
+    /// record says: its experience, gold and medals added, and the match counted as won or lost.
     /// Keeps each result-card offer with that payment, without crediting the card yet.
     /// </summary>
     /// <remarks>
@@ -61,8 +61,8 @@ public interface ICharacterStore
     /// </summary>
     /// <remarks>
     /// The match must already have been kept, including its card offers. A card picked by
-    /// another character in that match cannot be picked again. The character's wins and
-    /// losses do not change. Its offer remains recorded if the character was deleted.
+    /// another character in that match cannot be picked again. The character's wins,
+    /// losses and medals do not change. Its offer remains recorded if the character was deleted.
     /// </remarks>
     /// <returns>The character's progress as kept now, or null if it no longer exists.</returns>
     ValueTask<CharacterProgress?> KeepCardAsync(

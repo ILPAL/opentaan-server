@@ -9,6 +9,10 @@ what it expects. The admin server checks its mappings against the tables; the
 game server checks that Flyway has applied the migration it needs, and refuses
 to start otherwise.
 
+The game server adds earned medals to the existing character columns in the
+same transaction as the match's base payment. The match and character key in
+`match_payments` makes those increments once-only on retry.
+
 ## Rules
 
 - **One change per file.** Name it `V<next number>__<what_it_does>.sql`.

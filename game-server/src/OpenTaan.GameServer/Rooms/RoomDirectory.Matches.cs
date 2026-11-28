@@ -548,11 +548,12 @@ public sealed partial class RoomDirectory
         match.End();
         match.Arm(time.CreateTimer(_ => ResultWaitElapsed(room, match), null, matchOptions.Value.ResultWait, Timeout.InfiniteTimeSpan));
         room.ClearReady();
-        var payments = PaymentsOf(room, match, winningTeam);
+        var stats = Enumerable.Range(0, GameSlotInfo.SlotCount).Select(slot => match.StatsOf((byte)slot)).ToArray();
+        var payments = PaymentsOf(room, match, winningTeam, stats);
         var characters = room.CharacterIds();
         var cards = CardRewards.Roll(characters, payments, rewards.Value, random);
         SendToRoomLocked(room, CardRewards.PacketOf(characters, cards));
-        SendToRoomLocked(room, new PcGameSessionEndGame(ResultOf(room, winningTeam, payments), EndGameMode: 0));
+        SendToRoomLocked(room, new PcGameSessionEndGame(ResultOf(room, winningTeam, payments, stats), EndGameMode: 0));
 
         var record = new MatchRecord(
             match.Id,
@@ -583,8 +584,9 @@ public sealed partial class RoomDirectory
     // does; one whose player gave up is paid nothing and counts its team's result too; one
     // whose player left is paid nothing and counts the match lost, as its client counts
     // nothing. A mission pays by its own number, its difficulty and whether it was cleared,
-    // the same to every player; a match between teams, by the character's team's result.
-    private MatchPayment[] PaymentsOf(Room room, Match match, byte winningTeam) =>
+    // the same to every player. A match between teams pays for kills, damage and the team's
+    // result, and awards medals for reaching the thresholds in the result cells.
+    private MatchPayment[] PaymentsOf(Room room, Match match, byte winningTeam, IReadOnlyList<MatchStatistics> stats) =>
     [
         .. match.Characters().Select(started =>
         {
@@ -592,15 +594,17 @@ public sealed partial class RoomDirectory
             var won = ending != MatchEnding.Left && Seating.TeamOf(started.Slot) == winningTeam;
             var earned = ending != MatchEnding.Played ? default
                 : match.IsMission ? rewards.Value.Mission(match.MapId, room.Difficulty, cleared: winningTeam == MatchRules.PlayersTeam)
-                : rewards.Value.BetweenTeams(won);
-            return new MatchPayment(started.CharacterId, started.Slot, ending, won, earned.Experience, earned.Gold);
+                : rewards.Value.BetweenTeams(won, stats[started.Slot]);
+            var medals = ending == MatchEnding.Played && !match.IsMission && room.CharacterAt(started.Slot) is { } character
+                ? MatchRules.MedalsOf(stats[started.Slot], CharacterProgress.Of(character.Info))
+                : default;
+            return new MatchPayment(started.CharacterId, started.Slot, ending, won, earned.Experience, earned.Gold) { Medals = medals };
         }),
     ];
 
-    // The result, with a row for each slot: what a character still in the room was paid,
-    // from where it stood, or nothing for one whose player gave up; and nothing to show
-    // for a slot with no character.
-    private static GameResult ResultOf(Room room, byte winningTeam, IReadOnlyList<MatchPayment> payments) => new(
+    // Each character still in the room shows its statistics and awards. A character that
+    // played to the end also shows how far its base experience took it.
+    private static GameResult ResultOf(Room room, byte winningTeam, IReadOnlyList<MatchPayment> payments, IReadOnlyList<MatchStatistics> stats) => new(
         winningTeam,
         [
             .. Enumerable.Range(0, GameSlotInfo.SlotCount).Select(slot =>
@@ -611,10 +615,22 @@ public sealed partial class RoomDirectory
                     return GameResultSlot.Empty(place);
                 }
 
-                return payments.FirstOrDefault(payment => payment.Slot == place && payment.CharacterId == character.CharacterId) is
-                    { Ending: MatchEnding.Played } paid
-                    ? MatchRules.PaidRow(place, CharacterProgress.Of(character.Info), new Earning(paid.Experience, paid.Gold))
+                var payment = payments.FirstOrDefault(paid => paid.Slot == place && paid.CharacterId == character.CharacterId);
+                var row = payment is { Ending: MatchEnding.Played }
+                    ? MatchRules.PaidRow(place, CharacterProgress.Of(character.Info), new Earning(payment.Experience, payment.Gold))
                     : GameResultSlot.NothingEarned(place, character.Info.Level);
+                var statistics = payment is null ? default : stats[slot];
+                var medals = payment?.Medals ?? default;
+                return row with
+                {
+                    KillStat = statistics.Kills,
+                    ForceStat = statistics.Damage,
+                    HitRate = statistics.HitRate,
+                    SupportStat = statistics.Support,
+                    ForceMedalAward = medals.Force,
+                    KillMedalAward = medals.Kill,
+                    SupportMedalAward = medals.Support,
+                };
             }),
         ],
         WinnerPointDelta: 0,
@@ -624,7 +640,7 @@ public sealed partial class RoomDirectory
     // back in the room it is in as it is kept now, so that a player entering later is shown
     // its level, and a character that played the match to its end is told its experience
     // and gold, in place of its client's own. The client keeps those only from these
-    // packets; it counts the match won or lost itself.
+    // packets; it counts the match won or lost and adds the medals from the result itself.
     private void Paid(MatchRecord record, IReadOnlyDictionary<uint, ClientSession> players, IReadOnlyDictionary<uint, CharacterProgress> kept)
     {
         lock (_lock)

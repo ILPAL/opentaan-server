@@ -611,6 +611,12 @@ with real tokens:
   character's slot and check its own offer, while store tests retry a pick whose
   commit answer was lost and check that it was credited once. A refused pick
   buys nothing.
+- **A death report needs a shot.** A client asks to become a ghost when its own
+  character plays a death step. A fall uses its own report. The result tests
+  play both kinds and send duplicate and late reports. Kill credit requires a
+  death step for that victim in the active shot, and only a credited kill pays
+  its teammates assist points. The result tests also look at the card offer
+  before it is picked. That offer must use the same base pay as the scoreboard.
 
 ## The game server: bytes, not types
 

@@ -126,7 +126,7 @@ public sealed class InMemoryCharacterStore : ICharacterStore
                 if (_paid.Add((match.MatchId, payment.CharacterId)))
                 {
                     character = character.WithProgress(
-                        CharacterProgress.Of(character.Info).After(payment.Experience, payment.Gold, payment.Won));
+                        CharacterProgress.Of(character.Info).After(payment.Experience, payment.Gold, payment.Won, payment.Medals));
                     _characters[payment.CharacterId] = character;
                 }
 

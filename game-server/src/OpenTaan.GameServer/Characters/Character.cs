@@ -58,6 +58,9 @@ public sealed record Character(uint AccountId, CharacterInfo Info, CharacterAppe
                 Gold = progress.Gold,
                 Wins = progress.Wins,
                 Losses = progress.Losses,
+                ForceMedals = progress.ForceMedals,
+                KillMedals = progress.KillMedals,
+                SupportMedals = progress.SupportMedals,
             },
             Appearance = AppearanceOf(Info.Gender, CharacterId, progress.Level, Appearance.Slots),
         };

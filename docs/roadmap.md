@@ -61,7 +61,7 @@ What a reviewer should be able to see and run, end to end.
 | Decisions and security | Ten decision records in `docs/adr`; a threat model with each threat's control, test and status; a case study of how correctness is checked; a test that two concurrent decisions leave exactly one |
 | Security scanning | `security` workflow: both images built, scanned with Trivy on every change and weekly, failing on fixable HIGH or CRITICAL findings, with a CycloneDX SBOM kept per image; Dockerfile checks; Dependabot for Maven, NuGet, base images, compose images and actions; every action pinned to a commit hash |
 
-Tests today: game server 1126, of which 21 need the reference sessions and skip without them, and 54 need PostgreSQL, which CI always gives them; admin server 61 unit tests and 25 integration tests.
+Tests today: game server 1143, of which 21 need the reference sessions and skip without them, and 54 need PostgreSQL, which CI always gives them; admin server 61 unit tests and 25 integration tests.
 
 ## Next
 
@@ -80,12 +80,10 @@ In order. Each item is one pull request unless noted.
    team in the modes with captains, a mission's enemies taking a turn of their own
    after every shot, and its items and ghosts, a mission's as the clients decide them
    and, between teams, the item boxes on the field and the items of ghosts' catches
-   and bonuses decided on the server, what a match pays each character, and its
-   result cards paying gold or experience once for each character that picks,
-   are done and served by real sessions. Next, one pull request each: the
-   scoreboard's kills, damage, support and hit rate, read from the shots, with
-   the medals they earn and a match between teams paid by them; a mission lost
-   once a level runs out of turns; and the rest of the item rules between teams,
+   and bonuses decided on the server, the result cards, and the scoreboard's
+   kills, damage, support and hit rate with stats-based team pay and medals,
+   are implemented. The next pull requests cover a mission lost once a level runs
+   out of turns and the rest of the item rules between teams,
    decided on the server (the items each character holds and uses, the team
    gauge of the modes without items, and the damage poison does, which needs
    each character's health).

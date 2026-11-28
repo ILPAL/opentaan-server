@@ -249,7 +249,8 @@ public sealed class MatchFlowTests
         await FirstTurnAsync(4, 1, host, guest);
         await LevelClearedByShotAsync(guest, 1, PqGameSessionStartMissionLevel.NoNextLevel, host, guest);
 
-        await EndToldAsync(MatchRules.PlayersTeam, [host, guest], host, guest);
+        await EndMissionToldAsync(MatchRules.PlayersTeam,
+            [new SeatOf(host, 0, Damage: 2 * 0x0506, HitRate: 1f), new SeatOf(guest, 1, Damage: 2 * 0x0506, HitRate: 1f)], host, guest);
         await QuietAsync(host, guest);
     }
 

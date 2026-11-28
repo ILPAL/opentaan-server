@@ -28,11 +28,14 @@ public sealed class RewardOptions
 {
     public const string Section = "Rewards";
 
-    /// <summary>The experience a match between teams pays a character on the losing team, which a win multiplies.</summary>
+    /// <summary>The participation experience a match between teams pays before adding pay for kills and damage.</summary>
     public uint TeamMatchExperience { get; set; }
 
-    /// <summary>The gold a match between teams pays a character on the losing team, which a win multiplies.</summary>
+    /// <summary>The participation gold a match between teams pays before adding pay for kills and damage.</summary>
     public uint TeamMatchGold { get; set; }
+
+    /// <summary>The most base gold one match between teams can pay a character, including the win multiplier.</summary>
+    public uint TeamMatchGoldCap { get; set; } = 1000;
 
     /// <summary>What a win multiplies a match between teams' experience and gold by.</summary>
     public double WinMultiplier { get; set; }
@@ -75,9 +78,14 @@ public sealed class RewardOptions
 
     /// <summary>What a match between teams pays a character that played it to the end.</summary>
     /// <param name="won">Whether its team won.</param>
-    public Earning BetweenTeams(bool won) => won
-        ? Capped(Scaled(TeamMatchExperience, WinMultiplier), Scaled(TeamMatchGold, WinMultiplier))
-        : Capped(TeamMatchExperience, TeamMatchGold);
+    /// <param name="stats">Its match statistics. Kills and damage earn experience and gold.</param>
+    public Earning BetweenTeams(bool won, MatchStatistics stats = default)
+    {
+        var experience = (ulong)TeamMatchExperience + (25u * stats.Kills) + ((10UL * stats.Damage) / 1000);
+        var gold = (ulong)TeamMatchGold + (60u * stats.Kills) + ((25UL * stats.Damage) / 1000);
+        var multiplier = won ? WinMultiplier : 1;
+        return Capped(Scaled(experience, multiplier), Math.Min(Scaled(gold, multiplier), TeamMatchGoldCap));
+    }
 
     /// <summary>What mission <paramref name="missionId"/> pays a character that played it to the end.</summary>
     /// <param name="missionId">The mission, one <see cref="MissionExperience"/> lists.</param>
@@ -164,7 +172,7 @@ public sealed class RewardOptions
     }
 
     // An amount times a factor, the fraction dropped, at most the most a field of the client holds.
-    private static uint Scaled(uint amount, double factor) => (uint)Math.Min(Math.Floor(amount * factor), uint.MaxValue);
+    private static uint Scaled(ulong amount, double factor) => (uint)Math.Min(Math.Floor(amount * factor), uint.MaxValue);
 
     private static Earning Capped(uint experience, uint gold) => new(Math.Min(experience, LevelTable.FirstLevelCost), gold);
 }

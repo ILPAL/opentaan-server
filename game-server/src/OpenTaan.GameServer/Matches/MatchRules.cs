@@ -180,7 +180,6 @@ public static class MatchRules
     /// The client counts the experience earned as the last step's less the first's, and a
     /// level gained when the last step's level is above the first's, so there are always two
     /// steps at least. It also puts the last step's level in the room, for everyone in it.
-    /// The kills, damage, support and hit rate are not counted yet, and show 0.
     /// </remarks>
     public static GameResultSlot PaidRow(byte slot, CharacterProgress before, Earning earned)
     {
@@ -210,6 +209,12 @@ public static class MatchRules
             ExpReward: earned.Experience,
             GoldReward: earned.Gold);
     }
+
+    // The client adds the award to its own total. Skip an award when that total is full.
+    internal static MedalAwards MedalsOf(MatchStatistics stats, CharacterProgress before) => new(
+        Force: stats.Damage >= 3000 && before.ForceMedals < uint.MaxValue ? (byte)1 : (byte)0,
+        Kill: stats.Kills >= 3 && before.KillMedals < uint.MaxValue ? (byte)1 : (byte)0,
+        Support: stats.Support >= 500 && before.SupportMedals < uint.MaxValue ? (byte)1 : (byte)0);
 
     // A step of the experience bar: the level, the experience, and the level's bar.
     private static ExpResult StepAt(ushort level, uint experience)
