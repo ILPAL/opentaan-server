@@ -551,7 +551,13 @@ public sealed partial class RoomDirectory
         var stats = Enumerable.Range(0, GameSlotInfo.SlotCount).Select(slot => match.StatsOf((byte)slot)).ToArray();
         var payments = PaymentsOf(room, match, winningTeam, stats);
         var characters = room.CharacterIds();
+        // Card offers use base match pay. The MVP bonus is part of the match payment.
         var cards = CardRewards.Roll(characters, payments, rewards.Value, random);
+        if (!match.IsMission)
+        {
+            MatchRules.AwardMvp(payments, stats);
+        }
+
         SendToRoomLocked(room, CardRewards.PacketOf(characters, cards));
         SendToRoomLocked(room, new PcGameSessionEndGame(ResultOf(room, winningTeam, payments, stats), EndGameMode: 0));
 
@@ -603,7 +609,7 @@ public sealed partial class RoomDirectory
     ];
 
     // Each character still in the room shows its statistics and awards. A character that
-    // played to the end also shows how far its base experience took it.
+    // played to the end also shows how far its experience took it.
     private static GameResult ResultOf(Room room, byte winningTeam, IReadOnlyList<MatchPayment> payments, IReadOnlyList<MatchStatistics> stats) => new(
         winningTeam,
         [
@@ -617,7 +623,11 @@ public sealed partial class RoomDirectory
 
                 var payment = payments.FirstOrDefault(paid => paid.Slot == place && paid.CharacterId == character.CharacterId);
                 var row = payment is { Ending: MatchEnding.Played }
-                    ? MatchRules.PaidRow(place, CharacterProgress.Of(character.Info), new Earning(payment.Experience, payment.Gold))
+                    ? MatchRules.PaidRow(
+                        place,
+                        CharacterProgress.Of(character.Info),
+                        new Earning(payment.Experience, payment.Gold),
+                        payment.MvpBonus is { } bonus ? [bonus] : [])
                     : GameResultSlot.NothingEarned(place, character.Info.Level);
                 var statistics = payment is null ? default : stats[slot];
                 var medals = payment?.Medals ?? default;

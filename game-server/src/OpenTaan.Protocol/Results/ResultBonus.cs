@@ -7,6 +7,9 @@ namespace OpenTaan.Protocol.Results;
 [WireClass("ResultBonus")]
 public sealed record ResultBonus(byte BonusType, uint Experience, uint Gold)
 {
+    /// <summary>The bonus type drawn with the medal icon.</summary>
+    public const byte MedalType = 4;
+
     /// <summary>The bytes one occupies, its id included: every field has a fixed size.</summary>
     internal const int Size = sizeof(uint) + sizeof(byte) + (2 * sizeof(uint));
 

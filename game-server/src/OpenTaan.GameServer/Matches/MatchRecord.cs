@@ -1,3 +1,5 @@
+using OpenTaan.Protocol.Results;
+
 namespace OpenTaan.GameServer.Matches;
 
 /// <summary>How a character's part in a match ended.</summary>
@@ -33,6 +35,9 @@ public sealed record MatchPayment(uint CharacterId, byte Slot, MatchEnding Endin
 {
     /// <summary>The medal increments shown in the result row.</summary>
     public MedalAwards Medals { get; init; }
+
+    /// <summary>The part of this payment shown as a medal bonus in the result row.</summary>
+    internal ResultBonus? MvpBonus { get; init; }
 }
 
 /// <summary>A match that has ended, and what it paid each character that started it, to be kept once.</summary>
