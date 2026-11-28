@@ -62,6 +62,8 @@ public static class MatchRules
     /// <summary>The name of a result card that is no character's.</summary>
     public const string EmptyRewardName = "Empty";
 
+    private const uint MvpBonusAmount = 100;
+
     /// <summary>
     /// How long the client gives its player for a turn before it passes for it: a value of
     /// the client's own, which the server neither sends nor can change.
@@ -181,7 +183,10 @@ public static class MatchRules
     /// level gained when the last step's level is above the first's, so there are always two
     /// steps at least. It also puts the last step's level in the room, for everyone in it.
     /// </remarks>
-    public static GameResultSlot PaidRow(byte slot, CharacterProgress before, Earning earned)
+    public static GameResultSlot PaidRow(byte slot, CharacterProgress before, Earning earned) =>
+        PaidRow(slot, before, earned, []);
+
+    internal static GameResultSlot PaidRow(byte slot, CharacterProgress before, Earning earned, IReadOnlyList<ResultBonus> bonuses)
     {
         var after = before.WithExperience(earned.Experience);
         var steps = new List<ExpResult> { StepAt(before.Level, before.Experience) };
@@ -201,13 +206,43 @@ public static class MatchRules
             ForceStat: 0,
             HitRate: 0,
             SupportStat: 0,
-            Bonuses: [],
+            Bonuses: bonuses,
             ForceMedalAward: 0,
             KillMedalAward: 0,
             SupportMedalAward: 0,
             HasReward: true,
             ExpReward: earned.Experience,
             GoldReward: earned.Gold);
+    }
+
+    // Only a unique leader with a contribution earns MVP. Damage comes first, then kills, then assists.
+    internal static void AwardMvp(MatchPayment[] payments, IReadOnlyList<MatchStatistics> stats)
+    {
+        var leaders = Enumerable.Range(0, payments.Length)
+            .Where(index => payments[index].Ending == MatchEnding.Played)
+            .Select(index =>
+            {
+                var score = stats[payments[index].Slot];
+                return (Index: index, Score: (score.Damage, score.Kills, score.Assists));
+            })
+            .Where(candidate => candidate.Score is not (0, 0, 0))
+            .OrderByDescending(candidate => candidate.Score)
+            .Take(2)
+            .ToArray();
+        if (leaders.Length == 0 || (leaders.Length == 2 && leaders[0].Score == leaders[1].Score))
+        {
+            return;
+        }
+
+        var index = leaders[0].Index;
+        var payment = payments[index];
+        var bonus = new ResultBonus(ResultBonus.MedalType, MvpBonusAmount, Math.Min(MvpBonusAmount, uint.MaxValue - payment.Gold));
+        payments[index] = payment with
+        {
+            Experience = payment.Experience + bonus.Experience,
+            Gold = payment.Gold + bonus.Gold,
+            MvpBonus = bonus,
+        };
     }
 
     // The client adds the award to its own total. Skip an award when that total is full.

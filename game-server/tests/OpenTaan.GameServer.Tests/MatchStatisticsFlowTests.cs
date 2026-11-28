@@ -76,11 +76,49 @@ public sealed class MatchStatisticsFlowTests
         Assert.Equal(((byte)0, 400u, 1f, 0u), StatsOf(result.Slots[2]));
         Assert.Equal(((byte)0, 0u, 0f, 0u), StatsOf(result.Slots[3]));
         Assert.Equal((67u, 199u), (result.Slots[0].ExpReward, result.Slots[0].GoldEarned));
-        Assert.Equal((111u, 303u), (result.Slots[1].ExpReward, result.Slots[1].GoldEarned));
+        Assert.Equal((211u, 403u), (result.Slots[1].ExpReward, result.Slots[1].GoldEarned));
+        Assert.Equal(new ResultBonus(4, 100, 100), Assert.Single(result.Slots[1].Bonuses));
+        Assert.All(result.Slots.Where(row => row.SlotIndex != 1), row => Assert.Empty(row.Bonuses));
         Assert.Equal((44u, 130u), (result.Slots[2].ExpReward, result.Slots[2].GoldEarned));
         await PayToldAsync(first, 0, 67, 199);
-        await PayToldAsync(first, 1, 111, 303);
+        await PayToldAsync(first, 1, 211, 403);
         await PayToldAsync(second, 0, 44, 130);
+        await PayToldAsync(second, 1, 40, 120);
+        await QuietAsync(first, second);
+    }
+
+    [Fact]
+    public async Task ACreditedAssistBreaksTheMvpTieAfterEqualDamageAndKills()
+    {
+        var services = Services(time: new ManualTime());
+        await using var first = await ArriveAsync(services, ChannelId, "Kimi", "Linh");
+        await using var second = await ArriveAsync(services, ChannelId, "Rồng", "Hoang");
+        await TeamRoomAsync(first, second);
+        await StartedAsync(first, first, second);
+        await first.SendAsync(Loading(0, 1));
+        await second.SendAsync(Loading(2, 3));
+        await TeamTurnToldAsync(0, first, second);
+
+        await FireAsync(first, ShotWith(0, Damage(2, 100)), second);
+        await FinishedAsync(0, first, second);
+        await TeamTurnPassedAsync(0, 2, first, second);
+        await FireAsync(second, ShotWith(2, Damage(0, 100)), first);
+        await FinishedAsync(2, first, second);
+        await TeamTurnPassedAsync(2, 1, first, second);
+
+        await FireAsync(first, ShotWith(1, Damage(2, 1), Death(2), Damage(3, 1), Death(3)), second);
+        await GhostToldAsync(second, 2, team: 2, first, second);
+        await GhostToldAsync(second, 3, team: 2, first, second);
+        await FinishedAsync(1, first, second);
+
+        var (_, result) = await ResultToldAsync(first, second);
+        Assert.Equal(((byte)0, 100u, 1f, 100u), StatsOf(result.Slots[0]));
+        Assert.Equal(((byte)0, 100u, 1f, 0u), StatsOf(result.Slots[2]));
+        Assert.Equal(new ResultBonus(4, 100, 100), Assert.Single(result.Slots[0].Bonuses));
+        Assert.All(result.Slots.Skip(1), row => Assert.Empty(row.Bonuses));
+        await PayToldAsync(first, 0, 161, 283);
+        await PayToldAsync(first, 1, 135, 360);
+        await PayToldAsync(second, 0, 41, 122);
         await PayToldAsync(second, 1, 40, 120);
         await QuietAsync(first, second);
     }
@@ -118,9 +156,12 @@ public sealed class MatchStatisticsFlowTests
         var hero = result.Slots[0];
         Assert.Equal(((byte)3, 3000u, 1f, 0u), StatsOf(hero));
         Assert.Equal(((byte)1, (byte)1, (byte)0), (hero.ForceMedalAward, hero.KillMedalAward, hero.SupportMedalAward));
-        Assert.Equal((217u, 562u, 562u), (hero.ExpReward, hero.GoldEarned, hero.GoldReward));
+        Assert.Equal(new ResultBonus(4, 100, 100), Assert.Single(hero.Bonuses));
+        Assert.Equal((317u, 662u, 662u), (hero.ExpReward, hero.GoldEarned, hero.GoldReward));
+        Assert.Equal(new ExpResult(2, 317, 300, 791), hero.Levels[^1]);
         Assert.Equal(new GameRewardGold("Gold", host.CharacterIds[0], 224, false, 0), offers.Rewards[0]);
-        await PayToldAsync(host, 0, 217, 562);
+        Assert.Equal(new PcUpdateExp(0, 2, 317, 300, 791), await host.ReceiveAsync<PcUpdateExp>(PcUpdateExp.TryRead));
+        Assert.Equal(PcUpdateMoney.GoldOf(0, 662), await host.ReceiveAsync<PcUpdateMoney>(PcUpdateMoney.TryRead));
         await PayToldAsync(enemies, 0, 40, 120);
         await PayToldAsync(enemies, 1, 40, 120);
         await PayToldAsync(allies, 0, 60, 180);
@@ -129,8 +170,9 @@ public sealed class MatchStatisticsFlowTests
 
         await host.SendAsync(new PqResultSelectCard(7, 0));
         await EveryoneToldAsync(new PrResultSelectCard(7, 0), PrResultSelectCard.TryRead, everyone);
-        Assert.Equal(PcUpdateMoney.GoldOf(0, 786), await host.ReceiveAsync<PcUpdateMoney>(PcUpdateMoney.TryRead));
+        Assert.Equal(PcUpdateMoney.GoldOf(0, 886), await host.ReceiveAsync<PcUpdateMoney>(PcUpdateMoney.TryRead));
         var saved = (await store.CharacterAsync("Kimi")).Info;
+        Assert.Equal((317u, 886u), (saved.CurrentExperience, saved.Gold));
         Assert.Equal((1u, 1u, 0u), (saved.ForceMedals, saved.KillMedals, saved.SupportMedals));
         await QuietAsync(everyone);
     }
@@ -198,6 +240,7 @@ public sealed class MatchStatisticsFlowTests
         Assert.Equal(((byte)0, 0u, 0f, 500u), StatsOf(helper));
         Assert.Equal(((byte)0, (byte)0, (byte)1), (helper.ForceMedalAward, helper.KillMedalAward, helper.SupportMedalAward));
         Assert.Equal((60u, 180u), (helper.ExpReward, helper.GoldEarned));
+        Assert.All(result.Slots, row => Assert.Empty(row.Bonuses));
         await PayToldAsync(host, 0, 60, 180);
         await PayToldAsync(ally, 0, 60, 180);
         await QuietAsync(everyone);
@@ -229,6 +272,7 @@ public sealed class MatchStatisticsFlowTests
         Assert.Equal(((byte)3, 3000u, 1f, 0u), StatsOf(row));
         Assert.Equal(((byte)0, (byte)0, (byte)0), (row.ForceMedalAward, row.KillMedalAward, row.SupportMedalAward));
         Assert.Equal((40u, 60u), (row.ExpReward, row.GoldEarned));
+        Assert.Empty(row.Bonuses);
         await PayToldAsync(host, 0, 40, 60);
         await QuietAsync(host);
     }
@@ -250,6 +294,7 @@ public sealed class MatchStatisticsFlowTests
         Assert.Equal(((byte)0, 3250u, 1f, 0u), StatsOf(row));
         Assert.Equal(((byte)0, (byte)0, (byte)0), (row.ForceMedalAward, row.KillMedalAward, row.SupportMedalAward));
         Assert.Equal((false, 0u, 0u), (row.HasReward, row.ExpReward, row.GoldEarned));
+        Assert.All(result.Slots, item => Assert.Empty(item.Bonuses));
         await PayToldAsync(guest, 0, 60, 180);
         await QuietAsync(host, guest);
     }

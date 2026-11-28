@@ -4,12 +4,16 @@ using OpenTaan.Protocol.Rooms;
 
 namespace OpenTaan.GameServer.Matches;
 
-/// <summary>The recorded statistics for one character, as the client can display them.</summary>
+/// <summary>The recorded statistics for one character in a match.</summary>
 /// <param name="Kills">Enemy kills credited to the character.</param>
 /// <param name="Damage">Damage the character dealt to enemies.</param>
 /// <param name="Support">Points from assists and item gifts.</param>
 /// <param name="HitRate">The fraction of the character's accepted shots that damaged an enemy.</param>
-public readonly record struct MatchStatistics(byte Kills, uint Damage, uint Support, float HitRate);
+public readonly record struct MatchStatistics(byte Kills, uint Damage, uint Support, float HitRate)
+{
+    /// <summary>Enemy kills the character helped a teammate make.</summary>
+    public uint Assists { get; init; }
+}
 
 /// <summary>
 /// Records one match's statistics under the room lock from accepted shots, death reports
@@ -32,7 +36,7 @@ internal sealed class MatchStats
     {
         var totals = _slots[slot];
         var hitRate = totals.ShotsFired == 0 ? 0 : (float)((double)totals.ShotsHit / totals.ShotsFired);
-        return new MatchStatistics(totals.Kills, totals.Damage, totals.Support, hitRate);
+        return new MatchStatistics(totals.Kills, totals.Damage, totals.Support, hitRate) { Assists = totals.Assists };
     }
 
     public void NewTurn()
@@ -151,6 +155,7 @@ internal sealed class MatchStats
                 if (assistant != shooter && Seating.TeamOf(assistant) == team
                     && match.EndingOf(assistant) == MatchEnding.Played)
                 {
+                    _slots[assistant].Assists++;
                     AddSupport(assistant, AssistPoints);
                 }
             }
@@ -170,6 +175,7 @@ internal sealed class MatchStats
     {
         public byte Kills;
         public uint Damage;
+        public uint Assists;
         public uint Support;
         public ulong ShotsFired;
         public ulong ShotsHit;

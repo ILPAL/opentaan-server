@@ -525,14 +525,18 @@ A mission's enemies never attack, but take a turn of their own after every shot.
   totals by `Rewards:WinMultiplier`, with fractions dropped again. Base gold is
   capped at `Rewards:TeamMatchGoldCap`. Players can earn one Force medal at 3,000
   damage, one Kill medal at 3 kills and one Support medal at 500 support.
+  The MVP earns 100 EXP and 100 gold on top of base pay, shown with the medal
+  bonus icon. Among players who finish, the most damage wins, then the most kills
+  and then the most assists break ties. A full tie for first or a match with no
+  eligible player who scored damage, kills or assists awards no MVP bonus.
   A mission awards zero medals and pays every player alike, by its own
   number and difficulty (`Rewards:MissionExperience`), a share of that when lost
   (`Rewards:MissionLostShare`), and gold for each unit of experience
-  (`Rewards:MissionGoldPerExperience`). Fractions are dropped, and no match pays
-  more experience than the first level takes, so none moves a character up more than
-  one level. A player who gave up sees their stats, earns no medals or base pay,
-  and counts their team's result. A player who left earns no medals or base pay
-  and counts the match lost on the server. The client adds wins, losses and medals
+  (`Rewards:MissionGoldPerExperience`). Fractions are dropped, and base experience
+  is capped at the cost of the first level. A player who gave up sees their stats,
+  earns no medals or match pay, and counts their team's result. A player who left
+  earns no medals or match pay and counts the match lost on the server. The client
+  adds wins, losses and medals
   from the result and takes experience and gold from the balance updates after it.
 - **Keeping it:** the result is sent at once, as the client times its result screen
   from it, and what the match paid is kept after, away from the rooms' lock, in one
@@ -550,7 +554,7 @@ A mission's enemies never attack, but take a turn of their own after every shot.
   last, 17,519,999 in all to reach the last. The client has no such table: it draws
   the bar from what it is told. The card chosen after the result pays separately.
 - **The cards:** before the result, each character still in the room is offered
-  either gold or experience, drawn from its own match pay. Gold and experience
+  either gold or experience, drawn from its own base match pay. Gold and experience
   have weights `Rewards:CardGoldWeight` and `Rewards:CardExperienceWeight`; each
   amount is drawn evenly between `Rewards:CardMinimumPercent` and
   `Rewards:CardMaximumPercent` of that pay, with a floor for its kind. A
