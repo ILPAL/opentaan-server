@@ -98,10 +98,12 @@ public sealed class PostgresCharacterStore(NpgsqlDataSource database) : ICharact
 
     // Locked until the transaction ends, so that no other payment comes between the read and the write.
     private const string ProgressSql =
-        "SELECT level, experience, gold, wins, losses FROM characters WHERE character_id = $1 FOR UPDATE";
+        "SELECT level, experience, gold, wins, losses, force_medals, kill_medals, support_medals " +
+        "FROM characters WHERE character_id = $1 FOR UPDATE";
 
     private const string PaySql =
-        "UPDATE characters SET level = $2, experience = $3, gold = $4, wins = $5, losses = $6 WHERE character_id = $1";
+        "UPDATE characters SET level = $2, experience = $3, gold = $4, wins = $5, losses = $6, " +
+        "force_medals = $7, kill_medals = $8, support_medals = $9 WHERE character_id = $1";
 
     /// <inheritdoc/>
     public async ValueTask<IReadOnlyList<Character>> FindByAccountAsync(uint accountId, CancellationToken cancellationToken)
@@ -274,10 +276,8 @@ public sealed class PostgresCharacterStore(NpgsqlDataSource database) : ICharact
 
             if (isNew)
             {
-                progress = progress.After(payment.Experience, payment.Gold, payment.Won);
-                await ExecuteAsync(connection, transaction, PaySql, cancellationToken,
-                    (long)payment.CharacterId, (int)progress.Level, (long)progress.Experience, (long)progress.Gold,
-                    (long)progress.Wins, (long)progress.Losses).ConfigureAwait(false);
+                progress = progress.After(payment.Experience, payment.Gold, payment.Won, payment.Medals);
+                await UpdateProgressAsync(connection, transaction, payment.CharacterId, progress, cancellationToken).ConfigureAwait(false);
             }
 
             kept[payment.CharacterId] = progress;
@@ -342,9 +342,7 @@ public sealed class PostgresCharacterStore(NpgsqlDataSource database) : ICharact
         if (card.PickedCardIndex is null)
         {
             progress = progress.Value.AfterCard(card.Kind, card.Amount);
-            await ExecuteAsync(connection, transaction, PaySql, cancellationToken,
-                (long)characterId, (int)progress.Value.Level, (long)progress.Value.Experience, (long)progress.Value.Gold,
-                (long)progress.Value.Wins, (long)progress.Value.Losses).ConfigureAwait(false);
+            await UpdateProgressAsync(connection, transaction, characterId, progress.Value, cancellationToken).ConfigureAwait(false);
         }
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -409,8 +407,20 @@ public sealed class PostgresCharacterStore(NpgsqlDataSource database) : ICharact
             return null;
         }
 
-        return new CharacterProgress(reader.UnsignedShort(0), reader.Unsigned(1), reader.Unsigned(2), reader.Unsigned(3), reader.Unsigned(4));
+        return new CharacterProgress(reader.UnsignedShort(0), reader.Unsigned(1), reader.Unsigned(2), reader.Unsigned(3), reader.Unsigned(4),
+            reader.Unsigned(5), reader.Unsigned(6), reader.Unsigned(7));
     }
+
+    private static Task UpdateProgressAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        uint characterId,
+        CharacterProgress progress,
+        CancellationToken cancellationToken) =>
+        ExecuteAsync(connection, transaction, PaySql, cancellationToken,
+            (long)characterId, (int)progress.Level, (long)progress.Experience, (long)progress.Gold,
+            (long)progress.Wins, (long)progress.Losses,
+            (long)progress.ForceMedals, (long)progress.KillMedals, (long)progress.SupportMedals);
 
     // In the order of FindByAccountSql, up to the parts.
     private static Kept Read(NpgsqlDataReader reader) => new(

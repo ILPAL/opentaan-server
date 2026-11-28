@@ -9,30 +9,45 @@ namespace OpenTaan.GameServer.Characters;
 /// <param name="Gold">The gold.</param>
 /// <param name="Wins">The matches won.</param>
 /// <param name="Losses">The matches lost.</param>
-public readonly record struct CharacterProgress(ushort Level, uint Experience, uint Gold, uint Wins, uint Losses)
+/// <param name="ForceMedals">The force medals won.</param>
+/// <param name="KillMedals">The kill medals won.</param>
+/// <param name="SupportMedals">The support medals won.</param>
+public readonly record struct CharacterProgress(
+    ushort Level,
+    uint Experience,
+    uint Gold,
+    uint Wins,
+    uint Losses,
+    uint ForceMedals = 0,
+    uint KillMedals = 0,
+    uint SupportMedals = 0)
 {
     /// <summary>The progress <paramref name="info"/> shows.</summary>
     public static CharacterProgress Of(CharacterInfo info)
     {
         ArgumentNullException.ThrowIfNull(info);
-        return new CharacterProgress(info.Level, info.CurrentExperience, info.Gold, info.Wins, info.Losses);
+        return new CharacterProgress(info.Level, info.CurrentExperience, info.Gold, info.Wins, info.Losses,
+            info.ForceMedals, info.KillMedals, info.SupportMedals);
     }
 
     /// <summary>
     /// The progress after a match that paid <paramref name="experience"/> and
-    /// <paramref name="gold"/>, and that counts as won or lost.
+    /// <paramref name="gold"/>, awarded <paramref name="medals"/>, and counts as won or lost.
     /// </summary>
     /// <remarks>
     /// The level is the one the new experience reaches. Experience stops at
     /// <see cref="LevelTable.MostExperience"/>, and gold and the record at the most the
     /// client can be sent, so no match can take a count past what it shows.
     /// </remarks>
-    public CharacterProgress After(uint experience, uint gold, bool won) =>
+    public CharacterProgress After(uint experience, uint gold, bool won, MedalAwards medals = default) =>
         WithExperience(experience) with
         {
             Gold = Added(Gold, gold),
             Wins = won ? Added(Wins, 1) : Wins,
             Losses = won ? Losses : Added(Losses, 1),
+            ForceMedals = Added(ForceMedals, medals.Force),
+            KillMedals = Added(KillMedals, medals.Kill),
+            SupportMedals = Added(SupportMedals, medals.Support),
         };
 
     /// <summary>
@@ -45,7 +60,7 @@ public readonly record struct CharacterProgress(ushort Level, uint Experience, u
         return this with { Level = LevelTable.LevelOf(total), Experience = total };
     }
 
-    /// <summary>The progress after a result card, with the match's win/loss record untouched.</summary>
+    /// <summary>The progress after a result card, with the same wins, losses and medals.</summary>
     public CharacterProgress AfterCard(CardRewardKind kind, uint amount) => kind switch
     {
         CardRewardKind.Experience => WithExperience(amount),

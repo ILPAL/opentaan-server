@@ -8,8 +8,7 @@ namespace OpenTaan.Protocol.GamePlay;
 /// A shot is a list of these, which the shooter's client works out and every client plays
 /// back at the times they give; see <see cref="GameScenario"/>. Each kind of step is a
 /// class of its own on the wire, led by its own id, and adds its fields after the ones
-/// every step has. This one, the base kind, carries only those, and the client uses it for
-/// the mark that ends a shot.
+/// every step has. This one, the base kind, carries only those fields.
 /// </para>
 /// <para>
 /// The slot is a game slot for a player's character, 100 or more for one of a mission's
@@ -25,6 +24,12 @@ namespace OpenTaan.Protocol.GamePlay;
 [WireClass("GameScenarioCommand")]
 public record GameScenarioCommand(byte SlotIndex, byte CommandType, uint TimingTick, uint Duration)
 {
+    /// <summary>The command type for a character or mission enemy dying in the shot.</summary>
+    public const byte DeathType = 5;
+
+    /// <summary>The command type for removing a mission enemy that died in the shot.</summary>
+    public const byte EnemyDeathType = 7;
+
     /// <summary>The fewest bytes a step occupies, its id included: one of this base kind.</summary>
     internal const int MinimumSize = sizeof(uint) + (2 * sizeof(byte)) + (2 * sizeof(uint));
 

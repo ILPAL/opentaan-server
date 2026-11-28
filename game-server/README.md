@@ -508,27 +508,38 @@ A mission's enemies never attack, but take a turn of their own after every shot.
   screen from the cards, so the cards always come first. Nothing about the match's
   turns is answered once it is over, since the client would act on it and leave its
   result screen. Every guest is no longer ready, as the client shows by itself.
-- **What a match pays:** the result shows, for each character still in the room,
+- **Scoreboard.** One accepted shot counts as fired. Positive damage to an opponent
+  in play counts as damage dealt and makes the shot a hit. Hit rate is hits divided
+  by shots fired, or zero with no shots. Between teams, a kill needs a death step
+  in the current shot and a report from the victim's client. A teammate still in
+  the match who damaged that opponent gets 100 support. In missions, a shot's enemy death steps
+  count once per enemy per level. A ghost or captain gift earns 50 support when its
+  giver, team and turn match, once per item slot that giver uses on that turn.
+- **What a match pays.** The result shows, for each character still in the room,
   the experience and gold the match pays it: its experience bar from where it stood
   to where the pay takes it, a level gained included, which the client also puts in
   the room for everyone in it. A character whose player saw the match to its end is
-  paid, alive or a ghost. Between teams, the losing team's characters are paid
-  `Rewards:TeamMatchExperience` and `Rewards:TeamMatchGold`, and the winners that
-  times `Rewards:WinMultiplier`. A mission pays every player alike, by its own
+  paid, alive or a ghost. Between teams, start with `Rewards:TeamMatchExperience`
+  and `Rewards:TeamMatchGold`. Add 25 EXP and 60 gold per kill, and 10 EXP and 25
+  gold per 1,000 damage, prorated with fractions dropped. A win multiplies the
+  totals by `Rewards:WinMultiplier`, with fractions dropped again. Base gold is
+  capped at `Rewards:TeamMatchGoldCap`. Players can earn one Force medal at 3,000
+  damage, one Kill medal at 3 kills and one Support medal at 500 support.
+  A mission awards zero medals and pays every player alike, by its own
   number and difficulty (`Rewards:MissionExperience`), a share of that when lost
   (`Rewards:MissionLostShare`), and gold for each unit of experience
   (`Rewards:MissionGoldPerExperience`). Fractions are dropped, and no match pays
   more experience than the first level takes, so none moves a character up more than
-  one level. A player who gave up is paid nothing and counts its team's result, as
-  its client does; one who left is paid nothing and counts the match lost, since its
-  client counts nothing. The client keeps the wins and losses itself from the
-  result, and experience and gold only from what the server tells it after.
+  one level. A player who gave up sees their stats, earns no medals or base pay,
+  and counts their team's result. A player who left earns no medals or base pay
+  and counts the match lost on the server. The client adds wins, losses and medals
+  from the result and takes experience and gold from the balance updates after it.
 - **Keeping it:** the result is sent at once, as the client times its result screen
   from it, and what the match paid is kept after, away from the rooms' lock, in one
   transaction: the match, and a payment row for each character that started it,
-  keyed by the match and the character, so that keeping it again, or twice at once,
-  pays no one twice, and each character's row is locked while it is paid, so that
-  two matches paying it at once both count. A try that fails is made again,
+  keyed by the match and the character. Experience, gold, the win or loss and the
+  displayed medal awards are applied together once. Each character's row is locked
+  during the update so concurrent matches both count. A try that fails is made again,
   `Rewards:PayoutAttempts` times in all, `Rewards:PayoutRetryDelay` apart, and a
   payment never kept is logged with what it would have paid. Once it is kept, each
   character still in a room is put back there as it is kept now, so a player
@@ -752,8 +763,9 @@ dotnet run --project src/OpenTaan.GameServer -- --GameServer:Port=2181 --PlayTim
 | `Matches:ItemBoxLowest`, `Matches:ItemBoxHighest` | `100`, `300` | How high above the character nearest to it the server places an item box: a height drawn from this range. Heights from 0 to 1000, the lowest first, or the server refuses to start. |
 | `Matches:ItemDropsFile` | `client-data/item-drops.json` | The JSON file of the client's item drop table, which every box a ghost catches and every bonus in a match between teams gives its item from, each item as likely as another. A relative path is looked for from the server's folder up. The server does not start without it; see [`client-data/README.md`](../client-data/README.md). |
 | `Matches:ItemDropQuality` | `20` | How good the items the clients draw are, from `0` to `100`, as the start of every turn tells them: higher makes the rarer items likelier. Above `100` the server refuses to start, since the client would hold it to `100`. The server's own draws, between teams, take every item as likely as another, whatever the quality. |
-| `Rewards:TeamMatchExperience`, `Rewards:TeamMatchGold` | `40`, `120` | What a match between teams pays each character of the losing team that played it to the end. |
-| `Rewards:WinMultiplier` | `1.5` | What a win multiplies those by, any fraction dropped. From 0 up. |
+| `Rewards:TeamMatchExperience`, `Rewards:TeamMatchGold` | `40`, `120` | Participation pay for characters who finish a match between teams, before adding pay for kills and damage. |
+| `Rewards:WinMultiplier` | `1.5` | What a win multiplies the team-match EXP and gold subtotals by, any fraction dropped. From 0 up. |
+| `Rewards:TeamMatchGoldCap` | `1000` | The most base gold one team match can pay a character after the win multiplier. The card is a separate payment. |
 | `Rewards:MissionExperience` | `0`: `40`, `50`, `60` | For each mission `Rooms:Missions` lists, and only those, the experience clearing it pays at each difficulty, easiest first, one for each. The server refuses to start otherwise. |
 | `Rewards:MissionLostShare` | `0.25` | The share of a clear's experience a lost mission pays, from 0 to 1. |
 | `Rewards:MissionGoldPerExperience` | `1.5` | The gold a mission pays for each unit of experience it pays. From 0 up. |

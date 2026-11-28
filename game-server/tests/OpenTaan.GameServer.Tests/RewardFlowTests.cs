@@ -163,7 +163,8 @@ public sealed class RewardFlowTests
         await FinishedAsync(0, pair);
 
         // Lost by the deaths of both, each paid the quarter a lost mission pays, the second told as account slot 1.
-        await EndToldAsync(MatchRules.MissionsTeam, [pair], pair);
+        await EndMissionToldAsync(MatchRules.MissionsTeam,
+            [new SeatOf(pair, 0, Damage: 0x0506, HitRate: 1f), new SeatOf(pair, 1, Position: 1)], pair);
         await QuietAsync(pair);
         var match = Assert.Single(store.Kept);
         Assert.Equal(((ushort)0, (byte?)0, MatchRules.MissionsTeam), (match.MapId, match.MissionDifficulty, match.WinningTeam));

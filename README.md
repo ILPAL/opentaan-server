@@ -137,7 +137,7 @@ checked, with what those checks caught, is in
 | Game server: packet codecs through the result screen, checked against the sessions | Done |
 | Game server: accounts, characters, matches and their payouts in PostgreSQL | Done |
 | Game server: result cards paying gold or experience on a pick | Done |
-| Game server: scoreboard stats and medals | Next |
+| Game server: scoreboard stats, team payouts based on play, and medals | Done |
 | Admin server: account lookup, contract-first API, permission model | Done |
 | Admin server: economy adjustments with four-eyes approval and idempotency keys | Done |
 | Admin server: append-only, hash-chained audit trail | Done |

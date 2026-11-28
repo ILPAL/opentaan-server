@@ -34,7 +34,7 @@ namespace OpenTaan.GameServer.Rooms;
 /// </remarks>
 public sealed partial class RoomDirectory
 {
-    /// <summary>Passes an item used to everyone in the match, the sender included.</summary>
+    /// <summary>Passes an item used to everyone in the match and records support for a gift.</summary>
     /// <returns>Null once passed on; otherwise why it was dropped, for the log.</returns>
     public string? UseItem(ClientSession session, PcGamePlayUseItem use)
     {
@@ -208,9 +208,15 @@ public sealed partial class RoomDirectory
             return NotInMatch;
         }
 
-        if (!room.Match!.IsPlayedBy(slot, session))
+        var match = room.Match!;
+        if (!match.IsPlayedBy(slot, session))
         {
             return $"slot {slot} is not one of its characters";
+        }
+
+        if (packet is PcGamePlayUseItem use)
+        {
+            match.RecordItemUse(use);
         }
 
         if (toSenderOnly)

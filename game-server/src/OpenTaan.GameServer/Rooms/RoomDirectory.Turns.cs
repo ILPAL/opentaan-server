@@ -66,7 +66,7 @@ public sealed partial class RoomDirectory
             }
 
             // The wait runs from before anyone else has the shot.
-            match.BeginShot(time.GetUtcNow());
+            match.BeginShot(shot, time.GetUtcNow());
             ArmShotWaitLocked(room, match, matchOptions.Value.LongestShot);
             SendToRoomLocked(room, shot, except: session);
             return null;
@@ -192,7 +192,7 @@ public sealed partial class RoomDirectory
     public string? MakeGhost(ClientSession session, PqGamePlayMakeGhost request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return Die(session, request.SlotIndex, passOn: null);
+        return Die(session, request.SlotIndex, fall: null);
     }
 
     // Why a shot or a pass for the character in slot is not taken from the connection.
@@ -237,11 +237,11 @@ public sealed partial class RoomDirectory
         }
     }
 
-    // Takes one of the connection's characters out of the match as dead: passes passOn, the
-    // fall its client reported, to every other client, tells everyone the character is a
+    // Takes one of the connection's characters out of the match as dead: passes a reported
+    // fall to every other client, tells everyone the character is a
     // ghost where it was last reported standing, and goes on without it. Only the dying
     // character's own client reports its death, once.
-    private string? Die(ClientSession session, byte slot, IPacket? passOn)
+    private string? Die(ClientSession session, byte slot, PcGamePlayDeathByDrop? fall)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -258,14 +258,14 @@ public sealed partial class RoomDirectory
                 return $"slot {slot} is not one of its characters";
             }
 
-            if (!match.Died(slot))
+            if (!match.Died(slot, reportedFromShot: fall is null))
             {
                 return $"the character in slot {slot} is a ghost already";
             }
 
-            if (passOn is not null)
+            if (fall is not null)
             {
-                SendToRoomLocked(room, passOn, except: session);
+                SendToRoomLocked(room, fall, except: session);
             }
 
             SendToRoomLocked(room, MatchRules.GhostOf(slot, match.PositionOf(slot, MatchRules.StartPosition)));

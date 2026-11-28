@@ -57,14 +57,16 @@ public sealed class SchemaCheckTests(PostgresServer server)
         Assert.True(await characters.IsNameTakenAsync("rỒng", Cancel));
         Assert.Equal(created.Character with { HasFinishedTutorial = true }, Assert.Single(await characters.FindByAccountAsync(account.AccountId, Cancel)));
         var match = new MatchRecord(
-            Guid.NewGuid(), 1, 11, 0, MissionDifficulty: 0, WinningTeam: 1, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
-            [new MatchPayment(created.Character.CharacterId, 0, MatchEnding.Played, Won: true, Experience: 40, Gold: 60)])
+            Guid.NewGuid(), 1, 11, 0, MissionDifficulty: null, WinningTeam: 1, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
+            [new MatchPayment(created.Character.CharacterId, 0, MatchEnding.Played, Won: true, Experience: 40, Gold: 60)
+                { Medals = new MedalAwards(1, 0, 0) }])
         {
             Cards = [new MatchCardOffer(created.Character.CharacterId, 0, CardRewardKind.Gold, 50)],
         };
         var kept = await characters.KeepMatchAsync(match, Cancel);
-        Assert.Equal(new CharacterProgress(1, 40, 60, 1, 0), kept[created.Character.CharacterId]);
-        Assert.Equal(new CharacterProgress(1, 40, 110, 1, 0), await characters.KeepCardAsync(match.MatchId, created.Character.CharacterId, 3, Cancel));
+        Assert.Equal(new CharacterProgress(1, 40, 60, 1, 0, ForceMedals: 1), kept[created.Character.CharacterId]);
+        Assert.Equal(new CharacterProgress(1, 40, 110, 1, 0, ForceMedals: 1),
+            await characters.KeepCardAsync(match.MatchId, created.Character.CharacterId, 3, Cancel));
         Assert.True(await characters.DeleteAsync(account.AccountId, created.Character.CharacterId, Cancel));
     }
 

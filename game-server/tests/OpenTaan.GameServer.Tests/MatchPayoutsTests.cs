@@ -35,7 +35,7 @@ public sealed class MatchPayoutsTests
         store.FailNext(KeepFailure.AfterKeeping, KeepFailure.BeforeKeeping);
         var told = new ConcurrentBag<IReadOnlyDictionary<uint, CharacterProgress>>();
 
-        var payment = payouts.Pay(MatchPaying(kimi), told.Add);
+        var payment = payouts.Pay(MatchPaying(kimi, new MedalAwards(1, 0, 1)), told.Add);
         await RetryWaitingAsync(clock);
         clock.Advance(TimeSpan.FromSeconds(2) - TimeSpan.FromMilliseconds(1));
         Assert.Single(store.Kept);
@@ -47,8 +47,9 @@ public sealed class MatchPayoutsTests
         Assert.True(await payment);
 
         Assert.Equal(3, store.Kept.Count);
-        Assert.Equal(new CharacterProgress(1, 60, 180, 1, 0), Assert.Single(told)[kimi]);
-        Assert.Equal(new CharacterProgress(1, 60, 180, 1, 0), CharacterProgress.Of((await store.CharacterAsync("Kimi")).Info));
+        var expected = new CharacterProgress(1, 60, 180, 1, 0, ForceMedals: 1, SupportMedals: 1);
+        Assert.Equal(expected, Assert.Single(told)[kimi]);
+        Assert.Equal(expected, CharacterProgress.Of((await store.CharacterAsync("Kimi")).Info));
     }
 
     [Fact]
@@ -58,7 +59,7 @@ public sealed class MatchPayoutsTests
         store.FailNext(KeepFailure.BeforeKeeping, KeepFailure.BeforeKeeping, KeepFailure.BeforeKeeping);
         var told = new ConcurrentBag<IReadOnlyDictionary<uint, CharacterProgress>>();
 
-        var payment = payouts.Pay(MatchPaying(kimi), told.Add);
+        var payment = payouts.Pay(MatchPaying(kimi, new MedalAwards(1, 0, 1)), told.Add);
         await RetryWaitingAsync(clock);
         clock.Advance(TimeSpan.FromSeconds(2));
         await RetryWaitingAsync(clock);
@@ -94,7 +95,7 @@ public sealed class MatchPayoutsTests
     {
         var (store, clock, payouts, kimi) = await PaidAsync();
         var offer = new MatchCardOffer(kimi, 0, CardRewardKind.Gold, 50);
-        var match = MatchPaying(kimi) with { Cards = [offer] };
+        var match = MatchPaying(kimi, new MedalAwards(0, 1, 0)) with { Cards = [offer] };
         var basePayment = payouts.Pay(match, _ => { });
         Assert.True(await basePayment.WaitAsync(TimeSpan.FromSeconds(10), Cancel));
         store.FailNextCard(KeepFailure.AfterKeeping);
@@ -107,8 +108,9 @@ public sealed class MatchPayoutsTests
         Assert.True(await cardPayment.WaitAsync(TimeSpan.FromSeconds(10), Cancel));
 
         Assert.Equal(2, store.CardsKept.Count);
-        Assert.Equal(new CharacterProgress(1, 60, 230, 1, 0), Assert.Single(told));
-        Assert.Equal(new CharacterProgress(1, 60, 230, 1, 0), CharacterProgress.Of((await store.CharacterAsync("Kimi")).Info));
+        var expected = new CharacterProgress(1, 60, 230, 1, 0, KillMedals: 1);
+        Assert.Equal(expected, Assert.Single(told));
+        Assert.Equal(expected, CharacterProgress.Of((await store.CharacterAsync("Kimi")).Info));
     }
 
     // A store holding one new character, Kimi, the clock the payouts wait on, and the payouts.
@@ -129,7 +131,7 @@ public sealed class MatchPayoutsTests
     }
 
     // A match between teams Kimi won, paying it a win.
-    private static MatchRecord MatchPaying(uint kimi) => new(
+    private static MatchRecord MatchPaying(uint kimi, MedalAwards medals = default) => new(
         Guid.NewGuid(),
         RoomNumber: 1,
         ChannelId: 11,
@@ -138,7 +140,7 @@ public sealed class MatchPayoutsTests
         WinningTeam: 1,
         Started: DateTimeOffset.UnixEpoch,
         Ended: DateTimeOffset.UnixEpoch,
-        [new MatchPayment(kimi, 0, MatchEnding.Played, Won: true, Experience: 60, Gold: 180)]);
+        [new MatchPayment(kimi, 0, MatchEnding.Played, Won: true, Experience: 60, Gold: 180) { Medals = medals }]);
 
     // Waits for the payment to wait on the clock for its next try.
     private static async Task RetryWaitingAsync(ManualTime clock)

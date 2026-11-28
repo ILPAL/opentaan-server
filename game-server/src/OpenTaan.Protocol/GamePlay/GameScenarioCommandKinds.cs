@@ -48,6 +48,9 @@ public sealed record GameScenarioCommandDamage(
     ushort DelayValue,
     ushort StaggerValue) : GameScenarioCommand(SlotIndex, CommandType, TimingTick, Duration)
 {
+    /// <summary>The command type for a hit that takes health from a character.</summary>
+    public const byte Type = 4;
+
     /// <summary>The id that leads it, computed from the wire name.</summary>
     public static new uint RegistryId => WireIdentity<GameScenarioCommandDamage>.RegistryId;
 

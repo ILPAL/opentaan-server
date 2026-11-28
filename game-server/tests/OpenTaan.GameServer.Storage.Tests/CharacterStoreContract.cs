@@ -281,15 +281,19 @@ public abstract class CharacterStoreContract
     {
         var store = await NewStoreAsync();
         var (kimi, rong) = await TwoCharactersAsync(store);
-        var match = MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: true, 60, 180), Paid(rong, 2, won: false, 40, 120));
+        var match = MatchOf(Guid.NewGuid(),
+            Paid(kimi, 0, won: true, 60, 180) with { Medals = new MedalAwards(1, 1, 0) },
+            Paid(rong, 2, won: false, 40, 120) with { Medals = new MedalAwards(0, 1, 1) });
 
         var told = await Race(async _ => await store.KeepMatchAsync(match, Cancel));
 
-        Assert.All(told, kept => Assert.Equal(new CharacterProgress(1, 60, 180, 1, 0), kept[kimi]));
-        Assert.All(told, kept => Assert.Equal(new CharacterProgress(1, 40, 120, 0, 1), kept[rong]));
+        var winner = new CharacterProgress(1, 60, 180, 1, 0, ForceMedals: 1, KillMedals: 1);
+        var loser = new CharacterProgress(1, 40, 120, 0, 1, KillMedals: 1, SupportMedals: 1);
+        Assert.All(told, kept => Assert.Equal(winner, kept[kimi]));
+        Assert.All(told, kept => Assert.Equal(loser, kept[rong]));
         var reopened = await ReopenAsync(store);
-        Assert.Equal(new CharacterProgress(1, 60, 180, 1, 0), CharacterProgress.Of((await reopened.FindByAccountAsync(1001, Cancel))[0].Info));
-        Assert.Equal(new CharacterProgress(1, 40, 120, 0, 1), CharacterProgress.Of((await reopened.FindByAccountAsync(1002, Cancel))[0].Info));
+        Assert.Equal(winner, CharacterProgress.Of((await reopened.FindByAccountAsync(1001, Cancel))[0].Info));
+        Assert.Equal(loser, CharacterProgress.Of((await reopened.FindByAccountAsync(1002, Cancel))[0].Info));
     }
 
     [Fact]
@@ -298,10 +302,11 @@ public abstract class CharacterStoreContract
         var store = await NewStoreAsync();
         var (kimi, _) = await TwoCharactersAsync(store);
 
-        await Race(async _ => await store.KeepMatchAsync(MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: true, 1, 3)), Cancel));
+        var paid = Paid(kimi, 0, won: true, 1, 3) with { Medals = new MedalAwards(1, 0, 1) };
+        await Race(async _ => await store.KeepMatchAsync(MatchOf(Guid.NewGuid(), paid), Cancel));
 
         Assert.Equal(
-            new CharacterProgress(1, Contenders, 3 * Contenders, Contenders, 0),
+            new CharacterProgress(1, Contenders, 3 * Contenders, Contenders, 0, ForceMedals: Contenders, SupportMedals: Contenders),
             CharacterProgress.Of((await (await ReopenAsync(store)).FindByAccountAsync(1001, Cancel))[0].Info));
     }
 
@@ -323,7 +328,9 @@ public abstract class CharacterStoreContract
     {
         var store = await NewStoreAsync();
         var (kimi, rong) = await TwoCharactersAsync(store);
-        var match = MatchOf(Guid.NewGuid(), Paid(kimi, 0, won: true, 60, 180), Paid(rong, 2, won: false, 40, 120)) with
+        var match = MatchOf(Guid.NewGuid(),
+            Paid(kimi, 0, won: true, 60, 180) with { Medals = new MedalAwards(0, 1, 0) },
+            Paid(rong, 2, won: false, 40, 120) with { Medals = new MedalAwards(1, 0, 1) }) with
         {
             Cards =
             [
@@ -333,14 +340,16 @@ public abstract class CharacterStoreContract
         };
         await store.KeepMatchAsync(match, Cancel);
 
-        Assert.Equal(new CharacterProgress(1, 132, 180, 1, 0), await store.KeepCardAsync(match.MatchId, kimi, 5, Cancel));
-        Assert.Equal(new CharacterProgress(1, 40, 170, 0, 1), await store.KeepCardAsync(match.MatchId, rong, 2, Cancel));
+        var winner = new CharacterProgress(1, 132, 180, 1, 0, KillMedals: 1);
+        var loser = new CharacterProgress(1, 40, 170, 0, 1, ForceMedals: 1, SupportMedals: 1);
+        Assert.Equal(winner, await store.KeepCardAsync(match.MatchId, kimi, 5, Cancel));
+        Assert.Equal(loser, await store.KeepCardAsync(match.MatchId, rong, 2, Cancel));
 
         var reopened = await ReopenAsync(store);
-        Assert.Equal(new CharacterProgress(1, 132, 180, 1, 0), CharacterProgress.Of(Assert.Single(await reopened.FindByAccountAsync(1001, Cancel)).Info));
-        Assert.Equal(new CharacterProgress(1, 40, 170, 0, 1), CharacterProgress.Of(Assert.Single(await reopened.FindByAccountAsync(1002, Cancel)).Info));
-        Assert.Equal(new CharacterProgress(1, 132, 180, 1, 0), await reopened.KeepCardAsync(match.MatchId, kimi, 5, Cancel));
-        Assert.Equal(new CharacterProgress(1, 40, 170, 0, 1), await reopened.KeepCardAsync(match.MatchId, rong, 2, Cancel));
+        Assert.Equal(winner, CharacterProgress.Of(Assert.Single(await reopened.FindByAccountAsync(1001, Cancel)).Info));
+        Assert.Equal(loser, CharacterProgress.Of(Assert.Single(await reopened.FindByAccountAsync(1002, Cancel)).Info));
+        Assert.Equal(winner, await reopened.KeepCardAsync(match.MatchId, kimi, 5, Cancel));
+        Assert.Equal(loser, await reopened.KeepCardAsync(match.MatchId, rong, 2, Cancel));
     }
 
     [Fact]

@@ -212,6 +212,7 @@ public sealed partial class MatchPayouts(
         "; ",
         payments.Select(payment =>
             $"character {payment.CharacterId}: {payment.Experience} experience, {payment.Gold} gold, " +
+            $"medals {payment.Medals.Force} force, {payment.Medals.Kill} kill, {payment.Medals.Support} support, " +
             $"{(payment.Won ? "won" : "lost")}, {payment.Ending}"));
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Match {MatchId} in room {RoomNumber} paid {Payments}")]

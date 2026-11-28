@@ -290,7 +290,8 @@ public sealed class TurnFlowTests
 
         await guest.SendAsync(Asking(PqGameSessionStartMissionLevel.NoNextLevel));
         await FinishedAsync(0, guest);
-        await EndToldAsync(MatchRules.PlayersTeam, [host, guest], host, guest);
+        await EndMissionToldAsync(MatchRules.PlayersTeam,
+            [new SeatOf(host, 0, Damage: 0x0506, HitRate: 1f), new SeatOf(guest, 1)], host, guest);
         await QuietAsync(host, guest);
     }
 
@@ -352,7 +353,8 @@ public sealed class TurnFlowTests
 
         await FinishedAsync(0, host, guest);
 
-        await EndToldAsync(MatchRules.MissionsTeam, [host, guest], host, guest);
+        await EndMissionToldAsync(MatchRules.MissionsTeam,
+            [new SeatOf(host, 0, Damage: 0x0506, HitRate: 1f), new SeatOf(guest, 1)], host, guest);
         await QuietAsync(host, guest);
     }
 

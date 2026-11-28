@@ -13,9 +13,10 @@ namespace OpenTaan.Tests.GameServer;
 /// <summary>
 /// A character in a match: the player's character at <paramref name="Position"/> among its
 /// own, in slot <paramref name="Slot"/>, which <paramref name="GaveUp"/> while it was in play,
-/// or played the match to its end.
+/// or played the match to its end. <paramref name="Damage"/> and <paramref name="HitRate"/>
+/// are the scoreboard stats expected from the shots the test sends.
 /// </summary>
-internal sealed record SeatOf(Player Player, byte Slot, int Position = 0, bool GaveUp = false);
+internal sealed record SeatOf(Player Player, byte Slot, int Position = 0, bool GaveUp = false, uint Damage = 0, float HitRate = 0);
 
 /// <summary>Brings players into a match and through it, as the client does. Every value is invented.</summary>
 internal static class Matching
@@ -172,12 +173,11 @@ internal static class Matching
 
     /// <summary>
     /// Each of <paramref name="told"/> is sent the end of a mission <paramref name="winningTeam"/>
-    /// won, in which the characters of <paramref name="characters"/>, seated in the first
-    /// team's slots in order, played to the end: the cards first, then the result, and each
-    /// player is then told its characters' experience and gold.
+    /// won, with the characters in <paramref name="seats"/>: the cards first, then the result,
+    /// and each player is then told its characters' experience and gold.
     /// </summary>
-    public static Task EndToldAsync(byte winningTeam, Player[] characters, params Player[] told) =>
-        EndToldAsync(winningTeam, InMission(characters, gaveUp: false), mission: true, told);
+    public static Task EndMissionToldAsync(byte winningTeam, SeatOf[] seats, params Player[] told) =>
+        EndToldAsync(winningTeam, seats, mission: true, told);
 
     /// <summary>
     /// Each of <paramref name="told"/> is sent the end of a match between teams
@@ -206,7 +206,11 @@ internal static class Matching
             characters[seat.Slot] = character.CharacterId;
             if (seat.GaveUp)
             {
-                rows[seat.Slot] = GameResultSlot.NothingEarned(seat.Slot, character.Level);
+                rows[seat.Slot] = GameResultSlot.NothingEarned(seat.Slot, character.Level) with
+                {
+                    ForceStat = seat.Damage,
+                    HitRate = seat.HitRate,
+                };
                 continue;
             }
 
@@ -214,7 +218,7 @@ internal static class Matching
             var earned = mission
                 ? won ? Paying.MissionCleared : Paying.MissionLost
                 : won ? Paying.TeamWin : Paying.TeamLoss;
-            rows[seat.Slot] = PaidRow(seat.Slot, character, earned);
+            rows[seat.Slot] = PaidRow(seat, character, earned);
             cardBases[seat.Slot] = earned;
             paid.Add((seat, earned));
         }
@@ -290,12 +294,12 @@ internal static class Matching
 
     // The row of a character paid earned that stays on its level: its bar from where it
     // started to where the experience takes it, and the experience and gold shown rising.
-    private static GameResultSlot PaidRow(byte slot, CharacterInfo character, Earning earned)
+    private static GameResultSlot PaidRow(SeatOf seat, CharacterInfo character, Earning earned)
     {
         var after = character.CurrentExperience + earned.Experience;
         Assert.True(after < character.ExperienceCeiling, "These helpers expect no level gained; the reward tests check one.");
         return new GameResultSlot(
-            slot,
+            seat.Slot,
             character.Level,
             (int)earned.Experience,
             [
@@ -304,8 +308,8 @@ internal static class Matching
             ],
             earned.Gold,
             KillStat: 0,
-            ForceStat: 0,
-            HitRate: 0,
+            ForceStat: seat.Damage,
+            HitRate: seat.HitRate,
             SupportStat: 0,
             Bonuses: [],
             ForceMedalAward: 0,
